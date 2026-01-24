@@ -69,19 +69,7 @@
     "light": "/logo/light.svg",
     "dark": "/logo/dark.svg"
   },
-  "navbar": {
-    "links": [
-      {
-        "label": "Support",
-        "href": "mailto:support@cloak.ag"
-      }
-    ],
-    "primary": {
-      "type": "button",
-      "label": "Get Started",
-      "href": "/sdk/quickstart"
-    }
-  },
+  "navbar": {},
   "contextual": {
     "options": [
       "copy",
