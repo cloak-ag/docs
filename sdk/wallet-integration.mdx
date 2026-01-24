@@ -1,0 +1,533 @@
+---
+title: "Wallet integration"
+description: "Integrate Cloak SDK with React, Next.js, and Solana wallet adapters"
+icon: "wallet"
+---
+
+This guide shows how to integrate the Cloak SDK with browser-based Solana wallets using `@solana/wallet-adapter-react`. You'll learn patterns for React hooks, state management, and handling the async wallet connection flow.
+
+## Prerequisites
+
+Install the required dependencies:
+
+```bash
+npm install @cloak.ag/sdk @solana/web3.js @solana/wallet-adapter-react @solana/wallet-adapter-react-ui @solana/wallet-adapter-wallets
+```
+
+## Basic integration
+
+### Create a Cloak hook
+
+Create a reusable hook that initializes the SDK when a wallet connects:
+
+```typescript hooks/useCloak.ts
+import { useMemo, useCallback } from "react";
+import { useWallet, useConnection } from "@solana/wallet-adapter-react";
+import { CloakSDK, CloakNote, getDistributableAmount } from "@cloak.ag/sdk";
+import { PublicKey } from "@solana/web3.js";
+
+export function useCloak() {
+  const { publicKey, signTransaction, sendTransaction } = useWallet();
+  const { connection } = useConnection();
+
+  // Initialize SDK only when wallet is connected
+  const sdk = useMemo(() => {
+    if (!publicKey || !sendTransaction) return null;
+
+    return new CloakSDK({
+      wallet: {
+        publicKey,
+        signTransaction,
+        sendTransaction,
+      },
+      network: "devnet",
+    });
+  }, [publicKey, signTransaction, sendTransaction]);
+
+  // Deposit function
+  const deposit = useCallback(
+    async (amountLamports: number, onNoteGenerated?: (note: CloakNote) => Promise<void>) => {
+      if (!sdk) throw new Error("Wallet not connected");
+
+      return sdk.deposit(connection, amountLamports, {
+        onNoteGenerated,
+        onProgress: (status) => console.log("Deposit:", status),
+      });
+    },
+    [sdk, connection]
+  );
+
+  // Withdraw function
+  const withdraw = useCallback(
+    async (note: CloakNote, recipient: PublicKey) => {
+      if (!sdk) throw new Error("Wallet not connected");
+
+      return sdk.withdraw(connection, note, recipient, {
+        withdrawAll: true,
+        onProgress: (status) => console.log("Withdraw:", status),
+      });
+    },
+    [sdk, connection]
+  );
+
+  // Send to multiple recipients
+  const send = useCallback(
+    async (note: CloakNote, recipients: Array<{ recipient: PublicKey; amount: number }>) => {
+      if (!sdk) throw new Error("Wallet not connected");
+
+      return sdk.send(connection, note, recipients, {
+        onProgress: (status) => console.log("Send:", status),
+      });
+    },
+    [sdk, connection]
+  );
+
+  return {
+    sdk,
+    isConnected: !!sdk,
+    deposit,
+    withdraw,
+    send,
+    getDistributableAmount,
+  };
+}
+```
+
+### Use in components
+
+```tsx components/PrivateTransfer.tsx
+import { useState } from "react";
+import { useCloak } from "@/hooks/useCloak";
+import { CloakNote } from "@cloak.ag/sdk";
+import { PublicKey, LAMPORTS_PER_SOL } from "@solana/web3.js";
+
+export function PrivateTransfer() {
+  const { isConnected, deposit, withdraw, getDistributableAmount } = useCloak();
+  const [note, setNote] = useState<CloakNote | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [status, setStatus] = useState("");
+
+  const handleDeposit = async () => {
+    setLoading(true);
+    setStatus("Depositing...");
+
+    try {
+      const result = await deposit(0.1 * LAMPORTS_PER_SOL, async (generatedNote) => {
+        // CRITICAL: Save note before deposit proceeds
+        localStorage.setItem(`note_${generatedNote.commitment}`, JSON.stringify(generatedNote));
+        console.log("Note saved to localStorage");
+      });
+
+      setNote(result.note);
+      setStatus(`Deposited! Leaf index: ${result.leafIndex}`);
+    } catch (error) {
+      setStatus(`Error: ${error.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleWithdraw = async () => {
+    if (!note) return;
+
+    setLoading(true);
+    setStatus("Generating proof and withdrawing...");
+
+    try {
+      const recipient = new PublicKey("YOUR_RECIPIENT_ADDRESS");
+      const result = await withdraw(note, recipient);
+
+      setStatus(`Withdrawn! TX: ${result.signature.slice(0, 8)}...`);
+      setNote(null); // Note is spent
+      
+      // Clean up localStorage
+      localStorage.removeItem(`note_${note.commitment}`);
+    } catch (error) {
+      setStatus(`Error: ${error.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (!isConnected) {
+    return <p>Please connect your wallet</p>;
+  }
+
+  return (
+    <div>
+      <p>Status: {status}</p>
+      
+      {!note ? (
+        <button onClick={handleDeposit} disabled={loading}>
+          {loading ? "Processing..." : "Deposit 0.1 SOL"}
+        </button>
+      ) : (
+        <div>
+          <p>Note balance: {getDistributableAmount(note.amount) / LAMPORTS_PER_SOL} SOL</p>
+          <button onClick={handleWithdraw} disabled={loading}>
+            {loading ? "Processing..." : "Withdraw"}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+```
+
+## Next.js setup
+
+### Configure wallet provider
+
+Create a wallet context provider for your app:
+
+```tsx providers/WalletProvider.tsx
+"use client";
+
+import { useMemo } from "react";
+import { WalletAdapterNetwork } from "@solana/wallet-adapter-base";
+import { ConnectionProvider, WalletProvider } from "@solana/wallet-adapter-react";
+import { WalletModalProvider } from "@solana/wallet-adapter-react-ui";
+import { PhantomWalletAdapter, SolflareWalletAdapter } from "@solana/wallet-adapter-wallets";
+import { clusterApiUrl } from "@solana/web3.js";
+
+import "@solana/wallet-adapter-react-ui/styles.css";
+
+export function SolanaProvider({ children }: { children: React.ReactNode }) {
+  const network = WalletAdapterNetwork.Devnet;
+  const endpoint = useMemo(() => clusterApiUrl(network), [network]);
+
+  const wallets = useMemo(
+    () => [new PhantomWalletAdapter(), new SolflareWalletAdapter()],
+    []
+  );
+
+  return (
+    <ConnectionProvider endpoint={endpoint}>
+      <WalletProvider wallets={wallets} autoConnect>
+        <WalletModalProvider>{children}</WalletModalProvider>
+      </WalletProvider>
+    </ConnectionProvider>
+  );
+}
+```
+
+### Use in layout
+
+```tsx app/layout.tsx
+import { SolanaProvider } from "@/providers/WalletProvider";
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <html lang="en">
+      <body>
+        <SolanaProvider>{children}</SolanaProvider>
+      </body>
+    </html>
+  );
+}
+```
+
+## Advanced patterns
+
+### Persistent note storage
+
+Create a hook for secure note storage:
+
+```typescript hooks/useNoteStorage.ts
+import { useState, useEffect, useCallback } from "react";
+import { CloakNote } from "@cloak.ag/sdk";
+
+const NOTES_KEY = "cloak_notes";
+
+export function useNoteStorage() {
+  const [notes, setNotes] = useState<CloakNote[]>([]);
+
+  // Load notes on mount
+  useEffect(() => {
+    const stored = localStorage.getItem(NOTES_KEY);
+    if (stored) {
+      try {
+        setNotes(JSON.parse(stored));
+      } catch (e) {
+        console.error("Failed to parse stored notes");
+      }
+    }
+  }, []);
+
+  // Save note
+  const saveNote = useCallback((note: CloakNote) => {
+    setNotes((prev) => {
+      const updated = [...prev, note];
+      localStorage.setItem(NOTES_KEY, JSON.stringify(updated));
+      return updated;
+    });
+  }, []);
+
+  // Remove spent note
+  const removeNote = useCallback((commitment: string) => {
+    setNotes((prev) => {
+      const updated = prev.filter((n) => n.commitment !== commitment);
+      localStorage.setItem(NOTES_KEY, JSON.stringify(updated));
+      return updated;
+    });
+  }, []);
+
+  // Get withdrawable notes (deposited and not spent)
+  const withdrawableNotes = notes.filter(
+    (note) => note.leafIndex !== undefined && note.depositSignature
+  );
+
+  return {
+    notes,
+    withdrawableNotes,
+    saveNote,
+    removeNote,
+  };
+}
+```
+
+### Progress feedback
+
+Show detailed progress during operations:
+
+```tsx components/DepositWithProgress.tsx
+import { useState } from "react";
+import { useCloak } from "@/hooks/useCloak";
+import { DepositStatus } from "@cloak.ag/sdk";
+
+const STATUS_MESSAGES: Record<string, string> = {
+  generating_note: "Generating cryptographic note...",
+  awaiting_note_acknowledgment: "Saving note securely...",
+  note_saved: "Note saved. Preparing transaction...",
+  creating_transaction: "Building deposit transaction...",
+  sending: "Sending transaction to Solana...",
+  confirming: "Waiting for confirmation...",
+  fetching_proof: "Computing Merkle proof...",
+  complete: "Deposit complete!",
+};
+
+export function DepositWithProgress() {
+  const { sdk, isConnected } = useCloak();
+  const [status, setStatus] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const handleDeposit = async () => {
+    if (!sdk) return;
+    setLoading(true);
+
+    try {
+      const result = await sdk.deposit(connection, 100_000_000, {
+        onProgress: (depositStatus) => {
+          setStatus(STATUS_MESSAGES[depositStatus] || depositStatus);
+        },
+        onNoteGenerated: async (note) => {
+          // Show backup modal or save to storage
+          await saveNoteSecurely(note);
+        },
+      });
+
+      setStatus(`Success! TX: ${result.signature}`);
+    } catch (error) {
+      setStatus(`Error: ${error.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div>
+      <button onClick={handleDeposit} disabled={loading || !isConnected}>
+        Deposit
+      </button>
+      {status && <p>{status}</p>}
+    </div>
+  );
+}
+```
+
+### ZK proof loading indicator
+
+Proof generation takes 2-5 seconds. Show appropriate feedback:
+
+```tsx components/WithdrawWithProofProgress.tsx
+import { useState } from "react";
+import { useCloak } from "@/hooks/useCloak";
+
+export function WithdrawWithProofProgress({ note, recipient }) {
+  const { sdk } = useCloak();
+  const [phase, setPhase] = useState<"idle" | "proving" | "submitting" | "done">("idle");
+
+  const handleWithdraw = async () => {
+    if (!sdk) return;
+
+    try {
+      setPhase("proving");
+
+      const result = await sdk.withdraw(connection, note, recipient, {
+        onProgress: (status) => {
+          if (status === "proof_generating") {
+            setPhase("proving");
+          } else if (status === "proof_complete") {
+            setPhase("submitting");
+          }
+        },
+      });
+
+      setPhase("done");
+    } catch (error) {
+      console.error(error);
+      setPhase("idle");
+    }
+  };
+
+  return (
+    <div>
+      <button onClick={handleWithdraw} disabled={phase !== "idle"}>
+        {phase === "proving" && "Generating ZK proof..."}
+        {phase === "submitting" && "Submitting to relay..."}
+        {phase === "done" && "Complete!"}
+        {phase === "idle" && "Withdraw"}
+      </button>
+
+      {phase === "proving" && (
+        <p>
+          This takes 2-5 seconds. Your browser is computing a
+          zero-knowledge proof.
+        </p>
+      )}
+    </div>
+  );
+}
+```
+
+## Circuit files
+
+The SDK requires Circom circuit files for proof generation. In Next.js, serve them from the `public` folder:
+
+<Steps>
+<Step title="Download circuits">
+Get the circuit files from the Cloak repository or build from source.
+</Step>
+
+<Step title="Add to public folder">
+Place the following files in `public/circuits/`:
+
+```
+public/
+  circuits/
+    withdraw_regular.wasm
+    withdraw_regular_final.zkey
+    withdraw_swap.wasm
+    withdraw_swap_final.zkey
+```
+</Step>
+
+<Step title="Configure Next.js">
+Ensure Next.js serves the circuit files with correct headers:
+
+```javascript next.config.js
+module.exports = {
+  async headers() {
+    return [
+      {
+        source: "/circuits/:path*",
+        headers: [
+          { key: "Cache-Control", value: "public, max-age=31536000, immutable" },
+        ],
+      },
+    ];
+  },
+};
+```
+</Step>
+</Steps>
+
+<Note>
+Circuit files are ~20MB each. Consider lazy-loading or using a CDN for production.
+</Note>
+
+## Error handling
+
+Handle common wallet and SDK errors gracefully:
+
+```typescript
+import { CloakError } from "@cloak.ag/sdk";
+
+try {
+  await sdk.deposit(connection, amount);
+} catch (error) {
+  if (error instanceof CloakError) {
+    switch (error.category) {
+      case "wallet":
+        // Wallet rejected or disconnected
+        showToast("Please approve the transaction in your wallet");
+        break;
+      case "network":
+        // RPC or network issues
+        if (error.retryable) {
+          showToast("Network error. Retrying...");
+          // Implement retry logic
+        }
+        break;
+      case "prover":
+        // Proof generation failed
+        showToast("Proof generation failed. Please try again.");
+        break;
+      default:
+        showToast(error.message);
+    }
+  } else {
+    // Wallet-adapter specific errors
+    if (error.message.includes("User rejected")) {
+      showToast("Transaction cancelled");
+    } else {
+      showToast("An error occurred");
+    }
+  }
+}
+```
+
+## Production checklist
+
+<AccordionGroup>
+<Accordion title="Security">
+- [ ] Never log notes or secrets in production
+- [ ] Implement `onNoteGenerated` to persist notes before deposits
+- [ ] Use encrypted storage for notes (consider browser extensions with encryption)
+- [ ] Add rate limiting for deposit/withdraw operations
+</Accordion>
+
+<Accordion title="UX">
+- [ ] Show clear progress indicators during proof generation (2-5s)
+- [ ] Handle wallet disconnection gracefully
+- [ ] Provide transaction explorer links
+- [ ] Show fee breakdown before transactions
+</Accordion>
+
+<Accordion title="Performance">
+- [ ] Preload circuit files during app initialization
+- [ ] Use web workers for proof generation if available
+- [ ] Cache Merkle proofs when possible
+- [ ] Implement connection pooling for RPC calls
+</Accordion>
+
+<Accordion title="Error handling">
+- [ ] Catch and display `CloakError` with appropriate messages
+- [ ] Implement retry logic for `retryable` errors
+- [ ] Provide recovery options for failed deposits
+- [ ] Log errors for debugging (without exposing secrets)
+</Accordion>
+</AccordionGroup>
+
+## Next steps
+
+<CardGroup cols={2}>
+<Card title="Error handling" icon="triangle-exclamation" href="/sdk/error-handling">
+Comprehensive error handling guide with recovery strategies.
+</Card>
+
+<Card title="API reference" icon="code" href="/sdk/api-reference">
+Complete SDK method and type documentation.
+</Card>
+</CardGroup>
+

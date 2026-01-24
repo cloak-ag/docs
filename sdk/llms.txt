@@ -1,0 +1,182 @@
+# Cloak SDK - AI Indexing Reference
+
+> This file is optimized for LLM consumption. Use this to understand the Cloak SDK for private Solana transactions.
+
+## Package Information
+
+- **Name**: @cloak.ag/sdk
+- **Version**: 1.0.x
+- **License**: Apache-2.0
+- **Repository**: https://github.com/cloak-ag/sdk
+- **Documentation**: https://docs.cloak.ag/sdk
+
+## Installation
+
+```bash
+npm install @cloak.ag/sdk @solana/web3.js
+```
+
+## Quick Start
+
+```typescript
+import { CloakSDK, getDistributableAmount } from "@cloak.ag/sdk";
+import { Connection, Keypair, PublicKey } from "@solana/web3.js";
+
+// Initialize
+const sdk = new CloakSDK({
+  keypairBytes: keypair.secretKey, // or wallet adapter
+  network: "devnet",
+});
+
+// Deposit
+const { note } = await sdk.deposit(connection, 100_000_000);
+
+// Withdraw
+await sdk.withdraw(connection, note, recipientPubkey, { withdrawAll: true });
+```
+
+## Core Concepts
+
+### CloakNote
+A cryptographic commitment representing deposited SOL. Contains secrets needed to withdraw.
+
+**SECURITY**: Never log or expose CloakNote objects - they contain spending secrets.
+
+```typescript
+interface CloakNote {
+  version: string;
+  amount: number;         // lamports
+  commitment: string;     // Poseidon hash (hex)
+  sk_spend: string;       // SPENDING SECRET (hex)
+  r: string;              // RANDOMNESS SECRET (hex)
+  timestamp: number;
+  network: "devnet" | "mainnet";
+  leafIndex?: number;     // Set after deposit
+  depositSignature?: string;
+}
+```
+
+### Fees
+- Fixed: 0.003 SOL per withdrawal
+- Variable: 0.5% of deposit amount
+
+```typescript
+import { getDistributableAmount, calculateFee } from "@cloak.ag/sdk";
+const afterFees = getDistributableAmount(depositAmount);
+```
+
+## Main Methods
+
+### CloakSDK.deposit()
+```typescript
+await sdk.deposit(connection: Connection, amount: number, options?: {
+  onNoteGenerated?: (note: CloakNote) => Promise<void>; // CRITICAL: Save note here
+  onProgress?: (status: string) => void;
+}): Promise<{ note: CloakNote; signature: string; leafIndex: number; }>
+```
+
+### CloakSDK.withdraw()
+```typescript
+await sdk.withdraw(connection: Connection, note: CloakNote, recipient: PublicKey, options?: {
+  withdrawAll?: boolean;
+  onProgress?: (status: string) => void;
+}): Promise<{ signature: string; outputs: Array<{recipient: string; amount: number}>; }>
+```
+
+### CloakSDK.send()
+```typescript
+await sdk.send(connection: Connection, note: CloakNote, recipients: Array<{
+  recipient: PublicKey;
+  amount: number;
+}>, options?: TransferOptions): Promise<TransferResult>
+```
+Max 5 recipients. Sum must equal getDistributableAmount(note.amount).
+
+### CloakSDK.swap()
+```typescript
+await sdk.swap(connection: Connection, note: CloakNote, recipient: PublicKey, options: {
+  outputMint: string;
+  slippageBps?: number;
+  minOutputAmount: number;
+}): Promise<SwapResult>
+```
+
+## Error Handling
+
+```typescript
+import { CloakError } from "@cloak.ag/sdk";
+
+try {
+  await sdk.withdraw(...);
+} catch (error) {
+  if (error instanceof CloakError) {
+    // error.category: "wallet" | "network" | "prover" | "relay" | "validation" | "indexer"
+    // error.retryable: boolean
+  }
+}
+```
+
+## Browser Integration (React)
+
+```typescript
+import { useWallet, useConnection } from "@solana/wallet-adapter-react";
+
+const { publicKey, signTransaction, sendTransaction } = useWallet();
+const { connection } = useConnection();
+
+const sdk = new CloakSDK({
+  wallet: { publicKey, signTransaction, sendTransaction },
+  network: "devnet",
+});
+```
+
+## Circuit Files (Browser)
+Serve from /public/circuits/:
+- withdraw_regular.wasm
+- withdraw_regular_final.zkey
+- withdraw_swap.wasm  
+- withdraw_swap_final.zkey
+
+## Key Security Patterns
+
+1. Always use onNoteGenerated to persist notes BEFORE deposit:
+```typescript
+await sdk.deposit(connection, amount, {
+  onNoteGenerated: async (note) => {
+    await saveNoteSecurely(note); // MUST complete before deposit proceeds
+  },
+});
+```
+
+2. Never log CloakNote objects
+3. Store notes in encrypted storage
+4. Check note.leafIndex before withdraw
+
+## Utility Exports
+
+```typescript
+// Fee calculations
+getDistributableAmount(amount: number): number
+calculateFee(amount: number): number
+
+// Crypto
+computeCommitment(amount: bigint, r: bigint, sk: bigint): Promise<bigint>
+computeNullifierAsync(sk_spend: string, leafIndex: number): Promise<bigint>
+
+// Validation
+isValidSolanaAddress(address: string): boolean
+validateNote(note: CloakNote): void
+
+// Network
+getExplorerUrl(signature: string, network: Network): string
+
+// Keys (v2.0)
+generateCloakKeys(): CloakKeyPair
+exportKeys(keys: CloakKeyPair): string
+importKeys(json: string): CloakKeyPair
+```
+
+---
+
+For complete documentation, see: https://docs.cloak.ag/sdk
+

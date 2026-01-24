@@ -1,0 +1,485 @@
+---
+title: "Error handling"
+description: "Handle errors gracefully and implement recovery strategies"
+icon: "triangle-exclamation"
+---
+
+The Cloak SDK provides structured error handling with categorized errors, retry hints, and recovery utilities. This guide covers common error scenarios and how to handle them.
+
+## CloakError
+
+All SDK errors extend the `CloakError` class with useful metadata:
+
+```typescript
+class CloakError extends Error {
+  category: ErrorCategory;
+  retryable: boolean;
+  originalError?: Error;
+}
+
+type ErrorCategory = 
+  | "network"      // RPC or network failures
+  | "indexer"      // Indexer service issues
+  | "prover"       // Proof generation failures
+  | "relay"        // Relay service errors
+  | "validation"   // Invalid inputs
+  | "wallet"       // Wallet connection or signing issues
+  | "environment"; // Missing dependencies or configuration
+```
+
+## Handling errors by category
+
+### Network errors
+
+Network errors are usually transient and retryable:
+
+```typescript
+import { CloakError } from "@cloak.ag/sdk";
+
+try {
+  await sdk.deposit(connection, amount);
+} catch (error) {
+  if (error instanceof CloakError && error.category === "network") {
+    if (error.retryable) {
+      console.log("Network error, retrying in 2 seconds...");
+      await delay(2000);
+      // Retry the operation
+    } else {
+      console.error("Network configuration error:", error.message);
+    }
+  }
+}
+```
+
+<AccordionGroup>
+<Accordion title="Common network errors">
+
+| Error | Cause | Solution |
+|-------|-------|----------|
+| `timeout` | RPC unresponsive | Retry with backoff, or switch RPC |
+| `rate limited` | Too many requests | Implement exponential backoff |
+| `connection refused` | RPC down | Switch to backup RPC |
+
+</Accordion>
+</AccordionGroup>
+
+### Wallet errors
+
+Wallet errors occur when signing is rejected or the wallet disconnects:
+
+```typescript
+try {
+  await sdk.deposit(connection, amount);
+} catch (error) {
+  if (error instanceof CloakError && error.category === "wallet") {
+    if (error.message.includes("not connected")) {
+      showMessage("Please connect your wallet");
+      openWalletModal();
+    } else if (error.message.includes("rejected")) {
+      showMessage("Transaction cancelled");
+    } else if (error.message.includes("insufficient")) {
+      showMessage("Insufficient SOL balance");
+    }
+  }
+}
+```
+
+### Prover errors
+
+Proof generation can fail due to circuit issues or resource constraints:
+
+```typescript
+try {
+  await sdk.withdraw(connection, note, recipient);
+} catch (error) {
+  if (error instanceof CloakError && error.category === "prover") {
+    if (error.message.includes("Circuit")) {
+      showMessage("Failed to load proof circuits. Please refresh.");
+    } else if (error.retryable) {
+      showMessage("Proof generation failed. Retrying...");
+      // Retry once
+    } else {
+      showMessage("Unable to generate proof. Please try again later.");
+    }
+  }
+}
+```
+
+<Tip>
+Proof generation is computationally intensive. On slower devices, consider showing a loading indicator with an estimated time.
+</Tip>
+
+### Relay errors
+
+Relay errors occur when submitting withdrawals:
+
+```typescript
+try {
+  await sdk.withdraw(connection, note, recipient);
+} catch (error) {
+  if (error instanceof CloakError && error.category === "relay") {
+    if (error.message.includes("RootNotFound")) {
+      // The SDK handles this internally with retries,
+      // but you might see it after max retries
+      showMessage("Merkle tree updated. Please try again.");
+    } else if (error.message.includes("nullifier")) {
+      showMessage("This note has already been spent.");
+      removeNoteFromStorage(note);
+    } else if (error.retryable) {
+      showMessage("Relay temporarily unavailable. Retrying...");
+    }
+  }
+}
+```
+
+### Validation errors
+
+Validation errors indicate incorrect inputs:
+
+```typescript
+try {
+  await sdk.send(connection, note, recipients);
+} catch (error) {
+  if (error instanceof CloakError && error.category === "validation") {
+    if (error.message.includes("sum")) {
+      showMessage("Recipient amounts don't match note balance");
+    } else if (error.message.includes("deposited")) {
+      showMessage("Note must be deposited before withdrawal");
+    } else if (error.message.includes("address")) {
+      showMessage("Invalid recipient address");
+    }
+  }
+}
+```
+
+### Indexer errors
+
+Indexer errors affect deposit registration and proof fetching:
+
+```typescript
+try {
+  await sdk.deposit(connection, amount);
+} catch (error) {
+  if (error instanceof CloakError && error.category === "indexer") {
+    if (error.message.includes("duplicate")) {
+      // Note already registered - this is recoverable
+      showMessage("Deposit already recorded");
+    } else if (error.retryable) {
+      showMessage("Indexer sync in progress. Retrying...");
+    }
+  }
+}
+```
+
+## Comprehensive error handler
+
+Here's a reusable error handler for all SDK operations:
+
+```typescript utils/handleCloakError.ts
+import { CloakError } from "@cloak.ag/sdk";
+
+interface ErrorHandlerOptions {
+  onRetry?: () => Promise<void>;
+  showMessage: (message: string) => void;
+  logError?: (error: unknown) => void;
+}
+
+export async function handleCloakError(
+  error: unknown,
+  options: ErrorHandlerOptions
+): Promise<boolean> {
+  const { onRetry, showMessage, logError } = options;
+
+  // Log for debugging (but never log note contents!)
+  logError?.(error);
+
+  if (!(error instanceof CloakError)) {
+    // Handle wallet-adapter or other errors
+    const message = error instanceof Error ? error.message : String(error);
+    
+    if (message.includes("User rejected")) {
+      showMessage("Transaction cancelled by user");
+      return false;
+    }
+    
+    showMessage("An unexpected error occurred. Please try again.");
+    return false;
+  }
+
+  // Handle CloakError by category
+  switch (error.category) {
+    case "wallet":
+      if (error.message.includes("not connected")) {
+        showMessage("Please connect your wallet to continue");
+      } else if (error.message.includes("insufficient")) {
+        showMessage("Insufficient balance for this transaction");
+      } else {
+        showMessage("Wallet error: " + error.message);
+      }
+      return false;
+
+    case "network":
+      if (error.retryable && onRetry) {
+        showMessage("Network issue detected. Retrying...");
+        await delay(2000);
+        await onRetry();
+        return true;
+      }
+      showMessage("Network error. Please check your connection.");
+      return false;
+
+    case "prover":
+      if (error.retryable && onRetry) {
+        showMessage("Proof generation failed. Retrying...");
+        await delay(1000);
+        await onRetry();
+        return true;
+      }
+      showMessage("Failed to generate proof. Please refresh and try again.");
+      return false;
+
+    case "relay":
+      if (error.message.includes("nullifier")) {
+        showMessage("This note has already been spent.");
+        return false; // Don't retry - note is gone
+      }
+      if (error.retryable && onRetry) {
+        showMessage("Relay service busy. Retrying...");
+        await delay(3000);
+        await onRetry();
+        return true;
+      }
+      showMessage("Relay service error. Please try again later.");
+      return false;
+
+    case "validation":
+      showMessage("Invalid input: " + error.message);
+      return false;
+
+    case "indexer":
+      if (error.retryable && onRetry) {
+        showMessage("Indexer syncing. Retrying...");
+        await delay(2000);
+        await onRetry();
+        return true;
+      }
+      showMessage("Indexer error: " + error.message);
+      return false;
+
+    case "environment":
+      showMessage("Configuration error: " + error.message);
+      return false;
+
+    default:
+      showMessage("Error: " + error.message);
+      return false;
+  }
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+```
+
+### Usage example
+
+```typescript
+const performWithdraw = async () => {
+  try {
+    const result = await sdk.withdraw(connection, note, recipient);
+    showSuccess("Withdrawal complete!");
+    return result;
+  } catch (error) {
+    const retried = await handleCloakError(error, {
+      showMessage: (msg) => toast.error(msg),
+      logError: (err) => console.error("[Withdraw Error]", err),
+      onRetry: () => performWithdraw(), // Recursive retry
+    });
+    
+    if (!retried) {
+      // Error was not retried or retry failed
+      throw error;
+    }
+  }
+};
+```
+
+## Deposit recovery
+
+If a deposit transaction succeeds but registration fails (browser crash, network issue), use the recovery service:
+
+```typescript
+import { CloakSDK } from "@cloak.ag/sdk";
+
+// You saved the note and signature before the crash
+const savedNote = JSON.parse(localStorage.getItem("pending_note")!);
+const signature = localStorage.getItem("pending_signature")!;
+
+const sdk = new CloakSDK({ keypairBytes, network: "devnet" });
+
+const recovery = await sdk.recoverDeposit({
+  signature,
+  commitment: savedNote.commitment,
+  note: savedNote,
+  onProgress: (status) => console.log("Recovery:", status),
+});
+
+if (recovery.success) {
+  console.log("Recovered! Leaf index:", recovery.leafIndex);
+  
+  // Update the note with recovered data
+  savedNote.leafIndex = recovery.leafIndex;
+  savedNote.root = recovery.root;
+  savedNote.merkleProof = recovery.merkleProof;
+  
+  // Save updated note
+  localStorage.setItem(`note_${savedNote.commitment}`, JSON.stringify(savedNote));
+  localStorage.removeItem("pending_note");
+  localStorage.removeItem("pending_signature");
+} else {
+  console.error("Recovery failed:", recovery.error);
+}
+```
+
+## Retry strategies
+
+### Exponential backoff
+
+For retryable errors, use exponential backoff:
+
+```typescript
+async function withRetry<T>(
+  operation: () => Promise<T>,
+  maxAttempts: number = 3,
+  baseDelay: number = 1000
+): Promise<T> {
+  let lastError: Error;
+
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error as Error;
+
+      // Only retry if the error is retryable
+      if (error instanceof CloakError && !error.retryable) {
+        throw error;
+      }
+
+      if (attempt < maxAttempts - 1) {
+        const delay = baseDelay * Math.pow(2, attempt);
+        console.log(`Attempt ${attempt + 1} failed, retrying in ${delay}ms...`);
+        await new Promise((r) => setTimeout(r, delay));
+      }
+    }
+  }
+
+  throw lastError!;
+}
+
+// Usage
+const result = await withRetry(
+  () => sdk.withdraw(connection, note, recipient),
+  3,    // max attempts
+  2000  // base delay
+);
+```
+
+### Circuit-breaker pattern
+
+For production applications, implement a circuit breaker:
+
+```typescript
+class CircuitBreaker {
+  private failures = 0;
+  private lastFailure: number = 0;
+  private readonly threshold = 5;
+  private readonly resetTimeout = 60000; // 1 minute
+
+  async execute<T>(operation: () => Promise<T>): Promise<T> {
+    // Check if circuit is open
+    if (this.isOpen()) {
+      throw new Error("Circuit breaker is open. Please try again later.");
+    }
+
+    try {
+      const result = await operation();
+      this.reset();
+      return result;
+    } catch (error) {
+      this.recordFailure();
+      throw error;
+    }
+  }
+
+  private isOpen(): boolean {
+    if (this.failures >= this.threshold) {
+      const timeSinceLastFailure = Date.now() - this.lastFailure;
+      if (timeSinceLastFailure < this.resetTimeout) {
+        return true;
+      }
+      // Reset after timeout
+      this.reset();
+    }
+    return false;
+  }
+
+  private recordFailure(): void {
+    this.failures++;
+    this.lastFailure = Date.now();
+  }
+
+  private reset(): void {
+    this.failures = 0;
+  }
+}
+
+// Usage
+const relayBreaker = new CircuitBreaker();
+
+try {
+  await relayBreaker.execute(() => 
+    sdk.withdraw(connection, note, recipient)
+  );
+} catch (error) {
+  if (error.message.includes("Circuit breaker")) {
+    showMessage("Service temporarily unavailable. Please wait.");
+  }
+}
+```
+
+## Error logging best practices
+
+<Warning>
+**Never log note contents or secrets!** These contain spending keys.
+</Warning>
+
+```typescript
+// ❌ DANGEROUS - Don't do this!
+console.log("Failed with note:", note);
+Sentry.captureException(error, { extra: { note } });
+
+// ✅ Safe - Log only non-sensitive data
+console.log("Failed for note commitment:", note.commitment.slice(0, 16) + "...");
+Sentry.captureException(error, {
+  extra: {
+    noteCommitment: note.commitment,
+    leafIndex: note.leafIndex,
+    network: note.network,
+    // Never include: sk_spend, r, or the full note object
+  },
+});
+```
+
+## Next steps
+
+<CardGroup cols={2}>
+<Card title="API reference" icon="code" href="/sdk/api-reference">
+Complete SDK method and type documentation.
+</Card>
+
+<Card title="Core concepts" icon="lightbulb" href="/sdk/core-concepts">
+Understand the cryptographic primitives.
+</Card>
+</CardGroup>
+

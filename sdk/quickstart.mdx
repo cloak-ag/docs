@@ -1,0 +1,238 @@
+---
+title: "Quickstart"
+description: "Make your first private transaction in under 5 minutes"
+icon: "rocket"
+---
+
+This guide walks you through depositing SOL into the Cloak privacy pool and withdrawing to a recipient. You'll learn the core SDK flow that powers all private transactions.
+
+## Prerequisites
+
+- Node.js 18+ installed
+- A Solana keypair with devnet SOL (for testing)
+- Basic TypeScript/JavaScript knowledge
+
+<Tip>
+Get devnet SOL from the [Solana Faucet](https://faucet.solana.com/) if you need test tokens.
+</Tip>
+
+## Installation
+
+Create a new project and install dependencies:
+
+```bash
+mkdir cloak-demo && cd cloak-demo
+npm init -y
+npm install @cloak.ag/sdk @solana/web3.js typescript tsx
+```
+
+## Complete example
+
+Create `demo.ts` with the following code:
+
+```typescript demo.ts
+import { CloakSDK, getDistributableAmount } from "@cloak.ag/sdk";
+import { Connection, Keypair, PublicKey, LAMPORTS_PER_SOL } from "@solana/web3.js";
+import { readFileSync } from "fs";
+import { join } from "path";
+
+async function main() {
+  // 1. Setup connection and load keypair
+  const connection = new Connection("https://api.devnet.solana.com", "confirmed");
+  
+  // Load your keypair (default Solana CLI location)
+  const keypairPath = join(process.env.HOME!, ".config/solana/id.json");
+  const secretKey = Uint8Array.from(JSON.parse(readFileSync(keypairPath, "utf8")));
+  const keypair = Keypair.fromSecretKey(secretKey);
+  
+  console.log("Wallet:", keypair.publicKey.toBase58());
+  
+  // 2. Initialize the SDK
+  const sdk = new CloakSDK({
+    keypairBytes: keypair.secretKey,
+    network: "devnet",
+    debug: true, // Enable logging
+  });
+  
+  // 3. Define recipient and amount
+  const recipient = Keypair.generate().publicKey; // In practice, use a real address
+  const depositAmount = 0.01 * LAMPORTS_PER_SOL; // 0.01 SOL
+  
+  console.log("\n📥 Depositing", depositAmount / LAMPORTS_PER_SOL, "SOL...");
+  
+  // 4. Deposit SOL into the privacy pool
+  const depositResult = await sdk.deposit(connection, depositAmount, {
+    onProgress: (status) => console.log("  Status:", status),
+  });
+  
+  console.log("✅ Deposit complete!");
+  console.log("   Signature:", depositResult.signature);
+  console.log("   Leaf index:", depositResult.leafIndex);
+  
+  // IMPORTANT: Save the note! You need it to withdraw.
+  const note = depositResult.note;
+  console.log("\n🔐 Note commitment:", note.commitment.slice(0, 16) + "...");
+  
+  // 5. Withdraw to recipient
+  console.log("\n📤 Withdrawing to", recipient.toBase58().slice(0, 8) + "...");
+  
+  const withdrawResult = await sdk.withdraw(connection, note, recipient, {
+    withdrawAll: true,
+    onProgress: (status) => console.log("  Status:", status),
+  });
+  
+  console.log("✅ Withdrawal complete!");
+  console.log("   Signature:", withdrawResult.signature);
+  console.log("   Amount:", withdrawResult.outputs[0].amount / LAMPORTS_PER_SOL, "SOL");
+  
+  // 6. Show fee breakdown
+  const fees = depositAmount - withdrawResult.outputs[0].amount;
+  console.log("\n💰 Fee breakdown:");
+  console.log("   Deposited:", depositAmount / LAMPORTS_PER_SOL, "SOL");
+  console.log("   Received:", withdrawResult.outputs[0].amount / LAMPORTS_PER_SOL, "SOL");
+  console.log("   Fees:", fees / LAMPORTS_PER_SOL, "SOL");
+}
+
+main().catch(console.error);
+```
+
+Run the example:
+
+```bash
+npx tsx demo.ts
+```
+
+<Check>
+You should see output showing the deposit and withdrawal completing successfully with transaction signatures.
+</Check>
+
+## Understanding the flow
+
+<Steps>
+<Step title="Initialize the SDK">
+Create a `CloakSDK` instance with your keypair or wallet adapter. The SDK handles all communication with the Cloak protocol.
+
+```typescript
+const sdk = new CloakSDK({
+  keypairBytes: keypair.secretKey, // Or use wallet adapter
+  network: "devnet",
+});
+```
+</Step>
+
+<Step title="Deposit SOL">
+Deposit SOL into the privacy pool. This creates a **note** containing cryptographic secrets that prove ownership of the deposited funds.
+
+```typescript
+const result = await sdk.deposit(connection, amount);
+const note = result.note; // SAVE THIS!
+```
+
+<Warning>
+**Always save the note immediately after deposit.** Without the note, you cannot withdraw your funds. Use the `onNoteGenerated` callback for safe persistence.
+</Warning>
+</Step>
+
+<Step title="Withdraw or transfer">
+Use the note to withdraw funds privately. The SDK generates a zero-knowledge proof that validates ownership without revealing the original deposit.
+
+```typescript
+await sdk.withdraw(connection, note, recipient, { withdrawAll: true });
+```
+</Step>
+</Steps>
+
+## Safe note handling
+
+Always persist notes before the deposit transaction is sent. Use the `onNoteGenerated` callback:
+
+```typescript
+const result = await sdk.deposit(connection, amount, {
+  onNoteGenerated: async (note) => {
+    // Save to your secure storage BEFORE deposit proceeds
+    await saveNoteToStorage(note);
+    
+    // Optionally show user a backup modal
+    await showBackupModal(note);
+  },
+});
+```
+
+<Info>
+The deposit will not proceed until `onNoteGenerated` completes. This ensures you never lose access to deposited funds.
+</Info>
+
+## Multi-recipient transfers
+
+Send to multiple recipients (up to 5) in a single transaction:
+
+```typescript
+const result = await sdk.send(connection, note, [
+  { recipient: new PublicKey("Address1..."), amount: 5_000_000 },
+  { recipient: new PublicKey("Address2..."), amount: 4_650_000 },
+]);
+
+console.log("Sent to", result.outputs.length, "recipients");
+```
+
+<Note>
+The sum of all recipient amounts must equal `getDistributableAmount(note.amount)` (deposit amount minus fees).
+</Note>
+
+## Token swaps
+
+Swap SOL for SPL tokens privately:
+
+```typescript
+// First, install @solana/spl-token
+import { getAssociatedTokenAddress } from "@solana/spl-token";
+
+const USDC_MINT = new PublicKey("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
+
+const result = await sdk.swap(connection, note, recipient, {
+  outputMint: USDC_MINT.toBase58(),
+  slippageBps: 100, // 1% slippage
+  minOutputAmount: 1_000_000, // Minimum USDC to receive
+});
+
+console.log("Swapped to", result.outputMint);
+```
+
+## Environment variables
+
+For production applications, configure the SDK using environment variables:
+
+```bash .env
+SOLANA_RPC_URL=https://api.mainnet-beta.solana.com
+CLOAK_NETWORK=mainnet
+```
+
+```typescript
+const sdk = new CloakSDK({
+  keypairBytes: keypair.secretKey,
+  network: process.env.CLOAK_NETWORK as "mainnet" | "devnet",
+});
+
+const connection = new Connection(process.env.SOLANA_RPC_URL!);
+```
+
+## Next steps
+
+<CardGroup cols={2}>
+<Card title="Core concepts" icon="lightbulb" href="/sdk/core-concepts">
+Understand notes, commitments, and the cryptographic model.
+</Card>
+
+<Card title="React integration" icon="react" href="/sdk/wallet-integration">
+Integrate with Solana wallet adapters in web applications.
+</Card>
+
+<Card title="API reference" icon="code" href="/sdk/api-reference">
+Complete method documentation and type definitions.
+</Card>
+
+<Card title="Error handling" icon="triangle-exclamation" href="/sdk/error-handling">
+Handle errors gracefully and implement retry logic.
+</Card>
+</CardGroup>
+
