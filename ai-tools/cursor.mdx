@@ -125,6 +125,7 @@ try {
   await sdk.withdraw(connection, note, recipient);
 } catch (error) {
   if (error instanceof CloakError) {
+    // Categories: "wallet" | "network" | "prover" | "relay" | "validation" | "environment"
     console.log("Category:", error.category);
     console.log("Retryable:", error.retryable);
   }

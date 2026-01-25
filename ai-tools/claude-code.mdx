@@ -22,6 +22,7 @@ I'm working with the Cloak SDK (@cloak.ag/sdk) for private transactions on Solan
 - Multi-recipient transfers (up to 5 addresses)
 - Private token swaps (SOL → SPL tokens)
 - Zero-knowledge proof generation (Groth16)
+- On-chain Merkle proof computation (no external indexer needed)
 
 ## Critical Security Requirements
 1. CloakNote contains spending secrets (sk_spend, r) - NEVER log or expose
@@ -58,7 +59,7 @@ const sdk = new CloakSDK({
 - Use `getDistributableAmount(amount)` to calculate after-fee amount
 
 ## Error Handling
-CloakError has category (wallet|network|prover|relay|validation|indexer) 
+CloakError has category (wallet|network|prover|relay|validation|environment) 
 and retryable boolean for implementing retry logic.
 
 </Accordion>
@@ -201,7 +202,7 @@ Options:
 **CloakError:**
 ```typescript
 {
-  category: "wallet" | "network" | "prover" | "relay" | "validation" | "indexer";
+  category: "wallet" | "network" | "prover" | "relay" | "validation" | "environment";
   retryable: boolean;
   message: string;
 }

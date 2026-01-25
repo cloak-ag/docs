@@ -19,7 +19,6 @@ class CloakError extends Error {
 
 type ErrorCategory = 
   | "network"      // RPC or network failures
-  | "indexer"      // Indexer service issues
   | "prover"       // Proof generation failures
   | "relay"        // Relay service errors
   | "validation"   // Invalid inputs
@@ -152,24 +151,28 @@ try {
 }
 ```
 
-### Indexer errors
+### On-chain errors
 
-Indexer errors affect deposit registration and proof fetching:
+Errors reading on-chain Merkle tree state:
 
 ```typescript
 try {
   await sdk.deposit(connection, amount);
 } catch (error) {
-  if (error instanceof CloakError && error.category === "indexer") {
-    if (error.message.includes("duplicate")) {
-      // Note already registered - this is recoverable
-      showMessage("Deposit already recorded");
+  if (error instanceof CloakError && error.category === "network") {
+    if (error.message.includes("Merkle tree")) {
+      // Failed to read on-chain state
+      showMessage("Failed to read blockchain state. Please try again.");
     } else if (error.retryable) {
-      showMessage("Indexer sync in progress. Retrying...");
+      showMessage("Network issue. Retrying...");
     }
   }
 }
 ```
+
+<Tip>
+The SDK computes Merkle proofs directly from on-chain state, making it more reliable than external indexer services.
+</Tip>
 
 ## Comprehensive error handler
 
@@ -256,16 +259,6 @@ export async function handleCloakError(
       showMessage("Invalid input: " + error.message);
       return false;
 
-    case "indexer":
-      if (error.retryable && onRetry) {
-        showMessage("Indexer syncing. Retrying...");
-        await delay(2000);
-        await onRetry();
-        return true;
-      }
-      showMessage("Indexer error: " + error.message);
-      return false;
-
     case "environment":
       showMessage("Configuration error: " + error.message);
       return false;
@@ -306,40 +299,43 @@ const performWithdraw = async () => {
 
 ## Deposit recovery
 
-If a deposit transaction succeeds but registration fails (browser crash, network issue), use the recovery service:
+The SDK automatically computes Merkle proofs from on-chain state, so deposit recovery is handled seamlessly. If a deposit transaction succeeds but you lose the note metadata, you can reconstruct it:
 
 ```typescript
 import { CloakSDK } from "@cloak.ag/sdk";
 
-// You saved the note and signature before the crash
+// If you saved the note before the deposit but lost the leafIndex
 const savedNote = JSON.parse(localStorage.getItem("pending_note")!);
 const signature = localStorage.getItem("pending_signature")!;
 
-const sdk = new CloakSDK({ keypairBytes, network: "devnet" });
+const sdk = new CloakSDK({ keypairBytes: keypair.secretKey, network: "devnet" });
 
-const recovery = await sdk.recoverDeposit({
-  signature,
-  commitment: savedNote.commitment,
-  note: savedNote,
-  onProgress: (status) => console.log("Recovery:", status),
+// Verify the deposit transaction and get the leaf index from logs
+const txDetails = await connection.getTransaction(signature, {
+  commitment: "confirmed",
+  maxSupportedTransactionVersion: 0,
 });
 
-if (recovery.success) {
-  console.log("Recovered! Leaf index:", recovery.leafIndex);
-  
-  // Update the note with recovered data
-  savedNote.leafIndex = recovery.leafIndex;
-  savedNote.root = recovery.root;
-  savedNote.merkleProof = recovery.merkleProof;
+if (txDetails?.meta?.logMessages) {
+  // Parse the deposit event to get leaf index
+  // The SDK handles this automatically during deposit
+  console.log("Transaction confirmed at slot:", txDetails.slot);
+}
+
+// If you have the note with leafIndex, compute fresh proof from chain
+if (savedNote.leafIndex !== undefined) {
+  const proof = await sdk.getMerkleProof(connection, savedNote.leafIndex);
+  savedNote.merkleProof = proof;
+  savedNote.root = proof.root;
   
   // Save updated note
   localStorage.setItem(`note_${savedNote.commitment}`, JSON.stringify(savedNote));
-  localStorage.removeItem("pending_note");
-  localStorage.removeItem("pending_signature");
-} else {
-  console.error("Recovery failed:", recovery.error);
 }
 ```
+
+<Tip>
+Always use the `onNoteGenerated` callback to persist notes **before** the deposit transaction is sent. This prevents fund loss if the browser crashes.
+</Tip>
 
 ## Retry strategies
 

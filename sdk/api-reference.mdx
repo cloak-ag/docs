@@ -36,10 +36,6 @@ Optional key hierarchy for v2.0 features (note scanning, encrypted outputs).
 Custom program ID. Defaults to the official Cloak program.
 </ParamField>
 
-<ParamField body="indexerUrl" type="string">
-Custom indexer URL. Defaults to `https://api.cloak.ag`.
-</ParamField>
-
 <ParamField body="relayUrl" type="string">
 Custom relay URL. Defaults to `https://api.cloak.ag`.
 </ParamField>
@@ -351,73 +347,73 @@ const note = await sdk.generateNote(100_000_000);
 
 ---
 
-### scanNotes
+### getMerkleProof
 
-Scan blockchain for notes belonging to this wallet (requires `cloakKeys`).
+Get Merkle proof for a leaf index directly from on-chain state.
 
 ```typescript
-async scanNotes(options?: ScanNotesOptions): Promise<ScannedNote[]>
+async getMerkleProof(
+  connection: Connection,
+  leafIndex: number
+): Promise<MerkleProof>
 ```
 
-<ParamField body="options" type="ScanNotesOptions">
-<Expandable title="Properties">
-  <ParamField body="startIndex" type="number" default="0">
-  First leaf index to scan.
-  </ParamField>
-  
-  <ParamField body="endIndex" type="number">
-  Last leaf index (defaults to latest).
-  </ParamField>
-  
-  <ParamField body="batchSize" type="number" default="100">
-  Notes per batch.
-  </ParamField>
-  
-  <ParamField body="onProgress" type="function">
-  Progress callback: `(current, total) => void`
-  </ParamField>
-</Expandable>
+<ParamField body="connection" type="Connection" required>
+Solana RPC connection.
+</ParamField>
+
+<ParamField body="leafIndex" type="number" required>
+Leaf index in the Merkle tree.
 </ParamField>
 
 ```typescript
-const sdk = new CloakSDK({
-  keypairBytes,
-  cloakKeys: generateCloakKeys(),
-  network: "devnet",
-});
-
-const notes = await sdk.scanNotes({
-  onProgress: (i, n) => console.log(`Scanning ${i}/${n}`),
-});
-
-console.log(`Found ${notes.length} notes`);
+const proof = await sdk.getMerkleProof(connection, note.leafIndex);
+console.log("Root:", proof.root);
+console.log("Path elements:", proof.pathElements.length);
 ```
 
 ---
 
-### recoverDeposit
+### getCurrentRoot
 
-Recover a deposit that succeeded on-chain but failed to register.
+Get the current Merkle root directly from on-chain state.
 
 ```typescript
-async recoverDeposit(options: {
-  signature: string;
-  commitment: string;
-  note?: CloakNote;
-  onProgress?: (status: string) => void;
-}): Promise<RecoveryResult>
+async getCurrentRoot(connection: Connection): Promise<string>
 ```
 
 ```typescript
-const result = await sdk.recoverDeposit({
-  signature: "5Kn4...",
-  commitment: note.commitment,
-  note: savedNote, // Optional if you have it
-});
+const root = await sdk.getCurrentRoot(connection);
+console.log("Current root:", root);
+```
 
-if (result.success) {
-  console.log("Recovered! Leaf:", result.leafIndex);
-}
+---
+
+### loadNotes
+
+Load all notes from the SDK's internal storage.
+
+```typescript
+async loadNotes(): Promise<CloakNote[]>
+```
+
+```typescript
+const notes = await sdk.loadNotes();
+console.log(`Found ${notes.length} saved notes`);
+```
+
+---
+
+### saveNote
+
+Save a note to the SDK's internal storage.
+
+```typescript
+async saveNote(note: CloakNote): Promise<void>
+```
+
+```typescript
+await sdk.saveNote(depositResult.note);
 ```
 
 ---
@@ -523,6 +519,57 @@ const backup = exportKeys(keys);
 const restored = importKeys(backup);
 ```
 
+### On-chain proof utilities
+
+The SDK computes Merkle proofs directly from on-chain state, eliminating the need for an external indexer.
+
+```typescript
+import {
+  computeProofFromChain,
+  readMerkleTreeState,
+} from "@cloak.ag/sdk";
+
+// Compute a Merkle proof for a specific leaf
+const proof = await computeProofFromChain(connection, merkleTreePDA, leafIndex);
+console.log("Root:", proof.root);
+console.log("Path elements:", proof.pathElements);
+
+// Read the full Merkle tree state
+const state = await readMerkleTreeState(connection, merkleTreePDA);
+console.log("Current root:", state.root);
+console.log("Next index:", state.nextIndex);
+```
+
+### Logging utilities
+
+Enable structured debug logging for troubleshooting.
+
+```typescript
+import {
+  createLogger,
+  setDebugMode,
+  withTiming,
+  formatSol,
+  truncate,
+} from "@cloak.ag/sdk";
+
+// Enable debug mode globally
+setDebugMode(true);
+
+// Create a module-specific logger
+const log = createLogger("my-app::deposits");
+log.info("Processing deposit", { amount: formatSol(100_000_000) });
+
+// Time an operation
+const { result, durationMs } = await withTiming(log, "deposit", async () => {
+  return sdk.deposit(connection, amount);
+});
+log.info("Completed", { duration_ms: durationMs });
+
+// Truncate long strings for display
+console.log(truncate(signature)); // "5Kn4..."
+```
+
 ---
 
 ## Types
@@ -560,11 +607,15 @@ interface MerkleProof {
 
 ```typescript
 class CloakError extends Error {
-  category: "network" | "indexer" | "prover" | "relay" | "validation" | "wallet" | "environment";
+  category: "network" | "prover" | "relay" | "validation" | "wallet" | "environment";
   retryable: boolean;
   originalError?: Error;
 }
 ```
+
+<Note>
+The `indexer` category still exists for backward compatibility but is rarely used since proofs are now computed directly from on-chain state.
+</Note>
 
 ### WalletAdapter
 

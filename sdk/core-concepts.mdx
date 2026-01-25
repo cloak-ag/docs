@@ -115,11 +115,11 @@ interface MerkleProof {
 }
 ```
 
-The SDK computes proofs automatically during withdrawal:
+The SDK computes proofs automatically from on-chain state during withdrawal:
 
 ```typescript
-// SDK handles this internally
-const proof = await sdk.getMerkleProof(note.leafIndex);
+// SDK handles this internally, but you can also compute manually
+const proof = await sdk.getMerkleProof(connection, note.leafIndex);
 ```
 
 <Tip>
@@ -245,26 +245,24 @@ console.log(backup);
 const restored = importKeys(backup);
 ```
 
-### Note scanning
+### Using keys with the SDK
 
-With view keys, you can scan the blockchain for incoming notes:
+Initialize the SDK with Cloak keys for advanced features:
 
 ```typescript
 const sdk = new CloakSDK({
   keypairBytes: keypair.secretKey,
-  cloakKeys: keys, // Enable scanning
+  cloakKeys: keys, // Optional: for encrypted note features
   network: "devnet",
 });
 
-// Scan for notes belonging to this wallet
-const notes = await sdk.scanNotes({
-  onProgress: (current, total) => {
-    console.log(`Scanning: ${current}/${total}`);
-  },
-});
-
-console.log(`Found ${notes.length} notes`);
+// Generate notes using wallet keys
+const note = await sdk.generateNote(100_000_000, true); // useWalletKeys = true
 ```
+
+<Note>
+Note storage is handled locally by your application. Store notes securely using the SDK's storage adapters or your own encrypted storage solution.
+</Note>
 
 ## Outputs hash
 

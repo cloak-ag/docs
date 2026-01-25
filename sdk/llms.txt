@@ -26,6 +26,7 @@ import { Connection, Keypair, PublicKey } from "@solana/web3.js";
 const sdk = new CloakSDK({
   keypairBytes: keypair.secretKey, // or wallet adapter
   network: "devnet",
+  debug: true, // Enable structured logging
 });
 
 // Deposit
@@ -50,9 +51,11 @@ interface CloakNote {
   sk_spend: string;       // SPENDING SECRET (hex)
   r: string;              // RANDOMNESS SECRET (hex)
   timestamp: number;
-  network: "devnet" | "mainnet";
+  network: "devnet" | "mainnet" | "localnet" | "testnet";
   leafIndex?: number;     // Set after deposit
   depositSignature?: string;
+  root?: string;          // Merkle root at deposit time
+  merkleProof?: MerkleProof; // Computed from on-chain state
 }
 ```
 
@@ -69,18 +72,24 @@ const afterFees = getDistributableAmount(depositAmount);
 
 ### CloakSDK.deposit()
 ```typescript
-await sdk.deposit(connection: Connection, amount: number, options?: {
+await sdk.deposit(connection: Connection, amountOrNote: number | CloakNote, options?: {
   onNoteGenerated?: (note: CloakNote) => Promise<void>; // CRITICAL: Save note here
   onProgress?: (status: string) => void;
-}): Promise<{ note: CloakNote; signature: string; leafIndex: number; }>
+  skipPreflight?: boolean;
+  computeUnits?: number;
+  priorityFee?: number;
+  optimizeCU?: boolean; // Node.js only: simulate for optimal CU
+  loadedAccountsDataSizeLimit?: number;
+}): Promise<{ note: CloakNote; signature: string; leafIndex: number; root: string; }>
 ```
 
 ### CloakSDK.withdraw()
 ```typescript
 await sdk.withdraw(connection: Connection, note: CloakNote, recipient: PublicKey, options?: {
   withdrawAll?: boolean;
+  amount?: number;
   onProgress?: (status: string) => void;
-}): Promise<{ signature: string; outputs: Array<{recipient: string; amount: number}>; }>
+}): Promise<{ signature: string; outputs: Array<{recipient: string; amount: number}>; nullifier: string; root: string; }>
 ```
 
 ### CloakSDK.send()
@@ -97,9 +106,29 @@ Max 5 recipients. Sum must equal getDistributableAmount(note.amount).
 await sdk.swap(connection: Connection, note: CloakNote, recipient: PublicKey, options: {
   outputMint: string;
   slippageBps?: number;
-  minOutputAmount: number;
+  minOutputAmount?: number;
+  getQuote?: (amount, mint, slippage) => Promise<{ outAmount, minOutputAmount }>;
+  recipientAta?: string; // Pre-computed ATA for browser environments
 }): Promise<SwapResult>
 ```
+
+### CloakSDK.getMerkleProof()
+```typescript
+await sdk.getMerkleProof(connection: Connection, leafIndex: number): Promise<MerkleProof>
+```
+Computes Merkle proof directly from on-chain state (no indexer needed).
+
+### CloakSDK.getCurrentRoot()
+```typescript
+await sdk.getCurrentRoot(connection: Connection): Promise<string>
+```
+Gets current Merkle root from on-chain state.
+
+### CloakSDK.generateNote()
+```typescript
+await sdk.generateNote(amountLamports: number, useWalletKeys?: boolean): Promise<CloakNote>
+```
+Generate a note without depositing. Pass note to deposit() later.
 
 ## Error Handling
 
@@ -110,7 +139,7 @@ try {
   await sdk.withdraw(...);
 } catch (error) {
   if (error instanceof CloakError) {
-    // error.category: "wallet" | "network" | "prover" | "relay" | "validation" | "indexer"
+    // error.category: "wallet" | "network" | "prover" | "relay" | "validation" | "environment"
     // error.retryable: boolean
   }
 }
@@ -163,6 +192,10 @@ calculateFee(amount: number): number
 computeCommitment(amount: bigint, r: bigint, sk: bigint): Promise<bigint>
 computeNullifierAsync(sk_spend: string, leafIndex: number): Promise<bigint>
 
+// On-chain proof (no indexer needed)
+computeProofFromChain(connection, merkleTreePDA, leafIndex): Promise<OnchainMerkleProof>
+readMerkleTreeState(connection, merkleTreePDA): Promise<{ root, nextIndex, ... }>
+
 // Validation
 isValidSolanaAddress(address: string): boolean
 validateNote(note: CloakNote): void
@@ -170,11 +203,26 @@ validateNote(note: CloakNote): void
 // Network
 getExplorerUrl(signature: string, network: Network): string
 
+// Logging
+createLogger(module: string): Logger
+setDebugMode(enabled: boolean): void
+withTiming(log, name, fn): Promise<{ result, durationMs }>
+formatSol(lamports: number): string
+truncate(str: string): string
+
 // Keys (v2.0)
 generateCloakKeys(): CloakKeyPair
 exportKeys(keys: CloakKeyPair): string
 importKeys(json: string): CloakKeyPair
 ```
+
+## Architecture
+
+The SDK computes Merkle proofs directly from on-chain state, eliminating the need for an external indexer:
+
+1. **Deposit**: SDK sends transaction, parses leaf index from logs, computes proof from on-chain tree
+2. **Withdraw**: SDK uses stored proof or computes fresh proof, generates ZK proof, submits to relay
+3. **Relay**: Verifies proof on-chain and executes transfer to recipient
 
 ---
 

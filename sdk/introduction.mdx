@@ -110,11 +110,11 @@ graph TB
         SDK[CloakSDK Client]
         PROOF[Proof Generator]
         CRYPTO[Crypto Utilities]
+        ONCHAIN[On-chain Proof]
     end
     
     subgraph "Cloak Infrastructure"
         RELAY[Relay Service]
-        INDEXER[Indexer Service]
     end
     
     subgraph "Solana"
@@ -125,12 +125,16 @@ graph TB
     APP --> SDK
     SDK --> PROOF
     SDK --> CRYPTO
+    SDK --> ONCHAIN
     SDK --> RELAY
-    SDK --> INDEXER
+    ONCHAIN --> TREE
     RELAY --> PROGRAM
     PROGRAM --> TREE
-    INDEXER --> TREE
 ```
+
+<Tip>
+The SDK computes Merkle proofs directly from on-chain state, eliminating the need for an external indexer service. This improves reliability and decentralization.
+</Tip>
 
 ## Fee structure
 

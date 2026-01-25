@@ -22,6 +22,7 @@ This project uses @cloak.ag/sdk for private Solana transactions via zero-knowled
 - Private withdrawals to any recipient
 - Multi-recipient transfers (up to 5)
 - Token swaps (SOL → SPL tokens)
+- On-chain Merkle proof computation (no external indexer needed)
 
 ## SECURITY CRITICAL
 
@@ -125,7 +126,7 @@ try {
   await sdk.withdraw(...);
 } catch (error) {
   if (error instanceof CloakError) {
-    // error.category: wallet | network | prover | relay | validation | indexer
+    // error.category: wallet | network | prover | relay | validation | environment
     // error.retryable: boolean
     if (error.retryable) {
       // Implement retry logic
