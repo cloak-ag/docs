@@ -31,11 +31,20 @@ I'm working with the Cloak SDK (@cloak.ag/sdk) for private transactions on Solan
 
 ## SDK Initialization
 
+**CRITICAL: Devnet requires explicit programId** (SDK defaults to mainnet):
+- Devnet: `3EvH6XYQir7D2RyzCdP7QFmJFfSPfdeoB8VnpLdEF4Kr`
+- Mainnet: `c1oak6tetxYnNfvXKFkpn1d98FxtK7B68vBQLYQpWKp` (default)
+
 **Node.js:**
 ```typescript
+import { PublicKey } from "@solana/web3.js";
+
+const DEVNET_PROGRAM_ID = new PublicKey("3EvH6XYQir7D2RyzCdP7QFmJFfSPfdeoB8VnpLdEF4Kr");
+
 const sdk = new CloakSDK({
   keypairBytes: keypair.secretKey,
   network: "devnet",
+  programId: DEVNET_PROGRAM_ID, // Required for devnet!
 });
 ```
 
@@ -207,6 +216,14 @@ Options:
   message: string;
 }
 ```
+
+**Common Error Codes (ShieldPoolErrors):**
+- `0x1001` - RootNotFound: Merkle root expired (SDK auto-retries)
+- `0x1010` - ProofInvalid: ZK proof verification failed
+- `0x1020` - DoubleSpend: Note already spent
+- `0x1076` - ProofVerificationFailed: Groth16 verification failed
+
+Use `isRootNotFoundError(error)` to check for stale root errors.
 
 </Accordion>
 
