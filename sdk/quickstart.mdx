@@ -26,6 +26,20 @@ npm init -y
 npm install @cloak.ag/sdk @solana/web3.js typescript tsx
 ```
 
+## Network configuration
+
+<Warning>
+**Important:** On devnet, you must explicitly set the `programId` to the devnet program address. The SDK defaults to mainnet, which will cause `RootNotFound` errors if used on devnet.
+</Warning>
+
+```typescript
+// Devnet program ID (required for devnet)
+const DEVNET_PROGRAM_ID = new PublicKey("3EvH6XYQir7D2RyzCdP7QFmJFfSPfdeoB8VnpLdEF4Kr");
+
+// Mainnet program ID (default)
+const MAINNET_PROGRAM_ID = new PublicKey("c1oak6tetxYnNfvXKFkpn1d98FxtK7B68vBQLYQpWKp");
+```
+
 ## Complete example
 
 Create `demo.ts` with the following code:
@@ -35,6 +49,9 @@ import { CloakSDK, getDistributableAmount } from "@cloak.ag/sdk";
 import { Connection, Keypair, PublicKey, LAMPORTS_PER_SOL } from "@solana/web3.js";
 import { readFileSync } from "fs";
 import { join } from "path";
+
+// Devnet program ID - REQUIRED for devnet usage
+const DEVNET_PROGRAM_ID = new PublicKey("3EvH6XYQir7D2RyzCdP7QFmJFfSPfdeoB8VnpLdEF4Kr");
 
 async function main() {
   // 1. Setup connection and load keypair
@@ -47,10 +64,11 @@ async function main() {
   
   console.log("Wallet:", keypair.publicKey.toBase58());
   
-  // 2. Initialize the SDK
+  // 2. Initialize the SDK with devnet program ID
   const sdk = new CloakSDK({
     keypairBytes: keypair.secretKey,
     network: "devnet",
+    programId: DEVNET_PROGRAM_ID, // Required for devnet!
     debug: true, // Enable logging
   });
   
@@ -113,11 +131,18 @@ You should see output showing the deposit and withdrawal completing successfully
 Create a `CloakSDK` instance with your keypair or wallet adapter. The SDK handles all communication with the Cloak protocol.
 
 ```typescript
+const DEVNET_PROGRAM_ID = new PublicKey("3EvH6XYQir7D2RyzCdP7QFmJFfSPfdeoB8VnpLdEF4Kr");
+
 const sdk = new CloakSDK({
   keypairBytes: keypair.secretKey, // Or use wallet adapter
   network: "devnet",
+  programId: DEVNET_PROGRAM_ID, // Required for devnet!
 });
 ```
+
+<Warning>
+Always set `programId` when using devnet. Without it, the SDK uses mainnet addresses, causing proof verification failures.
+</Warning>
 </Step>
 
 <Step title="Deposit SOL">

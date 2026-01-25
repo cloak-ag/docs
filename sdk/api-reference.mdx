@@ -33,7 +33,12 @@ Optional key hierarchy for v2.0 features (note scanning, encrypted outputs).
 </ParamField>
 
 <ParamField body="programId" type="PublicKey">
-Custom program ID. Defaults to the official Cloak program.
+Cloak program ID. **Required for devnet** - defaults to mainnet program.
+
+| Network | Program ID |
+|---------|------------|
+| **Devnet** | `3EvH6XYQir7D2RyzCdP7QFmJFfSPfdeoB8VnpLdEF4Kr` |
+| Mainnet | `c1oak6tetxYnNfvXKFkpn1d98FxtK7B68vBQLYQpWKp` |
 </ParamField>
 
 <ParamField body="relayUrl" type="string">
@@ -45,28 +50,46 @@ Enable structured debug logging.
 </ParamField>
 
 <CodeGroup>
-```typescript Node.js
+```typescript Node.js (Devnet)
+import { CloakSDK } from "@cloak.ag/sdk";
+import { Keypair, PublicKey } from "@solana/web3.js";
+
+const keypair = Keypair.fromSecretKey(secretKey);
+const DEVNET_PROGRAM_ID = new PublicKey("3EvH6XYQir7D2RyzCdP7QFmJFfSPfdeoB8VnpLdEF4Kr");
+
+const sdk = new CloakSDK({
+  keypairBytes: keypair.secretKey,
+  network: "devnet",
+  programId: DEVNET_PROGRAM_ID, // Required for devnet!
+  debug: true,
+});
+```
+
+```typescript React/Browser (Devnet)
+import { CloakSDK } from "@cloak.ag/sdk";
+import { useWallet } from "@solana/wallet-adapter-react";
+import { PublicKey } from "@solana/web3.js";
+
+const { publicKey, signTransaction, sendTransaction } = useWallet();
+const DEVNET_PROGRAM_ID = new PublicKey("3EvH6XYQir7D2RyzCdP7QFmJFfSPfdeoB8VnpLdEF4Kr");
+
+const sdk = new CloakSDK({
+  wallet: { publicKey, signTransaction, sendTransaction },
+  network: "devnet",
+  programId: DEVNET_PROGRAM_ID, // Required for devnet!
+});
+```
+
+```typescript Mainnet
 import { CloakSDK } from "@cloak.ag/sdk";
 import { Keypair } from "@solana/web3.js";
 
 const keypair = Keypair.fromSecretKey(secretKey);
 
+// Mainnet uses default program ID
 const sdk = new CloakSDK({
   keypairBytes: keypair.secretKey,
-  network: "devnet",
-  debug: true,
-});
-```
-
-```typescript React/Browser
-import { CloakSDK } from "@cloak.ag/sdk";
-import { useWallet } from "@solana/wallet-adapter-react";
-
-const { publicKey, signTransaction, sendTransaction } = useWallet();
-
-const sdk = new CloakSDK({
-  wallet: { publicKey, signTransaction, sendTransaction },
-  network: "devnet",
+  network: "mainnet",
 });
 ```
 </CodeGroup>

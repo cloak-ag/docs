@@ -118,9 +118,8 @@ try {
 } catch (error) {
   if (error instanceof CloakError && error.category === "relay") {
     if (error.message.includes("RootNotFound")) {
-      // The SDK handles this internally with retries,
-      // but you might see it after max retries
-      showMessage("Merkle tree updated. Please try again.");
+      // See troubleshooting section below
+      showMessage("Merkle root not found. Check your configuration.");
     } else if (error.message.includes("nullifier")) {
       showMessage("This note has already been spent.");
       removeNoteFromStorage(note);
@@ -130,6 +129,48 @@ try {
   }
 }
 ```
+
+## Troubleshooting common errors
+
+### RootNotFound (0x1001)
+
+This is the most common error on devnet. It means the Merkle root in your proof doesn't match any valid root in the on-chain root history.
+
+**Most common cause: Missing `programId` configuration**
+
+The SDK defaults to the mainnet program ID. When using devnet, you **must** explicitly set the devnet program ID:
+
+```typescript
+import { PublicKey } from "@solana/web3.js";
+
+// ❌ WRONG - Will use mainnet program, causing RootNotFound on devnet
+const sdk = new CloakSDK({
+  keypairBytes: keypair.secretKey,
+  network: "devnet",
+});
+
+// ✅ CORRECT - Explicitly set devnet program ID
+const DEVNET_PROGRAM_ID = new PublicKey("3EvH6XYQir7D2RyzCdP7QFmJFfSPfdeoB8VnpLdEF4Kr");
+
+const sdk = new CloakSDK({
+  keypairBytes: keypair.secretKey,
+  network: "devnet",
+  programId: DEVNET_PROGRAM_ID,
+});
+```
+
+| Network | Program ID |
+|---------|------------|
+| **Devnet** | `3EvH6XYQir7D2RyzCdP7QFmJFfSPfdeoB8VnpLdEF4Kr` |
+| Mainnet | `c1oak6tetxYnNfvXKFkpn1d98FxtK7B68vBQLYQpWKp` |
+
+**Other causes:**
+- The root was pushed out of history (100 roots retained). Try withdrawing sooner after deposit.
+- Deposit and withdrawal are on different networks (e.g., deposited on mainnet, trying to withdraw on devnet)
+
+<Warning>
+If you deposited with the wrong program ID, those funds are in a different Merkle tree. You'll need to withdraw using the same program ID used during deposit.
+</Warning>
 
 ### Validation errors
 
