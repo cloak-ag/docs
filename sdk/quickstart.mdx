@@ -54,9 +54,16 @@ import { Connection, Keypair, PublicKey, LAMPORTS_PER_SOL } from "@solana/web3.j
 import { readFileSync } from "fs";
 import { join } from "path";
 
+// IMPORTANT: Devnet uses a different program ID than mainnet
+const DEVNET_PROGRAM_ID = new PublicKey("3EvH6XYQir7D2RyzCdP7QFmJFfSPfdeoB8VnpLdEF4Kr");
+
 async function main() {
   // 1. Setup connection and load keypair
-  const connection = new Connection("https://api.devnet.solana.com", "confirmed");
+  // Use a dedicated RPC (public devnet can have issues with large transactions)
+  const connection = new Connection(
+    process.env.SOLANA_RPC_URL || "https://api.devnet.solana.com", 
+    "confirmed"
+  );
   
   // Load your keypair (default Solana CLI location)
   const keypairPath = join(process.env.HOME!, ".config/solana/id.json");
@@ -69,6 +76,7 @@ async function main() {
   const sdk = new CloakSDK({
     keypairBytes: keypair.secretKey,
     network: "devnet",
+    programId: DEVNET_PROGRAM_ID, // Required for devnet!
     debug: true, // Enable logging
   });
   

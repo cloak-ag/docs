@@ -22,6 +22,7 @@ This project uses @cloak.ag/sdk for private Solana transactions via zero-knowled
 - Private withdrawals to any recipient
 - Multi-recipient transfers (up to 5)
 - Token swaps (SOL → SPL tokens)
+- On-chain Merkle proof computation (no external indexer needed)
 
 ## SECURITY CRITICAL
 
@@ -44,13 +45,21 @@ await sdk.deposit(connection, amount, {
 
 ## Initialization Patterns
 
+**CRITICAL: Devnet requires explicit programId** (SDK defaults to mainnet):
+- Devnet: `3EvH6XYQir7D2RyzCdP7QFmJFfSPfdeoB8VnpLdEF4Kr`
+- Mainnet: `c1oak6tetxYnNfvXKFkpn1d98FxtK7B68vBQLYQpWKp` (default)
+
 **Node.js:**
 ```typescript
 import { CloakSDK } from "@cloak.ag/sdk";
+import { PublicKey } from "@solana/web3.js";
+
+const DEVNET_PROGRAM_ID = new PublicKey("3EvH6XYQir7D2RyzCdP7QFmJFfSPfdeoB8VnpLdEF4Kr");
 
 const sdk = new CloakSDK({
   keypairBytes: keypair.secretKey,
   network: "devnet",
+  programId: DEVNET_PROGRAM_ID, // Required for devnet!
   debug: true,
 });
 ```
@@ -119,7 +128,7 @@ const totalFee = calculateFee(depositAmount);
 
 ## Error Handling
 ```typescript
-import { CloakError } from "@cloak.ag/sdk";
+import { CloakError, ShieldPoolErrors, isRootNotFoundError } from "@cloak.ag/sdk";
 
 try {
   await sdk.withdraw(...);
@@ -130,6 +139,15 @@ try {
     if (error.retryable) {
       // Implement retry logic
     }
+  }
+  
+  // Common error codes:
+  // 0x1001 = RootNotFound (SDK retries with fresh proof)
+  // 0x1010 = ProofInvalid
+  // 0x1020 = DoubleSpend (note already spent)
+  // 0x1076 = ProofVerificationFailed
+  if (isRootNotFoundError(error)) {
+    console.log("Merkle root expired");
   }
 }
 ```

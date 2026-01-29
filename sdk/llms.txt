@@ -23,10 +23,16 @@ npm install @cloak.ag/sdk @solana/web3.js
 import { CloakSDK, getDistributableAmount } from "@cloak.ag/sdk";
 import { Connection, Keypair, PublicKey } from "@solana/web3.js";
 
+// CRITICAL: Devnet requires explicit program ID (SDK defaults to mainnet)
+const DEVNET_PROGRAM_ID = new PublicKey("3EvH6XYQir7D2RyzCdP7QFmJFfSPfdeoB8VnpLdEF4Kr");
+// Mainnet uses: c1oak6tetxYnNfvXKFkpn1d98FxtK7B68vBQLYQpWKp (default)
+
 // Initialize
 const sdk = new CloakSDK({
   keypairBytes: keypair.secretKey, // or wallet adapter
   network: "devnet",
+  programId: DEVNET_PROGRAM_ID, // Required for devnet!
+  debug: true, // Enable structured logging
 });
 
 // Deposit
@@ -35,6 +41,15 @@ const { note } = await sdk.deposit(connection, 100_000_000);
 // Withdraw
 await sdk.withdraw(connection, note, recipientPubkey, { withdrawAll: true });
 ```
+
+## CRITICAL: Devnet vs Mainnet Configuration
+
+| Network | Program ID | Notes |
+|---------|------------|-------|
+| Mainnet | `c1oak6tetxYnNfvXKFkpn1d98FxtK7B68vBQLYQpWKp` | SDK default |
+| Devnet | `3EvH6XYQir7D2RyzCdP7QFmJFfSPfdeoB8VnpLdEF4Kr` | Must set `programId`! |
+
+**Common Error**: If you get `0x1001 RootNotFound` on devnet, you forgot to set `programId`.
 
 ## Core Concepts
 
@@ -51,7 +66,7 @@ interface CloakNote {
   sk_spend: string;       // SPENDING SECRET (hex)
   r: string;              // RANDOMNESS SECRET (hex)
   timestamp: number;
-  network: "devnet" | "mainnet";
+  network: "devnet" | "mainnet" | "localnet" | "testnet";
   leafIndex?: number;     // Set after deposit
   depositSignature?: string;
   root?: string;          // Merkle root at deposit time
@@ -77,12 +92,14 @@ The SDK computes Merkle proofs directly from on-chain state using `computeProofF
 
 ### CloakSDK.deposit()
 ```typescript
-await sdk.deposit(connection: Connection, amount: number, options?: {
+await sdk.deposit(connection: Connection, amountOrNote: number | CloakNote, options?: {
   onNoteGenerated?: (note: CloakNote) => Promise<void>; // CRITICAL: Save note here
   onProgress?: (status: string) => void;
-  optimizeCU?: boolean;           // Enable simulation-based CU optimization (Node.js only)
-  loadedAccountsDataSizeLimit?: number; // Default 256KB
-  priorityFee?: number;           // Default 10_000 micro-lamports
+  skipPreflight?: boolean;
+  computeUnits?: number;
+  priorityFee?: number;
+  optimizeCU?: boolean; // Node.js only: simulate for optimal CU
+  loadedAccountsDataSizeLimit?: number;
 }): Promise<{ note: CloakNote; signature: string; leafIndex: number; root: string; }>
 ```
 
@@ -90,6 +107,7 @@ await sdk.deposit(connection: Connection, amount: number, options?: {
 ```typescript
 await sdk.withdraw(connection: Connection, note: CloakNote, recipient: PublicKey, options?: {
   withdrawAll?: boolean;
+  amount?: number;
   onProgress?: (status: string) => void;
 }): Promise<{ signature: string; outputs: Array<{recipient: string; amount: number}>; nullifier: string; root: string; }>
 ```
@@ -108,8 +126,9 @@ Max 5 recipients. Sum must equal getDistributableAmount(note.amount).
 await sdk.swap(connection: Connection, note: CloakNote, recipient: PublicKey, options: {
   outputMint: string;
   slippageBps?: number;
-  minOutputAmount: number;
-  recipientAta?: string; // Recommended for browser environments
+  minOutputAmount?: number;
+  getQuote?: (amount, mint, slippage) => Promise<{ outAmount, minOutputAmount }>;
+  recipientAta?: string; // Pre-computed ATA for browser environments
 }): Promise<SwapResult>
 ```
 
@@ -117,17 +136,24 @@ await sdk.swap(connection: Connection, note: CloakNote, recipient: PublicKey, op
 ```typescript
 await sdk.getMerkleProof(connection: Connection, leafIndex: number): Promise<MerkleProof>
 ```
-Computes proof directly from on-chain state.
+Computes proof directly from on-chain state (no indexer needed).
 
 ### CloakSDK.getCurrentRoot()
 ```typescript
 await sdk.getCurrentRoot(connection: Connection): Promise<string>
 ```
+Gets current Merkle root from on-chain state.
+
+### CloakSDK.generateNote()
+```typescript
+await sdk.generateNote(amountLamports: number, useWalletKeys?: boolean): Promise<CloakNote>
+```
+Generate a note without depositing. Pass note to deposit() later.
 
 ## Error Handling
 
 ```typescript
-import { CloakError } from "@cloak.ag/sdk";
+import { CloakError, ShieldPoolErrors, isRootNotFoundError } from "@cloak.ag/sdk";
 
 try {
   await sdk.withdraw(...);
@@ -136,8 +162,26 @@ try {
     // error.category: "wallet" | "network" | "prover" | "relay" | "validation" | "environment"
     // error.retryable: boolean
   }
+  
+  // Check for stale Merkle root (SDK retries automatically)
+  if (isRootNotFoundError(error)) {
+    console.log("Root expired, proof needs refresh");
+  }
 }
 ```
+
+## Common Error Codes (ShieldPoolErrors)
+
+| Code | Name | Description |
+|------|------|-------------|
+| 0x1001 | RootNotFound | Merkle root not in history (stale proof) |
+| 0x1010 | ProofInvalid | ZK proof verification failed |
+| 0x1020 | DoubleSpend | Note already spent |
+| 0x1030 | OutputsMismatch | Outputs don't match proof |
+| 0x1058 | InsufficientLamports | Not enough SOL in pool |
+| 0x1076 | ProofVerificationFailed | Groth16 verification failed |
+
+Use `ShieldPoolErrors[code]` to get user-friendly messages.
 
 ## Browser Integration (React)
 
@@ -194,6 +238,10 @@ computeCommitment(amount: bigint, r: bigint, sk: bigint): Promise<bigint>
 computeNullifierAsync(sk_spend: string, leafIndex: number): Promise<bigint>
 computeOutputsHashAsync(recipients: Transfer[]): Promise<bigint>
 
+// On-chain proof (no indexer needed)
+computeProofFromChain(connection, merkleTreePDA, leafIndex): Promise<OnchainMerkleProof>
+readMerkleTreeState(connection, merkleTreePDA): Promise<{ root, nextIndex, ... }>
+
 // Validation
 isValidSolanaAddress(address: string): boolean
 validateNote(note: CloakNote): void
@@ -201,6 +249,13 @@ validateNote(note: CloakNote): void
 // Network
 getExplorerUrl(signature: string, network: Network): string
 CLOAK_PROGRAM_ID // c1oak6tetxYnNfvXKFkpn1d98FxtK7B68vBQLYQpWKp
+
+// Logging
+createLogger(module: string): Logger
+setDebugMode(enabled: boolean): void
+withTiming(log, name, fn): Promise<{ result, durationMs }>
+formatSol(lamports: number): string
+truncate(str: string): string
 
 // Keys (v2.0)
 generateCloakKeys(): CloakKeyPair
@@ -212,6 +267,14 @@ generateUtxoKeypair(): UtxoKeypair
 createUtxo(amount, mint, keypair): Utxo
 transact(params): Promise<TransactResult>
 ```
+
+## Architecture
+
+The SDK computes Merkle proofs directly from on-chain state, eliminating the need for an external indexer:
+
+1. **Deposit**: SDK sends transaction, parses leaf index from logs, computes proof from on-chain tree
+2. **Withdraw**: SDK uses stored proof or computes fresh proof, generates ZK proof, submits to relay
+3. **Relay**: Verifies proof on-chain and executes transfer to recipient
 
 ---
 

@@ -19,13 +19,117 @@ class CloakError extends Error {
 
 type ErrorCategory = 
   | "network"      // RPC or network failures
-  | "indexer"      // Indexer service issues
   | "prover"       // Proof generation failures
   | "relay"        // Relay service errors
   | "validation"   // Invalid inputs
   | "wallet"       // Wallet connection or signing issues
   | "environment"; // Missing dependencies or configuration
 ```
+
+## Shield Pool error codes
+
+The on-chain program uses hex error codes. The SDK provides `ShieldPoolErrors` to map these to user-friendly messages:
+
+```typescript
+import { ShieldPoolErrors } from "@cloak.ag/sdk";
+
+// Check for specific error codes
+const message = ShieldPoolErrors[0x1001]; // "Root not found in the roots ring"
+```
+
+### Error code reference
+
+| Code | Name | Description |
+|------|------|-------------|
+| `0x1000` | InvalidRoot | Invalid Merkle root |
+| `0x1001` | RootNotFound | Root not found in the roots ring (stale proof) |
+| `0x1002` | RootsRingFull | Roots ring is full |
+| `0x1010` | ProofInvalid | Zero-knowledge proof is invalid |
+| `0x1011` | InvalidProofSize | Invalid proof size (expected 260 bytes) |
+| `0x1012` | InvalidPublicInputs | Invalid public inputs |
+| `0x1013` | VKeyMismatch | Verification key mismatch |
+| `0x1020` | DoubleSpend | Note has already been spent |
+| `0x1021` | NullifierShardFull | Nullifier shard is full (deprecated) |
+| `0x1022` | InvalidNullifier | Invalid nullifier |
+| `0x1023` | NullifierAlreadyUsed | Nullifier already used |
+| `0x1030` | OutputsMismatch | Output addresses or amounts don't match proof |
+| `0x1031` | Conservation | Amount conservation failed |
+| `0x1032` | InvalidOutputsHash | Invalid outputs hash |
+| `0x1033` | InvalidAmount | Invalid amount |
+| `0x1034` | InvalidRecipient | Invalid recipient address |
+| `0x1035` | CommitmentAlreadyExists | Commitment already in tree |
+| `0x1050` | BadAccounts | Account validation failed |
+| `0x1058` | InsufficientLamports | Insufficient lamports in pool |
+| `0x1076` | ProofVerificationFailed | Groth16 proof verification failed |
+| `0x1080` | MerkleTreeFull | Merkle tree is full |
+
+### Common error handling
+
+```typescript
+import { ShieldPoolErrors, isRootNotFoundError } from "@cloak.ag/sdk";
+
+try {
+  await sdk.withdraw(connection, note, recipient);
+} catch (error) {
+  // Check for stale root (needs proof refresh)
+  if (isRootNotFoundError(error)) {
+    console.log("Merkle root expired, SDK will retry with fresh proof");
+    // The SDK handles this internally with up to 3 retries
+  }
+  
+  // Parse hex error code from transaction
+  const match = error.message?.match(/0x([0-9a-f]{4})/i);
+  if (match) {
+    const code = parseInt(match[1], 16);
+    const message = ShieldPoolErrors[code];
+    console.log(`Program error: ${message || 'Unknown'} (0x${code.toString(16)})`);
+  }
+}
+```
+
+## Common issues and solutions
+
+### 0x1001 RootNotFound on Devnet
+
+**Problem**: Withdrawal fails with `custom program error: 0x1001` (RootNotFound).
+
+**Cause**: The SDK defaults to mainnet's program ID. On devnet, this causes wrong Merkle tree PDAs to be derived.
+
+**Solution**: Explicitly set the devnet program ID:
+
+```typescript
+import { PublicKey } from "@solana/web3.js";
+
+const DEVNET_PROGRAM_ID = new PublicKey("3EvH6XYQir7D2RyzCdP7QFmJFfSPfdeoB8VnpLdEF4Kr");
+
+const sdk = new CloakSDK({
+  keypairBytes: keypair.secretKey,
+  network: "devnet",
+  programId: DEVNET_PROGRAM_ID,  // This is required!
+});
+```
+
+### "max loaded accounts data size cap" error
+
+**Problem**: Deposit fails with account data size exceeded error on devnet.
+
+**Cause**: Public devnet RPC has stricter limits than mainnet.
+
+**Solution**: Use a dedicated RPC (like Helius) or set `loadedAccountsDataSizeLimit`:
+
+```typescript
+await sdk.deposit(connection, amount, {
+  loadedAccountsDataSizeLimit: 512 * 1024, // 512KB
+});
+```
+
+### Stale Merkle root after many deposits
+
+**Problem**: Withdrawal fails with 0x1001 after waiting too long.
+
+**Cause**: The on-chain roots ring only stores the last 100 roots. If >100 deposits happen between your deposit and withdrawal, your proof's root expires.
+
+**Solution**: The SDK automatically retries with fresh proofs (up to 3 times). If it still fails, re-deposit.
 
 ## Handling errors by category
 
@@ -180,6 +284,10 @@ try {
 }
 ```
 
+<Tip>
+The SDK computes Merkle proofs directly from on-chain state, making it more reliable than external indexer services.
+</Tip>
+
 ## Comprehensive error handler
 
 Here's a reusable error handler for all SDK operations:
@@ -263,12 +371,6 @@ export async function handleCloakError(
 
     case "validation":
       showMessage("Invalid input: " + error.message);
-      return false;
-
-    case "indexer":
-      // Note: The SDK no longer uses an indexer for proofs (computed on-chain)
-      // This category is kept for backwards compatibility
-      showMessage("Service error: " + error.message);
       return false;
 
     case "environment":

@@ -91,6 +91,10 @@ await sdk.withdraw(connection, note, recipient, { withdrawAll: true });
 
 ---
 
+<Tip>
+The SDK computes Merkle proofs directly from on-chain state, eliminating the need for an external indexer service. This improves reliability and decentralization.
+</Tip>
+
 ## Fee structure
 
 | Fee type | Amount | Description |

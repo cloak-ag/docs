@@ -33,8 +33,9 @@ Optional key hierarchy for v2.0 features (note scanning, encrypted outputs).
 </ParamField>
 
 <ParamField body="programId" type="PublicKey">
-Custom program ID. Defaults to the official Cloak program.
+Custom program ID. **Required for devnet** - SDK defaults to mainnet.
 </ParamField>
+
 
 <ParamField body="relayUrl" type="string">
 Custom relay URL. Defaults to `https://api.cloak.ag`.
@@ -530,7 +531,7 @@ if (isRootNotFoundError(error)) {
 
 ### On-chain proof utilities
 
-The SDK can compute Merkle proofs directly from on-chain state without an indexer:
+The SDK computes Merkle proofs directly from on-chain state without an indexer:
 
 ```typescript
 import {
@@ -619,6 +620,36 @@ if (result.status === "completed") {
 const status = await relay.getStatus(requestId);
 ```
 
+### Logging utilities
+
+Enable structured debug logging for troubleshooting.
+
+```typescript
+import {
+  createLogger,
+  setDebugMode,
+  withTiming,
+  formatSol,
+  truncate,
+} from "@cloak.ag/sdk";
+
+// Enable debug mode globally
+setDebugMode(true);
+
+// Create a module-specific logger
+const log = createLogger("my-app::deposits");
+log.info("Processing deposit", { amount: formatSol(100_000_000) });
+
+// Time an operation
+const { result, durationMs } = await withTiming(log, "deposit", async () => {
+  return sdk.deposit(connection, amount);
+});
+log.info("Completed", { duration_ms: durationMs });
+
+// Truncate long strings for display
+console.log(truncate(signature)); // "5Kn4..."
+```
+
 ---
 
 ## Types
@@ -656,10 +687,44 @@ interface MerkleProof {
 
 ```typescript
 class CloakError extends Error {
-  category: "network" | "indexer" | "prover" | "relay" | "validation" | "wallet" | "environment";
+  category: "network" | "prover" | "relay" | "validation" | "wallet" | "environment";
   retryable: boolean;
   originalError?: Error;
 }
+```
+
+### RootNotFoundError
+
+Thrown when the Merkle root used in a proof is no longer in on-chain history.
+
+```typescript
+import { RootNotFoundError, isRootNotFoundError } from "@cloak.ag/sdk";
+
+try {
+  await sdk.withdraw(connection, note, recipient);
+} catch (error) {
+  if (isRootNotFoundError(error)) {
+    // The SDK automatically retries with fresh proof (up to 3 times)
+    // This error only surfaces after all retries are exhausted
+    console.log("Root expired after max retries");
+  }
+}
+```
+
+### ShieldPoolErrors
+
+Map of on-chain program error codes to messages. See [Error Handling](/sdk/error-handling) for the complete reference.
+
+```typescript
+import { ShieldPoolErrors } from "@cloak.ag/sdk";
+
+// Common error codes:
+// 0x1001 = RootNotFound (stale proof)
+// 0x1010 = ProofInvalid
+// 0x1020 = DoubleSpend
+// 0x1076 = ProofVerificationFailed
+
+const message = ShieldPoolErrors[0x1001]; // "Root not found in the roots ring"
 ```
 
 ### WalletAdapter
