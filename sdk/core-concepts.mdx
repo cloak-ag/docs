@@ -8,7 +8,7 @@ This guide explains the cryptographic primitives and data structures that power 
 
 ## The privacy model
 
-Cloak uses a **deposit-withdraw** pattern similar to tornado.cash but optimized for Solana:
+Cloak uses a **deposit-withdraw** pattern but optimized for Solana:
 
 ```mermaid
 sequenceDiagram
@@ -115,11 +115,15 @@ interface MerkleProof {
 }
 ```
 
-The SDK computes proofs automatically during withdrawal:
+The SDK computes proofs directly from on-chain state—no external indexer required:
 
 ```typescript
-// SDK handles this internally
-const proof = await sdk.getMerkleProof(note.leafIndex);
+// SDK handles this internally via computeProofFromChain()
+const proof = await sdk.getMerkleProof(connection, note.leafIndex);
+
+// Or use the lower-level utility directly
+import { computeProofFromChain } from "@cloak.ag/sdk";
+const chainProof = await computeProofFromChain(connection, merkleTreePDA, leafIndex);
 ```
 
 <Tip>
@@ -245,25 +249,26 @@ console.log(backup);
 const restored = importKeys(backup);
 ```
 
-### Note scanning
+### Note storage
 
-With view keys, you can scan the blockchain for incoming notes:
+<Warning>
+Note scanning via the SDK has been removed. For better privacy, users should maintain their own local note storage rather than relying on indexer-stored encrypted outputs.
+</Warning>
+
+The recommended approach is to persist notes locally using the `onNoteGenerated` callback:
 
 ```typescript
-const sdk = new CloakSDK({
-  keypairBytes: keypair.secretKey,
-  cloakKeys: keys, // Enable scanning
-  network: "devnet",
-});
-
-// Scan for notes belonging to this wallet
-const notes = await sdk.scanNotes({
-  onProgress: (current, total) => {
-    console.log(`Scanning: ${current}/${total}`);
+// Save notes during deposit
+const result = await sdk.deposit(connection, amount, {
+  onNoteGenerated: async (note) => {
+    // Persist to your secure storage
+    await saveNoteToLocalStorage(note);
   },
 });
 
-console.log(`Found ${notes.length} notes`);
+// Load and manage notes from your storage
+const notes = await loadNotesFromStorage();
+const withdrawableNotes = notes.filter(note => sdk.isWithdrawable(note));
 ```
 
 ## Outputs hash
@@ -321,24 +326,24 @@ Every withdrawal incurs fees collected by the protocol:
 
 | Fee | Calculation | Purpose |
 |-----|-------------|---------|
-| Fixed | 0.003 SOL | Relay gas costs |
-| Variable | 0.5% of amount | Protocol revenue |
+| Fixed | 0.005 SOL | Relay gas costs |
+| Variable | 0.3% of amount | Protocol revenue |
 
 ```typescript
 import { 
   calculateFee, 
   getDistributableAmount,
-  FIXED_FEE_LAMPORTS,
-  VARIABLE_FEE_RATE 
+  FIXED_FEE_LAMPORTS,     // 5_000_000
+  VARIABLE_FEE_RATE       // 0.003
 } from "@cloak.ag/sdk";
 
 const deposited = 100_000_000; // 0.1 SOL
 
-// Calculate total fee
+// Calculate total fee: 5_000_000 + 300_000 = 5_300_000
 const fee = calculateFee(deposited);
 console.log("Fee:", fee, "lamports");
 
-// Get amount after fees
+// Get amount after fees: ~94_700_000
 const distributable = getDistributableAmount(deposited);
 console.log("Distributable:", distributable, "lamports");
 ```

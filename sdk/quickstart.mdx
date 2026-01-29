@@ -4,17 +4,33 @@ description: "Make your first private transaction in under 5 minutes"
 icon: "rocket"
 ---
 
-This guide walks you through depositing SOL into the Cloak privacy pool and withdrawing to a recipient. You'll learn the core SDK flow that powers all private transactions.
+This guide walks you through depositing SOL into the Cloak privacy pool and withdrawing to a recipient privately.
+
+<Info>
+**What you'll build:** A script that deposits 0.01 SOL, then withdraws it to a recipient with full transaction privacy.
+</Info>
+
+---
 
 ## Prerequisites
 
-- Node.js 18+ installed
-- A Solana keypair with devnet SOL (for testing)
-- Basic TypeScript/JavaScript knowledge
+<CardGroup cols={3}>
+<Card title="Node.js 18+" icon="node-js">
+JavaScript runtime
+</Card>
+<Card title="Solana keypair" icon="key">
+With devnet SOL
+</Card>
+<Card title="TypeScript" icon="code">
+Basic knowledge
+</Card>
+</CardGroup>
 
 <Tip>
 Get devnet SOL from the [Solana Faucet](https://faucet.solana.com/) if you need test tokens.
 </Tip>
+
+---
 
 ## Installation
 
@@ -25,6 +41,8 @@ mkdir cloak-demo && cd cloak-demo
 npm init -y
 npm install @cloak.ag/sdk @solana/web3.js typescript tsx
 ```
+
+---
 
 ## Complete example
 
@@ -106,6 +124,8 @@ npx tsx demo.ts
 You should see output showing the deposit and withdrawal completing successfully with transaction signatures.
 </Check>
 
+---
+
 ## Understanding the flow
 
 <Steps>
@@ -142,6 +162,8 @@ await sdk.withdraw(connection, note, recipient, { withdrawAll: true });
 </Step>
 </Steps>
 
+---
+
 ## Safe note handling
 
 Always persist notes before the deposit transaction is sent. Use the `onNoteGenerated` callback:
@@ -162,6 +184,8 @@ const result = await sdk.deposit(connection, amount, {
 The deposit will not proceed until `onNoteGenerated` completes. This ensures you never lose access to deposited funds.
 </Info>
 
+---
+
 ## Multi-recipient transfers
 
 Send to multiple recipients (up to 5) in a single transaction:
@@ -176,8 +200,10 @@ console.log("Sent to", result.outputs.length, "recipients");
 ```
 
 <Note>
-The sum of all recipient amounts must equal `getDistributableAmount(note.amount)` (deposit amount minus fees).
+The sum of all recipient amounts must equal `getDistributableAmount(note.amount)` (deposit amount minus 0.005 SOL fixed fee and 0.3% variable fee).
 </Note>
+
+---
 
 ## Token swaps
 
@@ -198,6 +224,8 @@ const result = await sdk.swap(connection, note, recipient, {
 console.log("Swapped to", result.outputMint);
 ```
 
+---
+
 ## Environment variables
 
 For production applications, configure the SDK using environment variables:
@@ -215,6 +243,8 @@ const sdk = new CloakSDK({
 
 const connection = new Connection(process.env.SOLANA_RPC_URL!);
 ```
+
+---
 
 ## Next steps
 

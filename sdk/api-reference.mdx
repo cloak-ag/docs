@@ -36,10 +36,6 @@ Optional key hierarchy for v2.0 features (note scanning, encrypted outputs).
 Custom program ID. Defaults to the official Cloak program.
 </ParamField>
 
-<ParamField body="indexerUrl" type="string">
-Custom indexer URL. Defaults to `https://api.cloak.ag`.
-</ParamField>
-
 <ParamField body="relayUrl" type="string">
 Custom relay URL. Defaults to `https://api.cloak.ag`.
 </ParamField>
@@ -120,6 +116,14 @@ Optional configuration.
   
   <ParamField body="priorityFee" type="number" default="10000">
   Priority fee in micro-lamports.
+  </ParamField>
+  
+  <ParamField body="optimizeCU" type="boolean" default="false">
+  Enable simulation-based compute unit optimization. Only works in keypair mode (Node.js), ignored in wallet/browser mode.
+  </ParamField>
+  
+  <ParamField body="loadedAccountsDataSizeLimit" type="number" default="262144">
+  Loaded accounts data size limit in bytes. Default 256KB. Set to 0 to disable.
   </ParamField>
 </Expandable>
 </ParamField>
@@ -351,73 +355,40 @@ const note = await sdk.generateNote(100_000_000);
 
 ---
 
-### scanNotes
+### getMerkleProof
 
-Scan blockchain for notes belonging to this wallet (requires `cloakKeys`).
-
-```typescript
-async scanNotes(options?: ScanNotesOptions): Promise<ScannedNote[]>
-```
-
-<ParamField body="options" type="ScanNotesOptions">
-<Expandable title="Properties">
-  <ParamField body="startIndex" type="number" default="0">
-  First leaf index to scan.
-  </ParamField>
-  
-  <ParamField body="endIndex" type="number">
-  Last leaf index (defaults to latest).
-  </ParamField>
-  
-  <ParamField body="batchSize" type="number" default="100">
-  Notes per batch.
-  </ParamField>
-  
-  <ParamField body="onProgress" type="function">
-  Progress callback: `(current, total) => void`
-  </ParamField>
-</Expandable>
-</ParamField>
+Get Merkle proof for a leaf index directly from on-chain state.
 
 ```typescript
-const sdk = new CloakSDK({
-  keypairBytes,
-  cloakKeys: generateCloakKeys(),
-  network: "devnet",
-});
-
-const notes = await sdk.scanNotes({
-  onProgress: (i, n) => console.log(`Scanning ${i}/${n}`),
-});
-
-console.log(`Found ${notes.length} notes`);
+async getMerkleProof(
+  connection: Connection,
+  leafIndex: number
+): Promise<MerkleProof>
 ```
+
+```typescript
+const proof = await sdk.getMerkleProof(connection, note.leafIndex);
+console.log("Root:", proof.root);
+console.log("Path elements:", proof.pathElements.length);
+```
+
+<Info>
+The SDK computes Merkle proofs directly from on-chain state without requiring an indexer service. This improves reliability and reduces external dependencies.
+</Info>
 
 ---
 
-### recoverDeposit
+### getCurrentRoot
 
-Recover a deposit that succeeded on-chain but failed to register.
+Get the current Merkle root directly from on-chain state.
 
 ```typescript
-async recoverDeposit(options: {
-  signature: string;
-  commitment: string;
-  note?: CloakNote;
-  onProgress?: (status: string) => void;
-}): Promise<RecoveryResult>
+async getCurrentRoot(connection: Connection): Promise<string>
 ```
 
 ```typescript
-const result = await sdk.recoverDeposit({
-  signature: "5Kn4...",
-  commitment: note.commitment,
-  note: savedNote, // Optional if you have it
-});
-
-if (result.success) {
-  console.log("Recovered! Leaf:", result.leafIndex);
-}
+const root = await sdk.getCurrentRoot(connection);
+console.log("Current root:", root);
 ```
 
 ---
@@ -430,16 +401,16 @@ if (result.success) {
 import {
   calculateFee,
   getDistributableAmount,
-  FIXED_FEE_LAMPORTS,    // 3_000_000
-  VARIABLE_FEE_RATE,     // 0.005
+  FIXED_FEE_LAMPORTS,    // 5_000_000 (0.005 SOL)
+  VARIABLE_FEE_RATE,     // 0.003 (0.3%)
   LAMPORTS_PER_SOL,      // 1_000_000_000
 } from "@cloak.ag/sdk";
 
 // Calculate total fee
-const fee = calculateFee(100_000_000); // Returns fee in lamports
+const fee = calculateFee(100_000_000); // Returns 5_300_000 (fixed + 0.3%)
 
 // Get amount after fees
-const distributable = getDistributableAmount(100_000_000);
+const distributable = getDistributableAmount(100_000_000); // ~94_700_000
 ```
 
 ### Crypto utilities
@@ -521,6 +492,131 @@ const backup = exportKeys(keys);
 
 // Import from backup
 const restored = importKeys(backup);
+```
+
+### Error utilities
+
+```typescript
+import {
+  ShieldPoolErrors,
+  parseError,
+  parseTransactionError,
+  createCloakError,
+  RootNotFoundError,
+  isRootNotFoundError,
+  type UserFriendlyError,
+  type ErrorCategory,
+} from "@cloak.ag/sdk";
+
+// Get user-friendly error info
+const parsed: UserFriendlyError = parseError(error);
+console.log(parsed.title);       // "Transaction Failed"
+console.log(parsed.message);     // User-friendly description
+console.log(parsed.category);    // "wallet" | "network" | "validation" | "service" | "transaction"
+console.log(parsed.suggestion);  // Optional action suggestion
+console.log(parsed.recoverable); // Whether user can retry
+
+// Check for specific on-chain error codes
+const errorCode = 0x1020;
+console.log(ShieldPoolErrors[errorCode]); // "Double spend detected - this note has already been spent"
+
+// Check for stale Merkle root errors
+if (isRootNotFoundError(error)) {
+  // Regenerate proof with fresh root
+}
+```
+
+---
+
+### On-chain proof utilities
+
+The SDK can compute Merkle proofs directly from on-chain state without an indexer:
+
+```typescript
+import {
+  computeProofFromChain,
+  computeProofForLatestDeposit,
+  readMerkleTreeState,
+} from "@cloak.ag/sdk";
+
+// Get proof for a specific leaf index
+const proof = await computeProofFromChain(connection, merkleTreePDA, leafIndex);
+
+// Get proof for the most recently deposited note
+const latestProof = await computeProofForLatestDeposit(connection, merkleTreePDA);
+
+// Read the full merkle tree state
+const state = await readMerkleTreeState(connection, merkleTreePDA);
+console.log("Current root:", state.root);
+console.log("Next index:", state.nextIndex);
+```
+
+<Info>
+On-chain proof computation eliminates the dependency on external indexer services, improving reliability and decentralization.
+</Info>
+
+### Pending operations utilities
+
+Browser-based persistence for operation recovery:
+
+```typescript
+import {
+  savePendingDeposit,
+  loadPendingDeposits,
+  updatePendingDeposit,
+  removePendingDeposit,
+  savePendingWithdrawal,
+  loadPendingWithdrawals,
+  updatePendingWithdrawal,
+  removePendingWithdrawal,
+  hasPendingOperations,
+  getPendingOperationsSummary,
+  cleanupStalePendingOperations,
+  type PendingDeposit,
+  type PendingWithdrawal,
+} from "@cloak.ag/sdk";
+
+// Save pending deposit before transaction
+savePendingDeposit({
+  note,
+  startedAt: Date.now(),
+  status: "pending",
+});
+
+// Check for pending operations on page load
+if (hasPendingOperations()) {
+  const summary = getPendingOperationsSummary();
+  console.log(`${summary.deposits} pending deposits, ${summary.withdrawals} pending withdrawals`);
+}
+
+// Clean up stale operations (older than 24 hours by default)
+cleanupStalePendingOperations();
+```
+
+### RelayService
+
+Low-level relay client for advanced use cases:
+
+```typescript
+import { RelayService, type WithdrawSubmissionResult } from "@cloak.ag/sdk";
+
+const relay = new RelayService("https://api.cloak.ag");
+
+// Submit withdrawal with request ID callback
+const signature = await relay.submitWithdraw(
+  params,
+  (status) => console.log("Status:", status),
+  (requestId) => localStorage.setItem("pending_withdraw", requestId)
+);
+
+// Resume a pending withdrawal after page reload
+const result = await relay.resumeWithdraw(requestId, onStatusUpdate);
+if (result.status === "completed") {
+  console.log("Completed:", result.signature);
+}
+
+// Check status manually
+const status = await relay.getStatus(requestId);
 ```
 
 ---

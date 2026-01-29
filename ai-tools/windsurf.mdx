@@ -107,8 +107,8 @@ await sdk.swap(connection, note, recipient, {
 ```
 
 ## Fee Calculations
-- Fixed: 0.003 SOL per withdrawal
-- Variable: 0.5% of deposit amount
+- Fixed: 0.005 SOL per withdrawal
+- Variable: 0.3% of deposit amount
 
 ```typescript
 import { getDistributableAmount, calculateFee } from "@cloak.ag/sdk";
@@ -125,7 +125,7 @@ try {
   await sdk.withdraw(...);
 } catch (error) {
   if (error instanceof CloakError) {
-    // error.category: wallet | network | prover | relay | validation | indexer
+    // error.category: wallet | network | prover | relay | validation | environment
     // error.retryable: boolean
     if (error.retryable) {
       // Implement retry logic

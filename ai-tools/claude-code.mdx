@@ -53,12 +53,12 @@ const sdk = new CloakSDK({
 - `sdk.swap(connection, note, recipient, swapOptions)` → SwapResult
 
 ## Fee Structure
-- Fixed: 0.003 SOL per withdrawal
-- Variable: 0.5% of deposit amount
+- Fixed: 0.005 SOL per withdrawal
+- Variable: 0.3% of deposit amount
 - Use `getDistributableAmount(amount)` to calculate after-fee amount
 
 ## Error Handling
-CloakError has category (wallet|network|prover|relay|validation|indexer) 
+CloakError has category (wallet|network|prover|relay|validation|environment) 
 and retryable boolean for implementing retry logic.
 
 </Accordion>
@@ -201,7 +201,7 @@ Options:
 **CloakError:**
 ```typescript
 {
-  category: "wallet" | "network" | "prover" | "relay" | "validation" | "indexer";
+  category: "wallet" | "network" | "prover" | "relay" | "validation" | "environment";
   retryable: boolean;
   message: string;
 }

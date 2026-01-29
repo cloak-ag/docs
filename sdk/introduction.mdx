@@ -1,72 +1,28 @@
 ---
-title: "SDK introduction"
-description: "Build private transactions on Solana with zero-knowledge proofs"
+title: "Getting started with Cloak SDK"
+description: "Private transactions on Solana using zero-knowledge proofs"
 icon: "shield-halved"
 ---
 
-The Cloak SDK provides a complete TypeScript solution for integrating private transactions into your Solana applications. Using zero-knowledge proofs, your users can deposit, transfer, and swap SOL without exposing transaction details on-chain.
+Learn Cloak the way that best matches your learning style.
 
-<CardGroup cols={2}>
-<Card title="Quickstart" icon="rocket" href="/sdk/quickstart">
-Get started with your first private transaction in under 5 minutes.
+<CardGroup cols={3}>
+<Card title="Read the docs" icon="book" href="/sdk/quickstart">
+Learn how to integrate Cloak into your project step by step.
 </Card>
 
-<Card title="Core concepts" icon="lightbulb" href="/sdk/core-concepts">
-Understand notes, commitments, and the privacy model.
+<Card title="Explore examples" icon="code" href="https://github.com/cloak-ag/sdk/tree/main/examples">
+View real-world examples and copy-paste code snippets.
 </Card>
 
-<Card title="React integration" icon="react" href="/sdk/wallet-integration">
-Integrate with wallet adapters in React and Next.js applications.
-</Card>
-
-<Card title="API reference" icon="code" href="/sdk/api-reference">
-Complete SDK method documentation with examples.
+<Card title="API reference" icon="rectangle-terminal" href="/sdk/api-reference">
+Complete method documentation with type definitions.
 </Card>
 </CardGroup>
 
-## Key features
-
-<AccordionGroup>
-<Accordion title="Private transfers with ZK proofs">
-Send SOL privately using Groth16 zero-knowledge proofs. Recipients receive funds without any on-chain link to the sender.
-
-```typescript
-const result = await sdk.withdraw(connection, note, recipientAddress, {
-  withdrawAll: true,
-});
-```
-</Accordion>
-
-<Accordion title="Multi-recipient support">
-Split a single deposit across up to 5 recipients in one transaction. Ideal for payroll, distributions, or splitting payments.
-
-```typescript
-const result = await sdk.send(connection, note, [
-  { recipient: address1, amount: 50_000_000 },
-  { recipient: address2, amount: 47_000_000 },
-]);
-```
-</Accordion>
-
-<Accordion title="Private token swaps">
-Swap SOL for SPL tokens (like USDC) privately. The swap route is hidden from on-chain observers.
-
-```typescript
-const result = await sdk.swap(connection, note, recipient, {
-  outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", // USDC
-  minOutputAmount: 1000000,
-});
-```
-</Accordion>
-
-<Accordion title="Cross-platform compatibility">
-Works in Node.js scripts, React, Next.js, and other browser environments. Full TypeScript support with comprehensive types.
-</Accordion>
-</AccordionGroup>
+---
 
 ## Installation
-
-Install the SDK and required peer dependencies:
 
 <CodeGroup>
 ```bash npm
@@ -87,103 +43,103 @@ bun add @cloak.ag/sdk @solana/web3.js
 </CodeGroup>
 
 <Note>
-For swap functionality, install `@solana/spl-token` as an additional dependency.
+For swap functionality, also install `@solana/spl-token`.
 </Note>
+
+---
+
+## Quick example
+
+```typescript
+import { CloakSDK, getDistributableAmount } from "@cloak.ag/sdk";
+import { Connection, Keypair, PublicKey } from "@solana/web3.js";
+
+// Initialize
+const sdk = new CloakSDK({
+  keypairBytes: keypair.secretKey, // or wallet adapter
+  network: "devnet",
+});
+
+// Deposit SOL
+const { note } = await sdk.deposit(connection, 100_000_000);
+
+// Withdraw privately
+await sdk.withdraw(connection, note, recipient, { withdrawAll: true });
+```
+
+---
+
+## Key features
+
+| Feature | Description |
+|---------|-------------|
+| **Private transfers** | Send SOL with ZK proofs - no on-chain link between sender and recipient |
+| **Multi-recipient** | Split to up to 5 recipients in one transaction |
+| **Token swaps** | Swap SOL → USDC/other tokens privately |
+| **On-chain proofs** | No indexer needed - proofs computed from chain state |
+| **Cross-platform** | Works in Node.js, React, Next.js, React Native |
+
+---
 
 ## Network support
 
 | Network | Status | Program ID |
 |---------|--------|------------|
-| Mainnet | ✅ Live | `c1oak6tetxYnNfvXKFkpn1d98FxtK7B68vBQLYQpWKp` |
-| Devnet | ✅ Live | `3EvH6XYQir7D2RyzCdP7QFmJFfSPfdeoB8VnpLdEF4Kr` |
-| Localnet | ✅ Supported | Deploy your own |
+| Mainnet | Soon | `c1oak6tetxYnNfvXKFkpn1d98FxtK7B68vBQLYQpWKp` |
+| Devnet | Live | `c1oak6tetxYnNfvXKFkpn1d98FxtK7B68vBQLYQpWKp` |
+| Localnet | Supported | Deploy your own |
 
-## SDK architecture
-
-```mermaid
-graph TB
-    subgraph "Your Application"
-        APP[Application Code]
-    end
-    
-    subgraph "Cloak SDK"
-        SDK[CloakSDK Client]
-        PROOF[Proof Generator]
-        CRYPTO[Crypto Utilities]
-    end
-    
-    subgraph "Cloak Infrastructure"
-        RELAY[Relay Service]
-        INDEXER[Indexer Service]
-    end
-    
-    subgraph "Solana"
-        PROGRAM[Cloak Program]
-        TREE[Merkle Tree]
-    end
-    
-    APP --> SDK
-    SDK --> PROOF
-    SDK --> CRYPTO
-    SDK --> RELAY
-    SDK --> INDEXER
-    RELAY --> PROGRAM
-    PROGRAM --> TREE
-    INDEXER --> TREE
-```
+---
 
 ## Fee structure
 
-All private transactions incur protocol fees:
-
 | Fee type | Amount | Description |
 |----------|--------|-------------|
-| Fixed fee | 0.003 SOL | Base fee per withdrawal |
-| Variable fee | 0.5% | Percentage of deposit amount |
-
-<Tip>
-Use `getDistributableAmount()` to calculate the exact amount recipients will receive after fees.
+| Fixed fee | 0.005 SOL | Base fee per withdrawal |
+| Variable fee | 0.3% | Percentage of deposit amount |
 
 ```typescript
-import { getDistributableAmount } from "@cloak.ag/sdk";
+import { getDistributableAmount, calculateFee } from "@cloak.ag/sdk";
 
 const deposited = 100_000_000; // 0.1 SOL
-const afterFees = getDistributableAmount(deposited); // ~96,500,000 lamports
+const fee = calculateFee(deposited);           // 5,300,000 lamports
+const afterFees = getDistributableAmount(deposited); // 94,700,000 lamports
 ```
-</Tip>
+
+---
 
 ## Security model
 
 <Warning>
-**Critical: Protect your notes!**
-
-A Cloak Note contains the cryptographic secrets needed to withdraw funds. Anyone with access to a note can spend the deposited SOL. Treat notes like private keys:
-
-- Never share notes publicly
-- Store notes in secure, encrypted storage
-- Implement the `onNoteGenerated` callback to persist notes before deposits
+**Protect your notes!** A Cloak Note contains spending secrets. Anyone with the note can withdraw the funds. Treat notes like private keys.
 </Warning>
 
-The Cloak protocol provides the following security guarantees:
+| Guarantee | Description |
+|-----------|-------------|
+| **Transaction privacy** | On-chain observers cannot link deposits to withdrawals |
+| **Amount privacy** | Individual amounts hidden in the anonymity set |
+| **Double-spend protection** | Nullifiers prevent reusing notes |
+| **Proof verification** | All withdrawals require valid ZK proofs |
 
-1. **Transaction privacy**: On-chain observers cannot link deposits to withdrawals
-2. **Amount privacy**: Individual transaction amounts are hidden in the anonymity set
-3. **Double-spend protection**: Nullifiers prevent spending the same note twice
-4. **Proof verification**: All withdrawals require valid zero-knowledge proofs
+---
 
-## Next steps
+## Get involved
 
-<Steps>
-<Step title="Complete the quickstart">
-Follow the [quickstart guide](/sdk/quickstart) to make your first private transaction.
-</Step>
+<CardGroup cols={4}>
+<Card title="GitHub" icon="github" href="https://github.com/cloak-ag">
+Browse source code, report issues, contribute.
+</Card>
 
-<Step title="Understand core concepts">
-Read [core concepts](/sdk/core-concepts) to understand how Cloak notes and commitments work.
-</Step>
+<Card title="Discord" icon="discord" href="https://discord.gg/cloak">
+Join the community, get help, share projects.
+</Card>
 
-<Step title="Integrate with your app">
-See [wallet integration](/sdk/wallet-integration) for React and Next.js examples.
-</Step>
-</Steps>
+<Card title="Twitter" icon="x-twitter" href="https://x.com/cloakdotag">
+Follow for news, updates, and announcements.
+</Card>
+
+<Card title="NPM" icon="npm" href="https://www.npmjs.com/package/@cloak.ag/sdk">
+View package, versions, and downloads.
+</Card>
+</CardGroup>
 

@@ -5,10 +5,11 @@
 ## Package Information
 
 - **Name**: @cloak.ag/sdk
-- **Version**: 1.0.x
+- **Version**: 2.0.0
 - **License**: Apache-2.0
 - **Repository**: https://github.com/cloak-ag/sdk
 - **Documentation**: https://docs.cloak.ag/sdk
+- **Program ID**: c1oak6tetxYnNfvXKFkpn1d98FxtK7B68vBQLYQpWKp
 
 ## Installation
 
@@ -53,17 +54,24 @@ interface CloakNote {
   network: "devnet" | "mainnet";
   leafIndex?: number;     // Set after deposit
   depositSignature?: string;
+  root?: string;          // Merkle root at deposit time
+  merkleProof?: MerkleProof; // Proof computed from on-chain state
 }
 ```
 
 ### Fees
-- Fixed: 0.003 SOL per withdrawal
-- Variable: 0.5% of deposit amount
+- Fixed: 0.005 SOL per withdrawal
+- Variable: 0.3% of deposit amount
 
 ```typescript
-import { getDistributableAmount, calculateFee } from "@cloak.ag/sdk";
+import { getDistributableAmount, calculateFee, FIXED_FEE_LAMPORTS, VARIABLE_FEE_RATE } from "@cloak.ag/sdk";
+// FIXED_FEE_LAMPORTS = 5_000_000 (0.005 SOL)
+// VARIABLE_FEE_RATE = 0.003 (0.3%)
 const afterFees = getDistributableAmount(depositAmount);
 ```
+
+### No Indexer Required
+The SDK computes Merkle proofs directly from on-chain state using `computeProofFromChain()`. No external indexer dependency.
 
 ## Main Methods
 
@@ -72,7 +80,10 @@ const afterFees = getDistributableAmount(depositAmount);
 await sdk.deposit(connection: Connection, amount: number, options?: {
   onNoteGenerated?: (note: CloakNote) => Promise<void>; // CRITICAL: Save note here
   onProgress?: (status: string) => void;
-}): Promise<{ note: CloakNote; signature: string; leafIndex: number; }>
+  optimizeCU?: boolean;           // Enable simulation-based CU optimization (Node.js only)
+  loadedAccountsDataSizeLimit?: number; // Default 256KB
+  priorityFee?: number;           // Default 10_000 micro-lamports
+}): Promise<{ note: CloakNote; signature: string; leafIndex: number; root: string; }>
 ```
 
 ### CloakSDK.withdraw()
@@ -80,7 +91,7 @@ await sdk.deposit(connection: Connection, amount: number, options?: {
 await sdk.withdraw(connection: Connection, note: CloakNote, recipient: PublicKey, options?: {
   withdrawAll?: boolean;
   onProgress?: (status: string) => void;
-}): Promise<{ signature: string; outputs: Array<{recipient: string; amount: number}>; }>
+}): Promise<{ signature: string; outputs: Array<{recipient: string; amount: number}>; nullifier: string; root: string; }>
 ```
 
 ### CloakSDK.send()
@@ -98,7 +109,19 @@ await sdk.swap(connection: Connection, note: CloakNote, recipient: PublicKey, op
   outputMint: string;
   slippageBps?: number;
   minOutputAmount: number;
+  recipientAta?: string; // Recommended for browser environments
 }): Promise<SwapResult>
+```
+
+### CloakSDK.getMerkleProof()
+```typescript
+await sdk.getMerkleProof(connection: Connection, leafIndex: number): Promise<MerkleProof>
+```
+Computes proof directly from on-chain state.
+
+### CloakSDK.getCurrentRoot()
+```typescript
+await sdk.getCurrentRoot(connection: Connection): Promise<string>
 ```
 
 ## Error Handling
@@ -110,7 +133,7 @@ try {
   await sdk.withdraw(...);
 } catch (error) {
   if (error instanceof CloakError) {
-    // error.category: "wallet" | "network" | "prover" | "relay" | "validation" | "indexer"
+    // error.category: "wallet" | "network" | "prover" | "relay" | "validation" | "environment"
     // error.retryable: boolean
   }
 }
@@ -158,10 +181,18 @@ await sdk.deposit(connection, amount, {
 // Fee calculations
 getDistributableAmount(amount: number): number
 calculateFee(amount: number): number
+FIXED_FEE_LAMPORTS     // 5_000_000 (0.005 SOL)
+VARIABLE_FEE_RATE      // 0.003 (0.3%)
+
+// On-chain proof computation (no indexer needed!)
+computeProofFromChain(connection, merkleTreePDA, leafIndex): Promise<OnchainMerkleProof>
+computeProofForLatestDeposit(connection, merkleTreePDA): Promise<OnchainMerkleProof>
+readMerkleTreeState(connection, merkleTreePDA): Promise<MerkleTreeState>
 
 // Crypto
 computeCommitment(amount: bigint, r: bigint, sk: bigint): Promise<bigint>
 computeNullifierAsync(sk_spend: string, leafIndex: number): Promise<bigint>
+computeOutputsHashAsync(recipients: Transfer[]): Promise<bigint>
 
 // Validation
 isValidSolanaAddress(address: string): boolean
@@ -169,14 +200,19 @@ validateNote(note: CloakNote): void
 
 // Network
 getExplorerUrl(signature: string, network: Network): string
+CLOAK_PROGRAM_ID // c1oak6tetxYnNfvXKFkpn1d98FxtK7B68vBQLYQpWKp
 
 // Keys (v2.0)
 generateCloakKeys(): CloakKeyPair
 exportKeys(keys: CloakKeyPair): string
 importKeys(json: string): CloakKeyPair
+
+// UTXO utilities (v2.0)
+generateUtxoKeypair(): UtxoKeypair
+createUtxo(amount, mint, keypair): Utxo
+transact(params): Promise<TransactResult>
 ```
 
 ---
 
 For complete documentation, see: https://docs.cloak.ag/sdk
-
