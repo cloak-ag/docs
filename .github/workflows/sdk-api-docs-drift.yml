@@ -20,6 +20,7 @@ permissions:
 
 jobs:
   check-sdk-api-docs-drift:
+    if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork }}
     runs-on: ubuntu-latest
 
     steps:
@@ -28,11 +29,22 @@ jobs:
         with:
           path: docs-repo
 
+      - name: Ensure SDK repo token is configured
+        env:
+          SDK_REPO_TOKEN: ${{ secrets.CLOAK_SDK_REPO_TOKEN }}
+        run: |
+          if [ -z "$SDK_REPO_TOKEN" ]; then
+            echo "::error::Missing secret CLOAK_SDK_REPO_TOKEN (PAT with read access to cloak-ag/sdk)."
+            exit 1
+          fi
+
       - name: Checkout sdk repo
         uses: actions/checkout@v4
         with:
-          repository: cloak-ag/cloak-sdk
+          repository: cloak-ag/sdk
+          token: ${{ secrets.CLOAK_SDK_REPO_TOKEN }}
           path: sdk-repo
+          fetch-depth: 1
 
       - name: Setup Node
         uses: actions/setup-node@v4
