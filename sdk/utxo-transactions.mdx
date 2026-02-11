@@ -1,0 +1,132 @@
+---
+title: "UTXO Transactions (v2)"
+description: "Use the v2 UTXO APIs for deposits, transfers, withdrawals, and swaps"
+icon: "vault"
+---
+
+The SDK now exposes a full UTXO transaction API in addition to the note-based `CloakSDK` client.
+
+## What changed
+
+The v2 API is built around explicit UTXOs and proof generation:
+
+- `transact` for core UTXO transactions
+- `transfer` for shield-to-shield sends
+- `partialWithdraw` and `fullWithdraw`
+- `swapUtxo` and `swapWithChange`
+
+These APIs are exported directly from `@cloak.ag/sdk`.
+
+## Core model
+
+```typescript
+import type { Utxo, TransactParams, TransactOptions } from "@cloak.ag/sdk";
+
+interface TransactParams {
+  inputUtxos: Utxo[];
+  outputUtxos: Utxo[];
+  recipient?: PublicKey;
+  externalAmount?: bigint; // +deposit, -withdraw, 0=shield-to-shield
+}
+```
+
+`externalAmount` rules:
+
+- `> 0`: public deposit into the pool
+- `< 0`: public withdrawal from the pool
+- `0`: fully shielded transfer
+
+## Create UTXOs
+
+```typescript
+import {
+  createUtxo,
+  generateUtxoKeypair,
+  NATIVE_SOL_MINT,
+} from "@cloak.ag/sdk";
+
+const keypair = await generateUtxoKeypair();
+const utxo = await createUtxo(100_000_000n, keypair, NATIVE_SOL_MINT);
+```
+
+## Deposit example
+
+```typescript
+import { transact, createUtxo, generateUtxoKeypair } from "@cloak.ag/sdk";
+import { Connection, Keypair, PublicKey } from "@solana/web3.js";
+
+const connection = new Connection(process.env.SOLANA_RPC_URL!, "confirmed");
+const programId = new PublicKey(process.env.CLOAK_PROGRAM_ID!);
+const depositorKeypair = Keypair.fromSecretKey(secretKeyBytes);
+
+const owner = await generateUtxoKeypair();
+const output = await createUtxo(20_000_000n, owner); // 0.02 SOL
+
+const result = await transact(
+  {
+    inputUtxos: [],
+    outputUtxos: [output],
+    externalAmount: 20_000_000n,
+  },
+  {
+    connection,
+    programId,
+    relayUrl: process.env.CLOAK_RELAY_URL,
+    depositorKeypair,
+  }
+);
+
+console.log(result.signature, result.commitmentIndices);
+```
+
+## Transfer / withdraw helpers
+
+```typescript
+import { transfer, partialWithdraw, fullWithdraw } from "@cloak.ag/sdk";
+
+await transfer(inputUtxos, recipientUtxoPublicKey, 30_000_000n, options);
+await partialWithdraw(inputUtxos, recipientWallet, 10_000_000n, options);
+await fullWithdraw(inputUtxos, recipientWallet, options);
+```
+
+## Swap helpers
+
+```typescript
+import { swapWithChange } from "@cloak.ag/sdk";
+
+await swapWithChange(
+  inputUtxos,
+  50_000_000n,            // swap amount (lamports)
+  outputMint,
+  recipientAta,
+  1_000_000n,             // min output
+  {
+    connection,
+    programId,
+    relayUrl: process.env.CLOAK_RELAY_URL,
+  },
+  recipientWallet
+);
+```
+
+## Risk-oracle deposits
+
+When deposits require Range/Switchboard validation, include:
+
+- `riskOracleQueue`
+- `riskQuoteUrl` (or `getRiskQuoteInstruction`)
+
+If you submit V0 deposits with extra accounts, pass `addressLookupTableAccounts` in `TransactOptions`.
+
+## Operational notes
+
+- Amounts use `bigint` in the UTXO API.
+- Proof retries are built in for stale roots (`0x1001`).
+- Relay-backed Merkle tree reconstruction is preferred for older UTXO indices.
+- `MIN_DEPOSIT_LAMPORTS` is `10_000_000` (0.01 SOL).
+
+## Next
+
+- Protocol internals: [Shield Pool Program](/protocol/shield-pool)
+- Relay routes and payloads: [Relay API](/services/relay-api)
+- Full SDK exports: [API Reference](/sdk/api-reference)

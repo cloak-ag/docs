@@ -1,0 +1,46 @@
+name: SDK API Docs Drift
+
+on:
+  pull_request:
+    paths:
+      - "sdk/api-reference.mdx"
+      - "scripts/check-sdk-api-reference.mjs"
+      - ".github/workflows/sdk-api-docs-drift.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "sdk/api-reference.mdx"
+      - "scripts/check-sdk-api-reference.mjs"
+      - ".github/workflows/sdk-api-docs-drift.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check-sdk-api-docs-drift:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout docs repo
+        uses: actions/checkout@v4
+        with:
+          path: docs-repo
+
+      - name: Checkout sdk repo
+        uses: actions/checkout@v4
+        with:
+          repository: cloak-ag/sdk
+          path: sdk-repo
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Verify API reference export inventory
+        run: |
+          node docs-repo/scripts/check-sdk-api-reference.mjs \
+            --api docs-repo/sdk/api-reference.mdx \
+            --sdk-index sdk-repo/src/index.ts

@@ -1,278 +1,74 @@
 ---
 title: "Windsurf setup"
-description: "Configure Windsurf IDE for Cloak SDK development"
+description: "Rules and prompts for Cloak v2 development"
 icon: "wind"
 ---
 
-Configure Windsurf (Codeium's AI IDE) for effective Cloak SDK development. These rules help the AI understand SDK patterns and security requirements.
+Configure Windsurf with current Cloak APIs and constraints.
 
-## Cascade rules
+## Rule file
 
-Create `.windsurf/rules.md` in your project for Cascade context:
+Create `.windsurf/rules.md`:
 
-<Accordion title="View .windsurf/rules.md content">
+<Accordion title="View .windsurf/rules.md template">
 
-# Cloak SDK Development Rules
+# Cloak SDK v2 Rules
 
-## Overview
-This project uses @cloak.ag/sdk for private Solana transactions via zero-knowledge proofs.
+Project uses `@cloak.ag/sdk` for private Solana transactions.
 
-## SDK Capabilities
-- Deposit SOL into privacy pool (returns CloakNote)
-- Private withdrawals to any recipient
-- Multi-recipient transfers (up to 5)
-- Token swaps (SOL → SPL tokens)
-- On-chain Merkle proof computation (no external indexer needed)
+## API surfaces
 
-## SECURITY CRITICAL
+- Note API (`CloakSDK`)
+- UTXO API (`transact`, `transfer`, `partialWithdraw`, `fullWithdraw`, `swapUtxo`, `swapWithChange`)
 
-**CloakNote contains secrets:**
-```typescript
-interface CloakNote {
-  sk_spend: string;  // SPENDING SECRET - never log
-  r: string;         // RANDOMNESS SECRET - never log
-}
-```
+## Security
 
-**Always persist notes BEFORE deposit:**
-```typescript
-await sdk.deposit(connection, amount, {
-  onNoteGenerated: async (note) => {
-    await saveNoteSecurely(note);
-  },
-});
-```
+- Do not log note or UTXO secrets.
+- Persist generated notes in `onNoteGenerated` before deposit execution.
 
-## Initialization Patterns
+## Deployment constants
 
-**CRITICAL: Devnet requires explicit programId** (SDK defaults to mainnet):
-- Devnet: `3EvH6XYQir7D2RyzCdP7QFmJFfSPfdeoB8VnpLdEF4Kr`
-- Mainnet: `c1oak6tetxYnNfvXKFkpn1d98FxtK7B68vBQLYQpWKp` (default)
+- Mainnet constant: `c1oak6tetxYnNfvXKFkpn1d98FxtK7B68vBQLYQpWKp`
+- Development build: `3EvH6XYQir7D2RyzCdP7QFmJFfSPfdeoB8VnpLdEF4Kr`
 
-**Node.js:**
-```typescript
-import { CloakSDK } from "@cloak.ag/sdk";
-import { PublicKey } from "@solana/web3.js";
+## Fee constants
 
-const DEVNET_PROGRAM_ID = new PublicKey("3EvH6XYQir7D2RyzCdP7QFmJFfSPfdeoB8VnpLdEF4Kr");
+- `FIXED_FEE_LAMPORTS = 5_000_000`
+- Variable fee `amount * 3 / 1000`
+- `MIN_DEPOSIT_LAMPORTS = 10_000_000`
 
-const sdk = new CloakSDK({
-  keypairBytes: keypair.secretKey,
-  network: "devnet",
-  programId: DEVNET_PROGRAM_ID, // Required for devnet!
-  debug: true,
-});
-```
+## Errors
 
-**React/Browser:**
-```typescript
-import { CloakSDK } from "@cloak.ag/sdk";
-import { useWallet } from "@solana/wallet-adapter-react";
+Use `CloakError`, `ShieldPoolErrors`, `parseError`, and `isRootNotFoundError`.
 
-const { publicKey, signTransaction, sendTransaction } = useWallet();
+## Documentation links
 
-const sdk = new CloakSDK({
-  wallet: { publicKey, signTransaction, sendTransaction },
-  network: "devnet",
-});
-```
-
-## Core Operations
-
-**Deposit:**
-```typescript
-const result = await sdk.deposit(connection, amountLamports, {
-  onNoteGenerated: async (note) => {
-    await persistNote(note);
-  },
-});
-```
-
-**Withdraw:**
-```typescript
-const result = await sdk.withdraw(connection, note, recipientPubkey, {
-  withdrawAll: true,
-});
-```
-
-**Multi-send:**
-```typescript
-import { getDistributableAmount } from "@cloak.ag/sdk";
-
-const distributable = getDistributableAmount(note.amount);
-await sdk.send(connection, note, [
-  { recipient: addr1, amount: distributable / 2 },
-  { recipient: addr2, amount: distributable / 2 },
-]);
-```
-
-**Swap:**
-```typescript
-await sdk.swap(connection, note, recipient, {
-  outputMint: "USDC_MINT_ADDRESS",
-  slippageBps: 100,
-  minOutputAmount: 1_000_000,
-});
-```
-
-## Fee Calculations
-- Fixed: 0.005 SOL per withdrawal
-- Variable: 0.3% of deposit amount
-
-```typescript
-import { getDistributableAmount, calculateFee } from "@cloak.ag/sdk";
-
-const afterFees = getDistributableAmount(depositAmount);
-const totalFee = calculateFee(depositAmount);
-```
-
-## Error Handling
-```typescript
-import { CloakError, ShieldPoolErrors, isRootNotFoundError } from "@cloak.ag/sdk";
-
-try {
-  await sdk.withdraw(...);
-} catch (error) {
-  if (error instanceof CloakError) {
-    // error.category: wallet | network | prover | relay | validation | environment
-    // error.retryable: boolean
-    if (error.retryable) {
-      // Implement retry logic
-    }
-  }
-  
-  // Common error codes:
-  // 0x1001 = RootNotFound (SDK retries with fresh proof)
-  // 0x1010 = ProofInvalid
-  // 0x1020 = DoubleSpend (note already spent)
-  // 0x1076 = ProofVerificationFailed
-  if (isRootNotFoundError(error)) {
-    console.log("Merkle root expired");
-  }
-}
-```
-
-## Key Validations
-1. Check `note.leafIndex !== undefined` before withdraw
-2. Recipient amounts must sum to `getDistributableAmount(note.amount)`
-3. Max 5 recipients per transfer
-4. Notes can only be spent once (nullifier prevents double-spend)
+- `/sdk/quickstart`
+- `/sdk/utxo-transactions`
+- `/sdk/migration-v1-v2`
+- `/protocol/shield-pool`
+- `/services/relay-api`
 
 </Accordion>
 
-## Workspace configuration
-
-Create a `.windsurf/config.json` for project settings:
-
-```json
-{
-  "project": {
-    "name": "cloak-integration",
-    "description": "Private transactions with Cloak SDK"
-  },
-  "context": {
-    "documentation": [
-      "https://docs.cloak.ag/sdk"
-    ],
-    "types": [
-      "node_modules/@cloak.ag/sdk/dist/index.d.ts"
-    ]
-  },
-  "rules": [
-    "Never log or expose CloakNote objects",
-    "Always implement onNoteGenerated for deposits",
-    "Use getDistributableAmount() for recipient calculations",
-    "Handle CloakError with category-specific logic"
-  ]
-}
-```
-
-## Cascade prompts
-
-### Initialize SDK hook
-
-```
-Create a React hook for Cloak SDK that:
-1. Initializes when wallet connects
-2. Exposes deposit, withdraw, and send functions
-3. Handles loading and error states
-4. Uses @solana/wallet-adapter-react
-```
-
-### Safe deposit flow
-
-```
-Implement a deposit function with:
-1. onNoteGenerated callback saving to encrypted storage
-2. Progress callback updating UI
-3. Error handling with CloakError categories
-4. Loading state management
-```
-
-### Multi-recipient component
-
-```
-Build a MultiRecipientTransfer component:
-1. Dynamic recipient inputs (1-5)
-2. Auto-calculate per-recipient amounts after fees
-3. Validate total matches distributable amount
-4. Show fee breakdown
-5. Handle proof generation progress
-```
-
-### Error handling layer
-
-```
-Create an error handling utility for Cloak operations:
-1. Parse CloakError by category
-2. Show appropriate user messages
-3. Implement retry for retryable errors
-4. Log safely (never log note secrets)
-```
-
-## Codeium context tips
+## Prompt examples
 
 <AccordionGroup>
-<Accordion title="Index SDK types">
-Open `node_modules/@cloak.ag/sdk/dist/index.d.ts` to let Windsurf index all types and function signatures.
+<Accordion title="Wallet + CloakSDK">
+Generate a wallet-adapter integration with CloakSDK note-based operations, progress callbacks, and safe note storage.
 </Accordion>
 
-<Accordion title="Keep examples visible">
-Keep working Cloak integration code open in a tab. Windsurf uses visible files for better suggestions.
+<Accordion title="UTXO + relay">
+Implement an end-to-end UTXO flow with `transact` and `swapUtxo`, including `/status/:id` polling and retry for stale roots.
 </Accordion>
 
-<Accordion title="Add JSDoc comments">
-Document your Cloak-related functions with JSDoc for improved autocomplete.
-</Accordion>
-
-<Accordion title="Use inline comments">
-Add context comments near complex Cloak operations.
+<Accordion title="v1 to v2 migration">
+Refactor this code from note-only transfers to UTXO transaction helpers while keeping API compatibility at the UI layer.
 </Accordion>
 </AccordionGroup>
 
-## Security checklist
+## Related docs
 
-Before committing Cloak integration code, verify:
-
-- No CloakNote objects logged anywhere
-- onNoteGenerated callback implemented for all deposits
-- Notes stored in encrypted storage (not plain localStorage)
-- Error messages don't expose note contents
-- No hardcoded private keys or secrets
-- Circuit files excluded from version control (if local)
-
-<Warning>
-Windsurf's code suggestions may sometimes include logging statements. Always review generated code to ensure no sensitive CloakNote data is logged.
-</Warning>
-
-## Next steps
-
-<CardGroup cols={2}>
-<Card title="SDK quickstart" icon="rocket" href="/sdk/quickstart">
-Complete your first private transaction.
-</Card>
-
-<Card title="Wallet integration" icon="wallet" href="/sdk/wallet-integration">
-Full React/Next.js integration guide.
-</Card>
-</CardGroup>
+- [Quickstart](/sdk/quickstart)
+- [UTXO Transactions](/sdk/utxo-transactions)
+- [Migration v1 → v2](/sdk/migration-v1-v2)

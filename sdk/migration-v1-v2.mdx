@@ -1,0 +1,79 @@
+---
+title: "Migration v1 → v2"
+description: "Move from note-only integration to the v2 UTXO-capable SDK"
+icon: "arrows-rotate"
+---
+
+This guide maps common v1 note-based patterns to v2 APIs.
+
+## What stayed the same
+
+- `CloakSDK` still supports note-based flows (`deposit`, `withdraw`, `send`, `swap`).
+- Fee constants and proof verification model remain aligned with on-chain program.
+- Stale-root retry patterns still center on `RootNotFound (0x1001)`.
+
+## What is new in v2
+
+- UTXO transaction functions are exported directly:
+  - `transact`
+  - `transfer`
+  - `partialWithdraw`
+  - `fullWithdraw`
+  - `swapUtxo`
+  - `swapWithChange`
+- UTXO primitives are now first-class (`createUtxo`, `generateUtxoKeypair`, ...).
+- Deposit flows can include risk-oracle quote integration in UTXO mode.
+
+## Quick mapping
+
+| v1 style | v2 option |
+|---|---|
+| `sdk.deposit(...)` + `sdk.withdraw(...)` | Keep as-is, still supported |
+| Multi-recipient note send | Keep `sdk.send(...)` |
+| Need explicit shielded state control | Use `transact(...)` |
+| Partial withdraw with deterministic change UTXO | Use `partialWithdraw(...)` |
+| Swap with change handling in UTXO flow | Use `swapWithChange(...)` |
+
+## Before (note model)
+
+```typescript
+const sdk = new CloakSDK({ keypairBytes, network: "devnet", programId });
+
+const deposit = await sdk.deposit(connection, 100_000_000);
+await sdk.withdraw(connection, deposit.note, recipient, { withdrawAll: true });
+```
+
+## After (UTXO model)
+
+```typescript
+const owner = await generateUtxoKeypair();
+const output = await createUtxo(100_000_000n, owner);
+
+await transact(
+  {
+    inputUtxos: [],
+    outputUtxos: [output],
+    externalAmount: 100_000_000n,
+  },
+  {
+    connection,
+    programId,
+    relayUrl,
+    depositorKeypair,
+  }
+);
+```
+
+## Migration checklist
+
+- Keep note model for product flows that already work.
+- Adopt UTXO functions where you need custom orchestration.
+- Use `bigint` amounts in UTXO APIs.
+- Ensure relay endpoints are configured for UTXO routes (`/transact`, `/transact_swap`).
+- If risk-oracle is enabled on your deployment, provide `riskQuoteUrl` or `getRiskQuoteInstruction`.
+
+## Related
+
+- [UTXO Transactions (v2)](/sdk/utxo-transactions)
+- [API Reference](/sdk/api-reference)
+- [Relay API](/services/relay-api)

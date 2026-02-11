@@ -1,26 +1,27 @@
 ---
 title: "Getting started with Cloak SDK"
-description: "Private transactions on Solana using zero-knowledge proofs"
+description: "Private transactions on Solana with note-based and UTXO-based APIs"
 icon: "shield-halved"
 ---
 
-Learn Cloak the way that best matches your learning style.
+Cloak SDK v2 ships with two transaction interfaces:
+
+- **Note API** via `CloakSDK` (`deposit`, `withdraw`, `send`, `swap`)
+- **UTXO API** via top-level functions (`transact`, `transfer`, `swapUtxo`, ...)
 
 <CardGroup cols={3}>
-<Card title="Read the docs" icon="book" href="/sdk/quickstart">
-Learn how to integrate Cloak into your project step by step.
+<Card title="Quickstart" icon="rocket" href="/sdk/quickstart">
+Run a complete deposit and private withdrawal flow.
 </Card>
 
-<Card title="Explore examples" icon="code" href="https://github.com/cloak-ag/sdk/tree/main/examples">
-View real-world examples and copy-paste code snippets.
+<Card title="UTXO Transactions" icon="vault" href="/sdk/utxo-transactions">
+Use the v2 UTXO model directly.
 </Card>
 
-<Card title="API reference" icon="rectangle-terminal" href="/sdk/api-reference">
-Complete method documentation with type definitions.
+<Card title="API Reference" icon="rectangle-terminal" href="/sdk/api-reference">
+Current exports and signatures from `@cloak.ag/sdk`.
 </Card>
 </CardGroup>
-
----
 
 ## Installation
 
@@ -42,108 +43,53 @@ bun add @cloak.ag/sdk @solana/web3.js
 ```
 </CodeGroup>
 
-<Note>
-For swap functionality, also install `@solana/spl-token`.
-</Note>
+For swap flows, install SPL token utilities too:
 
----
+```bash
+npm install @solana/spl-token
+```
 
-## Quick example
+## Minimal note-based example
 
 ```typescript
-import { CloakSDK, getDistributableAmount } from "@cloak.ag/sdk";
+import { CloakSDK } from "@cloak.ag/sdk";
 import { Connection, Keypair, PublicKey } from "@solana/web3.js";
 
-// Initialize
+const connection = new Connection("https://api.devnet.solana.com", "confirmed");
+const keypair = Keypair.fromSecretKey(/* Uint8Array secret key */);
+
 const sdk = new CloakSDK({
-  keypairBytes: keypair.secretKey, // or wallet adapter
+  keypairBytes: keypair.secretKey,
   network: "devnet",
+  // Set explicitly when using development/devnet deployments
+  programId: new PublicKey("3EvH6XYQir7D2RyzCdP7QFmJFfSPfdeoB8VnpLdEF4Kr"),
 });
 
-// Deposit SOL
-const { note } = await sdk.deposit(connection, 100_000_000);
-
-// Withdraw privately
-await sdk.withdraw(connection, note, recipient, { withdrawAll: true });
+const deposit = await sdk.deposit(connection, 100_000_000);
+await sdk.withdraw(connection, deposit.note, new PublicKey("RECIPIENT"), {
+  withdrawAll: true,
+});
 ```
 
----
+## Network and program IDs
 
-## Key features
+`programs/shield-pool/src/lib.rs` defines:
 
-| Feature | Description |
-|---------|-------------|
-| **Private transfers** | Send SOL with ZK proofs - no on-chain link between sender and recipient |
-| **Multi-recipient** | Split to up to 5 recipients in one transaction |
-| **Token swaps** | Swap SOL → USDC/other tokens privately |
-| **On-chain proofs** | No indexer needed - proofs computed from chain state |
-| **Cross-platform** | Works in Node.js, React, Next.js, React Native |
+- Mainnet/default build: `c1oak6tetxYnNfvXKFkpn1d98FxtK7B68vBQLYQpWKp`
+- Development build: `3EvH6XYQir7D2RyzCdP7QFmJFfSPfdeoB8VnpLdEF4Kr`
 
----
+`CloakSDK` defaults to `CLOAK_PROGRAM_ID` (mainnet constant), so set `programId` explicitly for development deployments.
 
-## Network support
+## Core protocol fees
 
-| Network | Status | Program ID |
-|---------|--------|------------|
-| Mainnet | Soon | `c1oak6tetxYnNfvXKFkpn1d98FxtK7B68vBQLYQpWKp` |
-| Devnet | Live | `c1oak6tetxYnNfvXKFkpn1d98FxtK7B68vBQLYQpWKp` |
-| Localnet | Supported | Deploy your own |
+From shared constants (`programs/shield-pool`, `sdk`, `services/relay`):
 
----
+- Fixed: `5_000_000` lamports (0.005 SOL)
+- Variable: `amount * 3 / 1000` (0.3%)
+- Minimum deposit: `10_000_000` lamports (0.01 SOL)
 
-<Tip>
-The SDK computes Merkle proofs directly from on-chain state, eliminating the need for an external indexer service. This improves reliability and decentralization.
-</Tip>
+## Architecture links
 
-## Fee structure
-
-| Fee type | Amount | Description |
-|----------|--------|-------------|
-| Fixed fee | 0.005 SOL | Base fee per withdrawal |
-| Variable fee | 0.3% | Percentage of deposit amount |
-
-```typescript
-import { getDistributableAmount, calculateFee } from "@cloak.ag/sdk";
-
-const deposited = 100_000_000; // 0.1 SOL
-const fee = calculateFee(deposited);           // 5,300,000 lamports
-const afterFees = getDistributableAmount(deposited); // 94,700,000 lamports
-```
-
----
-
-## Security model
-
-<Warning>
-**Protect your notes!** A Cloak Note contains spending secrets. Anyone with the note can withdraw the funds. Treat notes like private keys.
-</Warning>
-
-| Guarantee | Description |
-|-----------|-------------|
-| **Transaction privacy** | On-chain observers cannot link deposits to withdrawals |
-| **Amount privacy** | Individual amounts hidden in the anonymity set |
-| **Double-spend protection** | Nullifiers prevent reusing notes |
-| **Proof verification** | All withdrawals require valid ZK proofs |
-
----
-
-## Get involved
-
-<CardGroup cols={4}>
-<Card title="GitHub" icon="github" href="https://github.com/cloak-ag">
-Browse source code, report issues, contribute.
-</Card>
-
-<Card title="Discord" icon="discord" href="https://discord.com/invite/HDt3Nb6adt">
-Join the community, get help, share projects.
-</Card>
-
-<Card title="Twitter" icon="x-twitter" href="https://x.com/cloakdotag">
-Follow for news, updates, and announcements.
-</Card>
-
-<Card title="NPM" icon="npm" href="https://www.npmjs.com/package/@cloak.ag/sdk">
-View package, versions, and downloads.
-</Card>
-</CardGroup>
-
+- System overview: [Protocol Architecture](/protocol/architecture)
+- Program-level details: [Shield Pool Program](/protocol/shield-pool)
+- Relay endpoints: [Relay API](/services/relay-api)

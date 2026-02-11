@@ -17,13 +17,15 @@
             "group": "Getting Started",
             "pages": [
               "sdk/introduction",
-              "sdk/quickstart"
+              "sdk/quickstart",
+              "sdk/migration-v1-v2"
             ]
           },
           {
             "group": "Core Concepts",
             "pages": [
-              "sdk/core-concepts"
+              "sdk/core-concepts",
+              "sdk/utxo-transactions"
             ]
           },
           {
@@ -31,6 +33,19 @@
             "pages": [
               "sdk/wallet-integration",
               "sdk/error-handling"
+            ]
+          },
+          {
+            "group": "Protocol",
+            "pages": [
+              "protocol/architecture",
+              "protocol/shield-pool"
+            ]
+          },
+          {
+            "group": "Relay Service",
+            "pages": [
+              "services/relay-api"
             ]
           },
           {

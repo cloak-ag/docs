@@ -1,0 +1,85 @@
+---
+title: "Shield Pool Program"
+description: "Instruction set, fees, PDAs, and error model for the on-chain program"
+icon: "microchip"
+---
+
+Source: `programs/shield-pool`.
+
+## Program identifiers
+
+From `programs/shield-pool/src/lib.rs`:
+
+- Mainnet (default build): `c1oak6tetxYnNfvXKFkpn1d98FxtK7B68vBQLYQpWKp`
+- Development feature build: `3EvH6XYQir7D2RyzCdP7QFmJFfSPfdeoB8VnpLdEF4Kr`
+
+## Instruction discriminants
+
+From `programs/shield-pool/src/instructions/mod.rs`:
+
+- `0`: `Initialize`
+- `4`: `PrepareSwapSol`
+- `5`: `ExecuteSwap`
+- `8`: `Transact`
+- `9`: `TransactSwap`
+
+## Fees
+
+From `programs/shield-pool/src/constants.rs`:
+
+- `FIXED_FEE_LAMPORTS = 5_000_000` (0.005 SOL)
+- Variable fee: `amount * 3 / 1000` (0.3%)
+- `MIN_DEPOSIT_LAMPORTS = 10_000_000` (0.01 SOL)
+
+The SDK (`sdk/src/utils/fees.ts`) and relay (`services/relay/src/fee_constants.rs`) are aligned to these constants.
+
+## Merkle tree and nullifiers
+
+- Tree height: `32`
+- Root history size: `100`
+- Nullifiers are PDA-backed for O(1) spent checks
+
+Relevant seeds:
+
+- Pool: `["pool"]`
+- Treasury: `["treasury"]`
+- Merkle tree: `["merkle_tree"]`
+- Nullifier: `["nullifier", nullifier_hash]`
+- Swap state: `["swap_state", pool_pubkey, nullifier]`
+
+## Execution model
+
+### `Transact`
+
+- Verifies 256-byte Groth16 proof
+- Validates root in root history
+- Marks input nullifiers as spent
+- Appends output commitments
+- Handles deposit/withdraw public amount path
+
+### `TransactSwap`
+
+- Performs transact semantics
+- Stores swap parameters in `SwapState`
+- Defers DEX execution to subsequent instructions
+
+### `PrepareSwapSol` + `ExecuteSwap`
+
+- Moves SOL into wSOL ATA
+- Executes swap CPI
+- Closes swap state
+
+## Error code families
+
+From `programs/shield-pool/src/error.rs`:
+
+- `0x1000-0x1002`: root management
+- `0x1010-0x1013`: proof input/proof shape errors
+- `0x1020-0x1026`: nullifier and signer checks
+- `0x1030-0x1039`: output/conservation/fee constraints
+- `0x1050-0x105D`: account validation
+- `0x1070-0x1076`: Groth16 verifier failures
+- `0x1080-0x1082`: Merkle tree bounds/hash errors
+- `0x10A0-0x10A1`: risk-oracle checks
+
+For SDK-side mapping utilities, see `ShieldPoolErrors` in [Error Handling](/sdk/error-handling).

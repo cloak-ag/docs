@@ -1,749 +1,386 @@
 ---
 title: "API reference"
-description: "Complete SDK method and type documentation"
+description: "Current public API for @cloak.ag/sdk v2"
 icon: "code"
 ---
 
-This reference documents all public methods, types, and utilities exported by `@cloak.ag/sdk`.
+This page tracks the current exports in `sdk/src/index.ts`.
 
-## CloakSDK
-
-The main client for interacting with the Cloak protocol.
+## Main client: `CloakSDK`
 
 ### Constructor
 
 ```typescript
-new CloakSDK(config: CloakSDKConfig)
+new CloakSDK({
+  keypairBytes?: Uint8Array;
+  wallet?: WalletAdapter;
+  network?: "localnet" | "devnet" | "mainnet" | "testnet";
+  cloakKeys?: CloakKeyPair;
+  storage?: StorageAdapter;
+  programId?: PublicKey;
+  relayUrl?: string;
+  debug?: boolean;
+})
 ```
 
-<ParamField body="keypairBytes" type="Uint8Array">
-Keypair secret key for signing transactions. Required for Node.js usage.
-</ParamField>
+At least one signer path is required: `keypairBytes` or `wallet`.
 
-<ParamField body="wallet" type="WalletAdapter">
-Wallet adapter for browser environments. Provides `publicKey`, `signTransaction`, and `sendTransaction`.
-</ParamField>
-
-<ParamField body="network" type="Network" default="devnet">
-Target network: `"devnet"` | `"mainnet"` | `"localnet"` | `"testnet"`
-</ParamField>
-
-<ParamField body="cloakKeys" type="CloakKeyPair">
-Optional key hierarchy for v2.0 features (note scanning, encrypted outputs).
-</ParamField>
-
-<ParamField body="programId" type="PublicKey">
-Custom program ID. **Required for devnet** - SDK defaults to mainnet.
-</ParamField>
-
-
-<ParamField body="relayUrl" type="string">
-Custom relay URL. Defaults to `https://api.cloak.ag`.
-</ParamField>
-
-<ParamField body="debug" type="boolean" default="false">
-Enable structured debug logging.
-</ParamField>
-
-<CodeGroup>
-```typescript Node.js
-import { CloakSDK } from "@cloak.ag/sdk";
-import { Keypair } from "@solana/web3.js";
-
-const keypair = Keypair.fromSecretKey(secretKey);
-
-const sdk = new CloakSDK({
-  keypairBytes: keypair.secretKey,
-  network: "devnet",
-  debug: true,
-});
-```
-
-```typescript React/Browser
-import { CloakSDK } from "@cloak.ag/sdk";
-import { useWallet } from "@solana/wallet-adapter-react";
-
-const { publicKey, signTransaction, sendTransaction } = useWallet();
-
-const sdk = new CloakSDK({
-  wallet: { publicKey, signTransaction, sendTransaction },
-  network: "devnet",
-});
-```
-</CodeGroup>
-
----
-
-### deposit
-
-Deposit SOL into the privacy pool.
+### Core methods
 
 ```typescript
-async deposit(
-  connection: Connection,
-  amountOrNote: number | CloakNote,
-  options?: DepositOptions
-): Promise<DepositResult>
+sdk.deposit(connection, amountOrNote, options?) => Promise<DepositResult>
+sdk.withdraw(connection, note, recipient, options?) => Promise<TransferResult>
+sdk.send(connection, note, recipients, options?) => Promise<TransferResult>
+sdk.swap(connection, note, recipient, options) => Promise<SwapResult>
 ```
 
-<ParamField body="connection" type="Connection" required>
-Solana RPC connection.
-</ParamField>
-
-<ParamField body="amountOrNote" type="number | CloakNote" required>
-Amount in lamports, or an existing note to deposit.
-</ParamField>
-
-<ParamField body="options" type="DepositOptions">
-Optional configuration.
-
-<Expandable title="DepositOptions">
-  <ParamField body="onProgress" type="function">
-  Callback for progress updates: `(status: DepositStatus) => void`
-  </ParamField>
-  
-  <ParamField body="onNoteGenerated" type="function">
-  **Critical callback** fired before deposit. Use to persist the note.
-  `(note: CloakNote) => Promise<void>`
-  </ParamField>
-  
-  <ParamField body="skipPreflight" type="boolean" default="false">
-  Skip transaction simulation.
-  </ParamField>
-  
-  <ParamField body="computeUnits" type="number" default="40000">
-  Compute unit limit for the transaction.
-  </ParamField>
-  
-  <ParamField body="priorityFee" type="number" default="10000">
-  Priority fee in micro-lamports.
-  </ParamField>
-  
-  <ParamField body="optimizeCU" type="boolean" default="false">
-  Enable simulation-based compute unit optimization. Only works in keypair mode (Node.js), ignored in wallet/browser mode.
-  </ParamField>
-  
-  <ParamField body="loadedAccountsDataSizeLimit" type="number" default="262144">
-  Loaded accounts data size limit in bytes. Default 256KB. Set to 0 to disable.
-  </ParamField>
-</Expandable>
-</ParamField>
-
-<ResponseField name="DepositResult" type="object">
-<Expandable title="Properties">
-  <ResponseField name="note" type="CloakNote" required>
-  The note with deposit metadata. **Save this immediately.**
-  </ResponseField>
-  
-  <ResponseField name="signature" type="string" required>
-  Transaction signature.
-  </ResponseField>
-  
-  <ResponseField name="leafIndex" type="number" required>
-  Index in the Merkle tree.
-  </ResponseField>
-  
-  <ResponseField name="root" type="string" required>
-  Merkle root after deposit.
-  </ResponseField>
-</Expandable>
-</ResponseField>
+Also available:
 
 ```typescript
-const result = await sdk.deposit(connection, 100_000_000, {
-  onNoteGenerated: async (note) => {
-    await localStorage.setItem(`note_${note.commitment}`, JSON.stringify(note));
-  },
-  onProgress: (status) => console.log("Deposit:", status),
-});
-
-console.log("Deposited at leaf", result.leafIndex);
+sdk.privateTransfer(connection, note, recipients, options?)
+sdk.generateNote(amountLamports, useWalletKeys?)
+sdk.getMerkleProof(connection, leafIndex)
+sdk.getCurrentRoot(connection)
+sdk.getTransactionStatus(requestId)
 ```
 
----
-
-### withdraw
-
-Withdraw to a single recipient.
+Storage/key helpers on the class:
 
 ```typescript
-async withdraw(
-  connection: Connection,
-  note: CloakNote,
-  recipient: PublicKey,
-  options?: WithdrawOptions
-): Promise<TransferResult>
+sdk.loadNotes()
+sdk.saveNote(note)
+sdk.findNote(commitment)
+sdk.importWalletKeys(keysJson)
+sdk.exportWalletKeys()
+sdk.getConfig()
 ```
 
-<ParamField body="connection" type="Connection" required>
-Solana RPC connection.
-</ParamField>
-
-<ParamField body="note" type="CloakNote" required>
-Note to spend. Must be deposited (have `leafIndex`).
-</ParamField>
-
-<ParamField body="recipient" type="PublicKey" required>
-Recipient's Solana address.
-</ParamField>
-
-<ParamField body="options" type="WithdrawOptions">
-<Expandable title="Properties">
-  <ParamField body="withdrawAll" type="boolean" default="true">
-  Withdraw full amount minus fees.
-  </ParamField>
-  
-  <ParamField body="amount" type="number">
-  Specific amount to withdraw (if not withdrawing all).
-  </ParamField>
-  
-  <ParamField body="onProgress" type="function">
-  Progress callback: `(status: string) => void`
-  </ParamField>
-</Expandable>
-</ParamField>
-
-<ResponseField name="TransferResult" type="object">
-<Expandable title="Properties">
-  <ResponseField name="signature" type="string" required>
-  Transaction signature.
-  </ResponseField>
-  
-  <ResponseField name="outputs" type="array" required>
-  Array of `{ recipient: string, amount: number }`.
-  </ResponseField>
-  
-  <ResponseField name="nullifier" type="string" required>
-  Nullifier used (prevents double-spend).
-  </ResponseField>
-  
-  <ResponseField name="root" type="string" required>
-  Merkle root proven against.
-  </ResponseField>
-</Expandable>
-</ResponseField>
+## Note API types
 
 ```typescript
-const result = await sdk.withdraw(connection, note, recipient, {
-  withdrawAll: true,
-  onProgress: (status) => console.log("Withdraw:", status),
-});
+type DepositResult = {
+  note: CloakNote;
+  signature: string;
+  leafIndex: number;
+  root: string;
+};
 
-console.log("Sent", result.outputs[0].amount, "to", result.outputs[0].recipient);
+type TransferResult = {
+  signature: string;
+  outputs: Array<{ recipient: string; amount: number }>;
+  nullifier: string;
+  root: string;
+};
 ```
 
----
+## UTXO API (v2)
 
-### send
-
-Send to multiple recipients (1-5).
+Exports from `core/utxo.ts` and `core/transact.ts`:
 
 ```typescript
-async send(
-  connection: Connection,
-  note: CloakNote,
-  recipients: Transfer[],
-  options?: TransferOptions
-): Promise<TransferResult>
+transact(params, options)
+transfer(inputUtxos, recipientPubkey, amount, options)
+partialWithdraw(inputUtxos, recipient, withdrawAmount, options)
+fullWithdraw(inputUtxos, recipient, options)
+swapUtxo(params, options)
+swapWithChange(inputUtxos, swapAmount, outputMint, recipientAta, minOutputAmount, options, recipientWallet?)
 ```
 
-<ParamField body="recipients" type="Transfer[]" required>
-Array of 1-5 recipients with amounts. Sum must equal `getDistributableAmount(note.amount)`.
+UTXO primitives:
 
 ```typescript
-interface Transfer {
-  recipient: PublicKey;
-  amount: number; // lamports
-}
+generateUtxoKeypair()
+createUtxo(amount, keypair, mint?)
+createZeroUtxo(mint?)
+computeUtxoCommitment(utxo)
+computeUtxoNullifier(utxo)
 ```
-</ParamField>
+
+Full flow guide: [UTXO Transactions (v2)](/sdk/utxo-transactions)
+
+## Relay and proof utilities
 
 ```typescript
-import { getDistributableAmount } from "@cloak.ag/sdk";
+new RelayService(baseUrl)
+relay.submitWithdraw(...)
+relay.submitSwap(...)
+relay.getStatus(requestId)
+relay.resumeWithdraw(requestId)
 
-const distributable = getDistributableAmount(note.amount);
-
-const result = await sdk.send(connection, note, [
-  { recipient: address1, amount: Math.floor(distributable * 0.5) },
-  { recipient: address2, amount: Math.floor(distributable * 0.5) },
-]);
+computeProofFromChain(connection, merkleTreePDA, leafIndex)
+readMerkleTreeState(connection, merkleTreePDA)
+buildMerkleTreeFromRelay(relayUrl)
 ```
 
----
-
-### swap
-
-Swap SOL for SPL tokens privately.
+## Fee constants
 
 ```typescript
-async swap(
-  connection: Connection,
-  note: CloakNote,
-  recipient: PublicKey,
-  options: SwapOptions
-): Promise<SwapResult>
+FIXED_FEE_LAMPORTS      // 5_000_000
+VARIABLE_FEE_NUMERATOR  // 3
+VARIABLE_FEE_DENOMINATOR// 1000
+MIN_DEPOSIT_LAMPORTS    // 10_000_000
+VARIABLE_FEE_RATE       // 0.003
+
+calculateFee(amount: number)
+calculateFeeBigint(amount: bigint)
+getDistributableAmount(amount: number)
 ```
 
-<ParamField body="options" type="SwapOptions" required>
-<Expandable title="Properties">
-  <ParamField body="outputMint" type="string" required>
-  SPL token mint address to swap to.
-  </ParamField>
-  
-  <ParamField body="slippageBps" type="number" default="100">
-  Slippage tolerance in basis points (100 = 1%).
-  </ParamField>
-  
-  <ParamField body="minOutputAmount" type="number">
-  Minimum tokens to receive. Required if `getQuote` not provided.
-  </ParamField>
-  
-  <ParamField body="getQuote" type="function">
-  Optional quote fetcher: `(amount, mint, slippage) => Promise<{ outAmount, minOutputAmount }>`
-  </ParamField>
-  
-  <ParamField body="recipientAta" type="string">
-  Pre-computed associated token account. Recommended for browser usage.
-  </ParamField>
-</Expandable>
-</ParamField>
-
-<ResponseField name="SwapResult" type="object">
-Extends `TransferResult` with:
-
-<Expandable title="Additional properties">
-  <ResponseField name="outputMint" type="string" required>
-  Token mint received.
-  </ResponseField>
-  
-  <ResponseField name="minOutputAmount" type="number" required>
-  Minimum guaranteed output.
-  </ResponseField>
-  
-  <ResponseField name="actualOutputAmount" type="number">
-  Actual tokens received (may exceed minimum).
-  </ResponseField>
-</Expandable>
-</ResponseField>
+## Error utilities
 
 ```typescript
-const USDC = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
-
-const result = await sdk.swap(connection, note, recipient, {
-  outputMint: USDC,
-  slippageBps: 100, // 1%
-  minOutputAmount: 1_000_000, // 1 USDC
-});
+CloakError
+ShieldPoolErrors
+RootNotFoundError
+isRootNotFoundError(error)
+parseError(error)
+parseTransactionError(error)
 ```
 
----
+Detailed usage: [Error Handling](/sdk/error-handling)
 
-### generateNote
-
-Generate a new note without depositing.
+## Versioned exports
 
 ```typescript
-async generateNote(
-  amountLamports: number,
-  useWalletKeys?: boolean
-): Promise<CloakNote>
+VERSION            // "2.0.0"
+CLOAK_PROGRAM_ID   // mainnet program constant
 ```
 
-```typescript
-const note = await sdk.generateNote(100_000_000);
-// Later: await sdk.deposit(connection, note);
+## Protocol and service docs
+
+- [Protocol Architecture](/protocol/architecture)
+- [Shield Pool Program](/protocol/shield-pool)
+- [Relay API](/services/relay-api)
+
+## SDK export inventory (CI-checked)
+
+{/* SDK_EXPORTS_START */}
+```text sdk-exports
+source: ../../sdk/src/index.ts
+type:CircuitVerificationResult
+type:CloakConfig
+type:CloakKeyPair
+type:CloakNote
+type:CommitmentEntry
+type:CommitmentsResponse
+type:DepositInstructionParams
+type:DepositOptions
+type:DepositResult
+type:DepositStatus
+type:EncryptedNote
+type:EncryptedUtxoNote
+type:Groth16Proof
+type:MasterKey
+type:MaxLengthArray
+type:MerkleProof
+type:MerkleRootResponse
+type:Network
+type:NoteData
+type:OnchainMerkleProof
+type:PendingDeposit
+type:PendingWithdrawal
+type:ProofResult
+type:RiskQuoteInstructionResponse
+type:ShieldPoolPDAs
+type:SpendKey
+type:StorageAdapter
+type:SwapOptions
+type:SwapParams
+type:SwapResult
+type:TransactOptions
+type:TransactParams
+type:TransactResult
+type:Transfer
+type:TransferOptions
+type:TransferResult
+type:TxStatus
+type:Utxo
+type:UtxoEncryptedNote
+type:UtxoKeypair
+type:UtxoSwapParams
+type:UtxoSwapResult
+type:ViewKey
+type:WalletAdapter
+type:WithdrawOptions
+type:WithdrawRegularInputs
+type:WithdrawSwapInputs
+value:areCircuitsAvailable
+value:bigintToBytes32
+value:bigintToHex
+value:buildMerkleTree
+value:buildMerkleTreeFromRelay
+value:buildPublicInputsBytes
+value:bytesToHex
+value:calculateFee
+value:calculateFeeBigint
+value:calculateRelayFee
+value:cleanupStalePendingOperations
+value:clearPendingDeposits
+value:clearPendingWithdrawals
+value:CLOAK_PROGRAM_ID
+value:CloakError
+value:CloakSDK
+value:computeCommitment
+value:computeExtDataHash
+value:computeMerkleRoot
+value:computeNullifier
+value:computeNullifierAsync
+value:computeNullifierSync
+value:computeOutputsHash
+value:computeOutputsHashAsync
+value:computeOutputsHashSync
+value:computeProofForLatestDeposit
+value:computeProofFromChain
+value:computeSignature
+value:computeSwapOutputsHash
+value:computeSwapOutputsHashAsync
+value:computeSwapOutputsHashSync
+value:computeUtxoCommitment
+value:computeUtxoNullifier
+value:copyNoteToClipboard
+value:createCloakError
+value:createDepositInstruction
+value:createLogger
+value:createUtxo
+value:createZeroUtxo
+value:DEFAULT_CIRCUITS_URL
+value:derivePublicKey
+value:deriveSpendKey
+value:deriveViewKey
+value:deserializeEncryptedNote
+value:deserializeUtxo
+value:detectNetworkFromRpcUrl
+value:downloadNote
+value:encodeNoteSimple
+value:encryptedNoteFromBase64
+value:encryptedNoteToBase64
+value:encryptNoteForRecipient
+value:encryptUtxoForRecipient
+value:ErrorCategory
+value:EXPECTED_CIRCUIT_HASHES
+value:exportKeys
+value:exportNote
+value:exportWalletKeys
+value:fetchCommitments
+value:fetchRiskQuoteInstruction
+value:filterNotesByNetwork
+value:filterWithdrawableNotes
+value:findNoteByCommitment
+value:FIXED_FEE_LAMPORTS
+value:formatAmount
+value:formatErrorForLogging
+value:formatSol
+value:fullWithdraw
+value:generateCloakKeys
+value:generateCommitment
+value:generateCommitmentAsync
+value:generateMasterSeed
+value:generateNote
+value:generateNoteFromWallet
+value:generateUtxoKeypair
+value:generateWithdrawRegularProof
+value:generateWithdrawSwapProof
+value:getAddressExplorerUrl
+value:getCircuitsPath
+value:getDefaultCircuitsPath
+value:getDistributableAmount
+value:getExplorerUrl
+value:getMerkleProofFromRelay
+value:getNullifierPDA
+value:getPendingOperationsSummary
+value:getPublicKey
+value:getPublicViewKey
+value:getRecipientAmount
+value:getRpcUrlForNetwork
+value:getShieldPoolPDAs
+value:getSwapStatePDA
+value:getViewKey
+value:hasPendingOperations
+value:hexToBigint
+value:hexToBytes
+value:importKeys
+value:importWalletKeys
+value:isDebugEnabled
+value:isRootNotFoundError
+value:isValidHex
+value:isValidRpcUrl
+value:isValidSolanaAddress
+value:isWithdrawable
+value:isWithdrawAmountSufficient
+value:keypairToAdapter
+value:LAMPORTS_PER_SOL
+value:loadPendingDeposits
+value:loadPendingWithdrawals
+value:LocalStorageAdapter
+value:Logger
+value:LogLevel
+value:MemoryStorageAdapter
+value:MERKLE_TREE_HEIGHT
+value:MerkleTree
+value:MIN_DEPOSIT_LAMPORTS
+value:NATIVE_SOL_MINT
+value:parseAmount
+value:parseError
+value:parseNote
+value:parseRelayErrorResponse
+value:parseTransactionError
+value:partialWithdraw
+value:poseidonHash
+value:prepareEncryptedOutput
+value:prepareEncryptedOutputForRecipient
+value:proofToBytes
+value:pubkeyToFieldElement
+value:pubkeyToLimbs
+value:randomBytes
+value:randomFieldElement
+value:readMerkleTreeState
+value:RelayService
+value:removePendingDeposit
+value:removePendingWithdrawal
+value:RootNotFoundError
+value:savePendingDeposit
+value:savePendingWithdrawal
+value:scanEncryptedNotes
+value:scanNotesForWallet
+value:sdkLogger
+value:selectUtxos
+value:sendTransaction
+value:serializeEncryptedNote
+value:serializeNote
+value:serializeUtxo
+value:setCircuitsPath
+value:setDebugMode
+value:ShieldPoolErrors
+value:signTransaction
+value:splitTo2Limbs
+value:sumUtxoAmounts
+value:swapUtxo
+value:swapWithChange
+value:transact
+value:transfer
+value:truncate
+value:tryDecryptNote
+value:tryDecryptUtxo
+value:updateNoteWithDeposit
+value:updatePendingDeposit
+value:updatePendingWithdrawal
+value:UserFriendlyError
+value:utxoBigintToBytes32
+value:utxoEquals
+value:utxoHexToBigint
+value:validateDepositParams
+value:validateNote
+value:validateOutputsSum
+value:validateTransfers
+value:validateWalletConnected
+value:validateWithdrawableNote
+value:VARIABLE_FEE_DENOMINATOR
+value:VARIABLE_FEE_NUMERATOR
+value:VARIABLE_FEE_RATE
+value:verifyAllCircuits
+value:verifyCircuitIntegrity
+value:VERSION
+value:WithdrawSubmissionResult
+value:withTiming
 ```
-
----
-
-### getMerkleProof
-
-Get Merkle proof for a leaf index directly from on-chain state.
-
-```typescript
-async getMerkleProof(
-  connection: Connection,
-  leafIndex: number
-): Promise<MerkleProof>
-```
-
-```typescript
-const proof = await sdk.getMerkleProof(connection, note.leafIndex);
-console.log("Root:", proof.root);
-console.log("Path elements:", proof.pathElements.length);
-```
-
-<Info>
-The SDK computes Merkle proofs directly from on-chain state without requiring an indexer service. This improves reliability and reduces external dependencies.
-</Info>
-
----
-
-### getCurrentRoot
-
-Get the current Merkle root directly from on-chain state.
-
-```typescript
-async getCurrentRoot(connection: Connection): Promise<string>
-```
-
-```typescript
-const root = await sdk.getCurrentRoot(connection);
-console.log("Current root:", root);
-```
-
----
-
-## Utility functions
-
-### Fee calculations
-
-```typescript
-import {
-  calculateFee,
-  getDistributableAmount,
-  FIXED_FEE_LAMPORTS,    // 5_000_000 (0.005 SOL)
-  VARIABLE_FEE_RATE,     // 0.003 (0.3%)
-  LAMPORTS_PER_SOL,      // 1_000_000_000
-} from "@cloak.ag/sdk";
-
-// Calculate total fee
-const fee = calculateFee(100_000_000); // Returns 5_300_000 (fixed + 0.3%)
-
-// Get amount after fees
-const distributable = getDistributableAmount(100_000_000); // ~94_700_000
-```
-
-### Crypto utilities
-
-```typescript
-import {
-  computeCommitment,
-  computeNullifierAsync,
-  computeOutputsHashAsync,
-  poseidonHash,
-  hexToBytes,
-  bytesToHex,
-  randomBytes,
-} from "@cloak.ag/sdk";
-
-// Compute Poseidon commitment
-const commitment = await computeCommitment(amount, r, sk_spend);
-
-// Compute nullifier
-const nullifier = await computeNullifierAsync(sk_spend_hex, leafIndex);
-```
-
-### Validation utilities
-
-```typescript
-import {
-  isValidSolanaAddress,
-  validateNote,
-  validateWithdrawableNote,
-  validateTransfers,
-} from "@cloak.ag/sdk";
-
-// Validate address
-if (!isValidSolanaAddress(address)) {
-  throw new Error("Invalid address");
-}
-
-// Validate note structure
-validateNote(note); // Throws if invalid
-
-// Validate note is ready for withdrawal
-validateWithdrawableNote(note); // Throws if not deposited
-```
-
-### Network utilities
-
-```typescript
-import {
-  detectNetworkFromRpcUrl,
-  getRpcUrlForNetwork,
-  getExplorerUrl,
-  getAddressExplorerUrl,
-} from "@cloak.ag/sdk";
-
-const network = detectNetworkFromRpcUrl("https://api.devnet.solana.com");
-// Returns: "devnet"
-
-const explorerUrl = getExplorerUrl(signature, "devnet");
-// Returns: "https://explorer.solana.com/tx/..."
-```
-
-### Key management
-
-```typescript
-import {
-  generateCloakKeys,
-  generateMasterSeed,
-  deriveSpendKey,
-  deriveViewKey,
-  exportKeys,
-  importKeys,
-} from "@cloak.ag/sdk";
-
-// Generate full key hierarchy
-const keys = generateCloakKeys();
-
-// Export for backup
-const backup = exportKeys(keys);
-
-// Import from backup
-const restored = importKeys(backup);
-```
-
-### Error utilities
-
-```typescript
-import {
-  ShieldPoolErrors,
-  parseError,
-  parseTransactionError,
-  createCloakError,
-  RootNotFoundError,
-  isRootNotFoundError,
-  type UserFriendlyError,
-  type ErrorCategory,
-} from "@cloak.ag/sdk";
-
-// Get user-friendly error info
-const parsed: UserFriendlyError = parseError(error);
-console.log(parsed.title);       // "Transaction Failed"
-console.log(parsed.message);     // User-friendly description
-console.log(parsed.category);    // "wallet" | "network" | "validation" | "service" | "transaction"
-console.log(parsed.suggestion);  // Optional action suggestion
-console.log(parsed.recoverable); // Whether user can retry
-
-// Check for specific on-chain error codes
-const errorCode = 0x1020;
-console.log(ShieldPoolErrors[errorCode]); // "Double spend detected - this note has already been spent"
-
-// Check for stale Merkle root errors
-if (isRootNotFoundError(error)) {
-  // Regenerate proof with fresh root
-}
-```
-
----
-
-### On-chain proof utilities
-
-The SDK computes Merkle proofs directly from on-chain state without an indexer:
-
-```typescript
-import {
-  computeProofFromChain,
-  computeProofForLatestDeposit,
-  readMerkleTreeState,
-} from "@cloak.ag/sdk";
-
-// Get proof for a specific leaf index
-const proof = await computeProofFromChain(connection, merkleTreePDA, leafIndex);
-
-// Get proof for the most recently deposited note
-const latestProof = await computeProofForLatestDeposit(connection, merkleTreePDA);
-
-// Read the full merkle tree state
-const state = await readMerkleTreeState(connection, merkleTreePDA);
-console.log("Current root:", state.root);
-console.log("Next index:", state.nextIndex);
-```
-
-<Info>
-On-chain proof computation eliminates the dependency on external indexer services, improving reliability and decentralization.
-</Info>
-
-### Pending operations utilities
-
-Browser-based persistence for operation recovery:
-
-```typescript
-import {
-  savePendingDeposit,
-  loadPendingDeposits,
-  updatePendingDeposit,
-  removePendingDeposit,
-  savePendingWithdrawal,
-  loadPendingWithdrawals,
-  updatePendingWithdrawal,
-  removePendingWithdrawal,
-  hasPendingOperations,
-  getPendingOperationsSummary,
-  cleanupStalePendingOperations,
-  type PendingDeposit,
-  type PendingWithdrawal,
-} from "@cloak.ag/sdk";
-
-// Save pending deposit before transaction
-savePendingDeposit({
-  note,
-  startedAt: Date.now(),
-  status: "pending",
-});
-
-// Check for pending operations on page load
-if (hasPendingOperations()) {
-  const summary = getPendingOperationsSummary();
-  console.log(`${summary.deposits} pending deposits, ${summary.withdrawals} pending withdrawals`);
-}
-
-// Clean up stale operations (older than 24 hours by default)
-cleanupStalePendingOperations();
-```
-
-### RelayService
-
-Low-level relay client for advanced use cases:
-
-```typescript
-import { RelayService, type WithdrawSubmissionResult } from "@cloak.ag/sdk";
-
-const relay = new RelayService("https://api.cloak.ag");
-
-// Submit withdrawal with request ID callback
-const signature = await relay.submitWithdraw(
-  params,
-  (status) => console.log("Status:", status),
-  (requestId) => localStorage.setItem("pending_withdraw", requestId)
-);
-
-// Resume a pending withdrawal after page reload
-const result = await relay.resumeWithdraw(requestId, onStatusUpdate);
-if (result.status === "completed") {
-  console.log("Completed:", result.signature);
-}
-
-// Check status manually
-const status = await relay.getStatus(requestId);
-```
-
-### Logging utilities
-
-Enable structured debug logging for troubleshooting.
-
-```typescript
-import {
-  createLogger,
-  setDebugMode,
-  withTiming,
-  formatSol,
-  truncate,
-} from "@cloak.ag/sdk";
-
-// Enable debug mode globally
-setDebugMode(true);
-
-// Create a module-specific logger
-const log = createLogger("my-app::deposits");
-log.info("Processing deposit", { amount: formatSol(100_000_000) });
-
-// Time an operation
-const { result, durationMs } = await withTiming(log, "deposit", async () => {
-  return sdk.deposit(connection, amount);
-});
-log.info("Completed", { duration_ms: durationMs });
-
-// Truncate long strings for display
-console.log(truncate(signature)); // "5Kn4..."
-```
-
----
-
-## Types
-
-### CloakNote
-
-```typescript
-interface CloakNote {
-  version: string;
-  amount: number;
-  commitment: string;
-  sk_spend: string;
-  r: string;
-  timestamp: number;
-  network: Network;
-  depositSignature?: string;
-  depositSlot?: number;
-  leafIndex?: number;
-  root?: string;
-  merkleProof?: MerkleProof;
-}
-```
-
-### MerkleProof
-
-```typescript
-interface MerkleProof {
-  pathElements: string[];
-  pathIndices: number[];
-  root?: string;
-}
-```
-
-### CloakError
-
-```typescript
-class CloakError extends Error {
-  category: "network" | "prover" | "relay" | "validation" | "wallet" | "environment";
-  retryable: boolean;
-  originalError?: Error;
-}
-```
-
-### RootNotFoundError
-
-Thrown when the Merkle root used in a proof is no longer in on-chain history.
-
-```typescript
-import { RootNotFoundError, isRootNotFoundError } from "@cloak.ag/sdk";
-
-try {
-  await sdk.withdraw(connection, note, recipient);
-} catch (error) {
-  if (isRootNotFoundError(error)) {
-    // The SDK automatically retries with fresh proof (up to 3 times)
-    // This error only surfaces after all retries are exhausted
-    console.log("Root expired after max retries");
-  }
-}
-```
-
-### ShieldPoolErrors
-
-Map of on-chain program error codes to messages. See [Error Handling](/sdk/error-handling) for the complete reference.
-
-```typescript
-import { ShieldPoolErrors } from "@cloak.ag/sdk";
-
-// Common error codes:
-// 0x1001 = RootNotFound (stale proof)
-// 0x1010 = ProofInvalid
-// 0x1020 = DoubleSpend
-// 0x1076 = ProofVerificationFailed
-
-const message = ShieldPoolErrors[0x1001]; // "Root not found in the roots ring"
-```
-
-### WalletAdapter
-
-```typescript
-interface WalletAdapter {
-  publicKey: PublicKey | null;
-  signTransaction?<T extends Transaction>(transaction: T): Promise<T>;
-  sendTransaction?(
-    transaction: Transaction,
-    connection: Connection,
-    options?: any
-  ): Promise<string>;
-}
-```
-
-### Network
-
-```typescript
-type Network = "localnet" | "devnet" | "mainnet" | "testnet";
-```
-
+{/* SDK_EXPORTS_END */}

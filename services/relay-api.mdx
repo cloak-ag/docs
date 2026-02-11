@@ -1,0 +1,110 @@
+---
+title: "Relay API"
+description: "HTTP endpoints exposed by services/relay"
+icon: "server"
+---
+
+Source: `services/relay/src/main.rs` and `services/relay/src/api/*`.
+
+## Base routes
+
+- `GET /` service metadata
+- `GET /health` liveness status
+- `GET /status/:id` async job status
+- `GET /commitments` commitment list for Merkle reconstruction
+- `GET /merkle-root` latest root from chain
+- `GET /backlog` queue snapshot
+
+## `POST /withdraw`
+
+Used by note-based SDK flows (`RelayService.submitWithdraw` / `submitSwap`).
+
+```json
+{
+  "outputs": [{ "recipient": "<base58>", "amount": 94700000 }],
+  "policy": { "fee_bps": 530 },
+  "public_inputs": {
+    "root": "<32-byte hex>",
+    "nf": "<32-byte hex>",
+    "amount": 100000000,
+    "fee_bps": 530,
+    "outputs_hash": "<32-byte hex>"
+  },
+  "proof_bytes": "<base64 256-byte Groth16 proof>",
+  "swap": {
+    "output_mint": "<base58 mint>",
+    "slippage_bps": 100,
+    "min_output_amount": 1000000
+  }
+}
+```
+
+Notes:
+
+- `proof_bytes` must decode to exactly 256 bytes.
+- `swap` is optional.
+- Response includes `data.request_id` for status polling.
+
+## `POST /transact`
+
+Used by SDK UTXO `transact` flow.
+
+```json
+{
+  "proof_bytes": "<base64 256-byte proof>",
+  "public_inputs": "<base64 232-byte blob>",
+  "recipient": "<base58 optional>",
+  "encrypted_notes": []
+}
+```
+
+`public_inputs` layout (232 bytes):
+
+- `root[32]`
+- `publicAmount[8]` (i64, LE)
+- `extDataHash[32]`
+- `mintAddress[32]`
+- `nullifiers[64]`
+- `commitments[64]`
+
+## `POST /transact_swap`
+
+Used by SDK UTXO `swapUtxo` / `swapWithChange` flow.
+
+```json
+{
+  "proof_bytes": "<base64 256-byte proof>",
+  "public_inputs": "<base64 232-byte blob>",
+  "output_mint": "<base58>",
+  "recipient_ata": "<base58>",
+  "recipient": "<base58 optional wallet>",
+  "min_output_amount": 1000000
+}
+```
+
+This route creates `SwapState`, then queues swap execution.
+
+## `GET /status/:id`
+
+Returns:
+
+```json
+{
+  "success": true,
+  "data": {
+    "request_id": "<uuid>",
+    "status": "pending|processing|completed|failed",
+    "tx_id": "<optional>",
+    "solana_signature": "<optional>",
+    "error": "<optional>",
+    "created_at": "<timestamp>",
+    "completed_at": "<timestamp|null>"
+  }
+}
+```
+
+## `GET /risk-quote`
+
+Currently returns `501 Not Implemented` in relay.
+
+If deposits require risk-oracle quotes, point SDK `riskQuoteUrl` to a dedicated quote service, or provide `getRiskQuoteInstruction` directly in `TransactOptions`.

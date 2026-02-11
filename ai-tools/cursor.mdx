@@ -1,265 +1,78 @@
 ---
 title: "Cursor setup"
-description: "Configure Cursor IDE for Cloak SDK development"
+description: "Prompt and rules setup for Cloak v2 (note + UTXO APIs)"
 icon: "arrow-pointer"
 ---
 
-Configure Cursor to assist with Cloak SDK integration. These rules help the AI understand the SDK's patterns, types, and best practices.
+Use Cursor rules that reflect the current SDK surface.
 
 ## Project rules
 
-Create `.cursor/rules.md` in your project root with Cloak SDK context. Copy the content below:
+Create `.cursor/rules.md` in your app root:
 
-<Accordion title="View .cursor/rules.md content">
+<Accordion title="View .cursor/rules.md template">
 
-# Cloak SDK Development Rules
+# Cloak SDK v2 Rules
 
-You are an AI assistant helping developers integrate the Cloak SDK for private transactions on Solana.
+This project uses `@cloak.ag/sdk` for private Solana transactions.
 
-## SDK Overview
+## API surfaces
 
-The Cloak SDK (@cloak.ag/sdk) enables private SOL transactions using zero-knowledge proofs:
-- Deposit SOL into a privacy pool
-- Withdraw privately to any recipient
-- Multi-recipient transfers (up to 5)
-- Private token swaps (SOL → SPL tokens)
+1. Note API (`CloakSDK`): `deposit`, `withdraw`, `send`, `swap`
+2. UTXO API (top-level): `transact`, `transfer`, `partialWithdraw`, `fullWithdraw`, `swapUtxo`, `swapWithChange`
 
-## Critical Security Rules
+## Security constraints
 
-1. **Never log or expose CloakNote contents** - Contains spending secrets (sk_spend, r)
-2. **Always implement onNoteGenerated callback** - Persist notes BEFORE deposits proceed
-3. **Treat notes like private keys** - Anyone with the note can spend the funds
-4. **Never include notes in error logs or analytics**
+- Never log full note or UTXO secret material.
+- Always persist note data in `onNoteGenerated` before deposit proceeds.
+- Treat notes as spending secrets.
 
-## SDK Initialization Patterns
+## Program IDs
 
-**CRITICAL: Devnet requires explicit programId** (SDK defaults to mainnet):
+- Mainnet constant: `c1oak6tetxYnNfvXKFkpn1d98FxtK7B68vBQLYQpWKp`
+- Development build ID: `3EvH6XYQir7D2RyzCdP7QFmJFfSPfdeoB8VnpLdEF4Kr`
 
-```typescript
-const DEVNET_PROGRAM_ID = new PublicKey("3EvH6XYQir7D2RyzCdP7QFmJFfSPfdeoB8VnpLdEF4Kr");
-// Mainnet: c1oak6tetxYnNfvXKFkpn1d98FxtK7B68vBQLYQpWKp (default)
-```
+Set `programId` explicitly on development deployments.
 
-**Node.js (scripts, backend):**
+## Fees
 
-```typescript
-import { CloakSDK } from "@cloak.ag/sdk";
-import { Keypair, PublicKey } from "@solana/web3.js";
+- Fixed: `5_000_000`
+- Variable: `amount * 3 / 1000`
+- Min deposit: `10_000_000`
 
-const DEVNET_PROGRAM_ID = new PublicKey("3EvH6XYQir7D2RyzCdP7QFmJFfSPfdeoB8VnpLdEF4Kr");
+## Error handling
 
-const sdk = new CloakSDK({
-  keypairBytes: keypair.secretKey,
-  network: "devnet",
-  programId: DEVNET_PROGRAM_ID, // Required for devnet!
-  debug: true,
-});
-```
+Use `CloakError`, `ShieldPoolErrors`, and `isRootNotFoundError`.
+Retry transient errors with backoff.
 
-**React/Next.js (browser):**
+## References
 
-```typescript
-import { CloakSDK } from "@cloak.ag/sdk";
-import { useWallet } from "@solana/wallet-adapter-react";
-
-const { publicKey, signTransaction, sendTransaction } = useWallet();
-
-const sdk = new CloakSDK({
-  wallet: { publicKey, signTransaction, sendTransaction },
-  network: "devnet",
-});
-```
-
-## Core Operations
-
-**Deposit with safe note handling:**
-
-```typescript
-const result = await sdk.deposit(connection, amountLamports, {
-  onNoteGenerated: async (note) => {
-    await saveToSecureStorage(note);
-  },
-  onProgress: (status) => updateUI(status),
-});
-```
-
-**Withdraw:**
-
-```typescript
-const result = await sdk.withdraw(connection, note, recipientPublicKey, {
-  withdrawAll: true,
-  onProgress: (status) => updateUI(status),
-});
-```
-
-**Multi-recipient send:**
-
-```typescript
-import { getDistributableAmount } from "@cloak.ag/sdk";
-
-const distributable = getDistributableAmount(note.amount);
-const result = await sdk.send(connection, note, [
-  { recipient: addr1, amount: Math.floor(distributable * 0.5) },
-  { recipient: addr2, amount: Math.floor(distributable * 0.5) },
-]);
-```
-
-**Token swap:**
-
-```typescript
-const result = await sdk.swap(connection, note, recipient, {
-  outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
-  slippageBps: 100,
-  minOutputAmount: 1_000_000,
-});
-```
-
-## Fee Calculations
-
-Protocol fees: 0.005 SOL fixed + 0.3% variable
-
-```typescript
-import { getDistributableAmount, calculateFee } from "@cloak.ag/sdk";
-
-const deposited = 100_000_000;
-const afterFees = getDistributableAmount(deposited);
-const fee = calculateFee(deposited);
-```
-
-## Error Handling
-
-```typescript
-import { CloakError, ShieldPoolErrors, isRootNotFoundError } from "@cloak.ag/sdk";
-
-try {
-  await sdk.withdraw(connection, note, recipient);
-} catch (error) {
-  if (error instanceof CloakError) {
-    // Categories: "wallet" | "network" | "prover" | "relay" | "validation" | "environment"
-    console.log("Category:", error.category);
-    console.log("Retryable:", error.retryable);
-  }
-  
-  // Common error codes:
-  // 0x1001 = RootNotFound (stale proof, SDK retries automatically)
-  // 0x1010 = ProofInvalid
-  // 0x1020 = DoubleSpend
-  // 0x1076 = ProofVerificationFailed
-  if (isRootNotFoundError(error)) {
-    console.log("Merkle root expired");
-  }
-}
-```
-
-## Key Types
-
-```typescript
-interface CloakNote {
-  version: string;
-  amount: number;
-  commitment: string;
-  sk_spend: string;  // SENSITIVE
-  r: string;         // SENSITIVE
-  timestamp: number;
-  network: Network;
-  leafIndex?: number;
-  depositSignature?: string;
-}
-
-type Network = "devnet" | "mainnet" | "localnet" | "testnet";
-```
-
-## Best Practices
-
-1. Always check `note.leafIndex !== undefined` before withdraw
-2. Use `getDistributableAmount()` to calculate recipient amounts
-3. Implement progress callbacks for long operations
-4. Handle CloakError with category-specific logic
-5. Store notes in encrypted storage
-6. Use the `debug: true` option during development
+- `/sdk/quickstart`
+- `/sdk/utxo-transactions`
+- `/sdk/migration-v1-v2`
+- `/sdk/api-reference`
+- `/services/relay-api`
 
 </Accordion>
 
-## Workspace indexing
-
-For optimal AI assistance, create a `.cursorrules` file:
-
-```text
-# Cloak SDK Context
-
-This project uses @cloak.ag/sdk for private Solana transactions.
-
-## Key Documentation Files
-- node_modules/@cloak.ag/sdk/dist/index.d.ts (type definitions)
-
-## Reference Documentation
-See: https://docs.cloak.ag/sdk
-
-## Important Patterns
-1. CloakSDK is the main client class
-2. CloakNote contains sensitive spending secrets
-3. All async operations support onProgress callbacks
-4. Fees are calculated with getDistributableAmount()
-5. Errors are categorized via CloakError.category
-```
-
-## Recommended settings
-
-Add these to your Cursor settings for better SDK completions:
-
-```json
-{
-  "typescript.preferences.importModuleSpecifier": "non-relative",
-  "editor.quickSuggestions": {
-    "strings": true
-  }
-}
-```
-
-<Tip>
-Enable "Docs" in Cursor and add the Cloak SDK documentation URL for context-aware completions.
-</Tip>
-
-## Example prompts
-
-Use these prompts for common tasks:
+## Prompt examples
 
 <AccordionGroup>
-<Accordion title="Initialize SDK with wallet adapter">
-Help me initialize CloakSDK with the Solana wallet adapter in a React component. 
-I'm using @solana/wallet-adapter-react.
+<Accordion title="React wallet + note flow">
+Build a React hook using wallet-adapter and CloakSDK note flows (`deposit`, `withdraw`) with secure note persistence and progress callbacks.
 </Accordion>
 
-<Accordion title="Safe deposit implementation">
-Implement a deposit function that safely persists the note before 
-the transaction is sent, with proper error handling and progress feedback.
+<Accordion title="UTXO transfer flow">
+Implement a UTXO transfer flow using `transact`/`transfer` with bigint amounts, relay status polling, and stale-root retries.
 </Accordion>
 
-<Accordion title="Multi-recipient transfer">
-Create a function to split a Cloak note between 3 recipients, 
-calculating the correct amounts after fees.
-</Accordion>
-
-<Accordion title="Error handling">
-Add comprehensive error handling for a withdraw operation, 
-including retry logic for transient errors.
+<Accordion title="Migration task">
+Refactor this note-only integration so swap and partial withdraw use UTXO helpers while keeping existing deposit UX.
 </Accordion>
 </AccordionGroup>
 
-## Codebase indexing
+## Recommended links for context
 
-To help Cursor understand your project's Cloak integration:
-
-<Steps>
-<Step title="Index type definitions">
-Open `node_modules/@cloak.ag/sdk/dist/index.d.ts` so Cursor indexes the types.
-</Step>
-
-<Step title="Create example files">
-Keep working examples in your project that Cursor can reference.
-</Step>
-
-<Step title="Add documentation comments">
-Add JSDoc comments to your Cloak-related code for better suggestions.
-</Step>
-</Steps>
+- [Quickstart](/sdk/quickstart)
+- [UTXO Transactions](/sdk/utxo-transactions)
+- [Migration v1 → v2](/sdk/migration-v1-v2)
