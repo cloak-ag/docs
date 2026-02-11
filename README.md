@@ -38,4 +38,3 @@ When updating docs, prioritize these sources:
 
 - Keep program IDs and fee constants aligned across SDK/program/relay docs.
 - Prefer documenting implemented behavior over planned behavior.
-- For API drift checks, run: `node scripts/check-sdk-api-reference.mjs --update`
