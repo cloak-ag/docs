@@ -1,0 +1,98 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 750">
+  <!-- Background -->
+  <rect width="900" height="750" fill="#ffffff"/>
+  
+  <!-- Title -->
+  <text x="450" y="35" font-family="Arial" font-size="24" font-weight="bold" text-anchor="middle">ZCash vs Cloak Comparison</text>
+  
+  <!-- ZCash Model -->
+  <text x="225" y="70" font-family="Arial" font-size="18" font-weight="bold" text-anchor="middle">ZCASH MODEL</text>
+  
+  <!-- ZCash Transparent -->
+  <rect x="30" y="85" width="380" height="130" rx="5" fill="#e0e0ff" stroke="#000" stroke-width="2"/>
+  <text x="220" y="110" font-family="Arial" font-size="14" font-weight="bold" text-anchor="middle">Transparent Zone (Public)</text>
+  <text x="50" y="140" font-family="Arial" font-size="12">• Public balances</text>
+  <text x="50" y="160" font-family="Arial" font-size="12">• Public transactions</text>
+  <text x="50" y="180" font-family="Arial" font-size="12">• All txs visible to everyone</text>
+  <text x="50" y="205" font-family="Arial" font-size="12">• Like regular Solana</text>
+  
+  <!-- ZCash Shielded -->
+  <rect x="30" y="230" width="380" height="140" rx="5" fill="#ffe0e0" stroke="#000" stroke-width="2"/>
+  <text x="220" y="255" font-family="Arial" font-size="14" font-weight="bold" text-anchor="middle">Shielded Pool (Sprout/Sapling)</text>
+  <text x="50" y="285" font-family="Arial" font-size="12">• Amount encrypted (Pedersen)</text>
+  <text x="50" y="305" font-family="Arial" font-size="12">• Sender hidden (zkSNARK)</text>
+  <text x="50" y="325" font-family="Arial" font-size="12">• Recipient hidden (zkSNARK)</text>
+  <text x="50" y="350" font-family="Arial" font-size="14" font-weight="bold">🔑 VIEWING KEY = OPTIONAL</text>
+  <text x="50" y="365" font-family="Arial" font-size="11">(must be explicitly shared)</text>
+  
+  <!-- Cloak Model -->
+  <text x="675" y="70" font-family="Arial" font-size="18" font-weight="bold" text-anchor="middle">CLOAK MODEL</text>
+  
+  <!-- Cloak Public -->
+  <rect x="490" y="85" width="380" height="130" rx="5" fill="#e0e0ff" stroke="#000" stroke-width="2"/>
+  <text x="680" y="110" font-family="Arial" font-size="14" font-weight="bold" text-anchor="middle">Public Solana</text>
+  <text x="510" y="140" font-family="Arial" font-size="12">• Deposit transactions</text>
+  <text x="510" y="160" font-family="Arial" font-size="12">• Withdraw transactions</text>
+  <text x="510" y="180" font-family="Arial" font-size="12">• Shield pool balances</text>
+  <text x="510" y="200" font-family="Arial" font-size="12">• On-chain visibility</text>
+  
+  <!-- Arrows between public and shielded -->
+  <line x1="410" y1="150" x2="490" y2="150" stroke="#000" stroke-width="2" marker-end="url(#arrowhead)"/>
+  <line x1="410" y1="180" x2="490" y2="180" stroke="#000" stroke-width="2" marker-end="url(#arrowhead)"/>
+  <line x1="410" y1="300" x2="490" y2="300" stroke="#000" stroke-width="2" marker-end="url(#arrowhead)"/>
+  
+  <!-- Cloak Shielded -->
+  <rect x="490" y="230" width="380" height="160" rx="5" fill="#ffe0e0" stroke="#000" stroke-width="2"/>
+  <text x="680" y="255" font-family="Arial" font-size="14" font-weight="bold" text-anchor="middle">Shielded Pool (Cloak)</text>
+  <text x="510" y="285" font-family="Arial" font-size="12">• Amount (encrypted)</text>
+  <text x="510" y="305" font-family="Arial" font-size="12">• Recipient (encrypted)</text>
+  <text x="510" y="325" font-family="Arial" font-size="12">• Nullifier (double-spend prevention)</text>
+  <text x="510" y="350" font-family="Arial" font-size="14" font-weight="bold">🔑 VIEWING KEYS:</text>
+  <text x="510" y="370" font-family="Arial" font-size="11">• User can decrypt own UTXOs</text>
+  <text x="510" y="385" font-family="Arial" font-size="11">• Cloak can view all (via relay)</text>
+  
+  <!-- Key Difference Box -->
+  <rect x="30" y="400" width="840" height="120" rx="8" fill="#fff8e0" stroke="#000" stroke-width="3"/>
+  <text x="450" y="430" font-family="Arial" font-size="18" font-weight="bold" text-anchor="middle">KEY DIFFERENCE</text>
+  
+  <text x="450" y="460" font-family="Arial" font-size="14" text-anchor="middle">ZCash: Viewing keys are OPTIONAL - must be explicitly shared by user</text>
+  
+  <line x1="100" y1="475" x2="800" y2="475" stroke="#000" stroke-width="1"/>
+  
+  <text x="450" y="500" font-family="Arial" font-size="14" text-anchor="middle">Cloak: Viewing key is MANDATORY - shared with Cloak for compliance feature</text>
+  
+  <!-- Comparison Table -->
+  <rect x="30" y="540" width="840" height="180" rx="5" fill="#f5f5f5" stroke="#000" stroke-width="2"/>
+  <text x="450" y="565" font-family="Arial" font-size="16" font-weight="bold" text-anchor="middle">Comparison Table</text>
+  
+  <!-- Table Header -->
+  <rect x="40" y="575" width="820" height="30" rx="3" fill="#e0e0e0" stroke="#000" stroke-width="1"/>
+  <text x="200" y="595" font-family="Arial" font-size="12" font-weight="bold" text-anchor="middle">Feature</text>
+  <text x="450" y="595" font-family="Arial" font-size="12" font-weight="bold" text-anchor="middle">ZCash</text>
+  <text x="700" y="595" font-family="Arial" font-size="12" font-weight="bold" text-anchor="middle">Cloak</text>
+  
+  <!-- Row 1 -->
+  <text x="200" y="625" font-family="Arial" font-size="12" text-anchor="middle">Viewing Key</text>
+  <text x="450" y="625" font-family="Arial" font-size="12" text-anchor="middle">Optional</text>
+  <text x="700" y="625" font-family="Arial" font-size="12" text-anchor="middle">Mandatory</text>
+  <line x1="40" y1="635" x2="860" y2="635" stroke="#000" stroke-width="0.5"/>
+  
+  <!-- Row 2 -->
+  <text x="200" y="660" font-family="Arial" font-size="12" text-anchor="middle">Sharing</text>
+  <text x="450" y="660" font-family="Arial" font-size="12" text-anchor="middle">Explicit by user</text>
+  <text x="700" y="660" font-family="Arial" font-size="12" text-anchor="middle">Auto-shared with Cloak</text>
+  <line x1="40" y1="670" x2="860" y2="670" stroke="#000" stroke-width="0.5"/>
+  
+  <!-- Row 3 -->
+  <text x="200" y="695" font-family="Arial" font-size="12" text-anchor="middle">Compliance</text>
+  <text x="450" y="695" font-family="Arial" font-size="12" text-anchor="middle">Not built-in</text>
+  <text x="700" y="695" font-family="Arial" font-size="12" text-anchor="middle">Built-in feature</text>
+  <line x1="40" y1="705" x2="860" y2="705" stroke="#000" stroke-width="0.5"/>
+  
+  <!-- Arrow definitions -->
+  <defs>
+    <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#000"/>
+    </marker>
+  </defs>
+</svg>
