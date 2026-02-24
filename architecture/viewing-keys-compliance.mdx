@@ -1,0 +1,72 @@
+---
+title: "Viewing Keys and Compliance"
+description: "Current registration, trust model, chain-native scanning, and web cache behavior"
+icon: "key"
+---
+
+Sources:
+
+- `services/relay/src/api/viewing_key.rs`
+- `sdk/src/core/transact.ts`
+- `sdk/src/core/scanner.ts`
+- `web/hooks/use-cloak-sdk.ts`
+- `web/lib/compliance-cache.ts`
+- `web/components/encryption-provider.tsx`
+
+## Current model
+
+- Users derive viewing material client-side (`nk` used for chain-note decrypt).
+- Transactions include compact encrypted chain notes; scanner decrypts directly from chain data.
+- Relay stores registered viewing keys for compliance export/decrypt endpoints.
+- Web history uses encrypted local cache and can be force-refreshed.
+
+## Registration flow
+
+1. Wallet signs fixed Cloak sign-in message.
+2. Client calls `POST /viewing-key/register` with:
+   - `user_pubkey`
+   - `viewing_key` (32-byte hex)
+   - `signature` (base64 ed25519)
+   - optional `identifier`
+3. Relay verifies signature and stores key by identifier.
+
+Identifier behavior:
+
+- If omitted, relay computes `sha256(user_pubkey || viewing_key_hex)`.
+- Relay validates provided identifier if supplied.
+
+## Enforcement and UX behavior
+
+- SDK/web default behavior enforces viewing-key registration before transact/swap flows.
+- Web reuses wallet sign-in signature to avoid extra signature prompts.
+- If registration is missing, history/decrypt flow surfaces `viewing key not found` and prompts user to transact/register first.
+
+## Chain-native scanner behavior
+
+- `scanTransactions` reads program transactions from RPC.
+- Extracts compact chain notes from instruction payloads.
+- Decrypts with viewing key `nk`.
+- Verifies `chainNoteHash` against public inputs for integrity.
+- Produces per-transaction:
+  - gross amount
+  - fee
+  - net amount
+  - running balance
+
+## Compliance caching in web
+
+- Reports are cached under `cloak_compliance_<wallet>`.
+- Cache is encrypted using key material derived from wallet sign-message output.
+- Privacy history page supports explicit `Clear cache & rescan` for stale/incomplete views.
+
+## Trust model
+
+- Relay can decrypt compliance data for keys it stores.
+- Users should treat relay as a trusted compliance service for those export endpoints.
+- Chain-native scanner itself does not require relay decryption for transaction discovery.
+
+## Operational tips
+
+- Keep sign-in message string exactly aligned across web and relay verification.
+- After key rotation or wallet changes, clear local cache and re-register.
+- For support/debugging, never log raw viewing keys or full decrypted notes.

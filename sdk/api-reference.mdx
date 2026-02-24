@@ -112,6 +112,11 @@ readMerkleTreeState(connection, merkleTreePDA)
 buildMerkleTreeFromRelay(relayUrl)
 ```
 
+Notes:
+
+- UTXO transact/swap flows submit 256-byte proofs and 264-byte public inputs.
+- `RelayService.submitSwap` currently uses legacy `/withdraw` route, while UTXO swap helpers use `/transact_swap`.
+
 ## Fee constants
 
 ```typescript

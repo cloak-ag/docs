@@ -1,88 +1,121 @@
 ---
 title: "Relay API"
-description: "HTTP endpoints exposed by services/relay"
+description: "Current routes, payload contracts, and operational behavior in services/relay"
 icon: "server"
 ---
 
 Source: `services/relay/src/main.rs` and `services/relay/src/api/*`.
 
-## Base routes
+## Route map
 
 - `GET /` service metadata
 - `GET /health` liveness status
-- `GET /status/:id` async job status
-- `GET /commitments` commitment list for Merkle reconstruction
-- `GET /merkle-root` latest root from chain
+- `POST /withdraw` legacy note-model entrypoint
+- `POST /transact` canonical UTXO submit
+- `POST /transact_swap` canonical UTXO swap submit
+- `GET /status/:id` request status
+- `POST /viewing-key/register` viewing-key registration
+- `GET /compliance-key` compliance key metadata
+- `POST /admin/compliance/decrypt`
+- `POST /admin/compliance/export`
+- `POST /admin/compliance/user-export`
+- `GET /admin/compliance/nonce`
+- `GET /commitments` DB-backed commitment list
+- `GET /merkle-root` latest chain root
+- `GET /risk-quote` returns `501 Not Implemented`
 - `GET /backlog` queue snapshot
 
-## `POST /withdraw`
-
-Used by note-based SDK flows (`RelayService.submitWithdraw` / `submitSwap`).
-
-```json
-{
-  "outputs": [{ "recipient": "<base58>", "amount": 94700000 }],
-  "policy": { "fee_bps": 530 },
-  "public_inputs": {
-    "root": "<32-byte hex>",
-    "nf": "<32-byte hex>",
-    "amount": 100000000,
-    "fee_bps": 530,
-    "outputs_hash": "<32-byte hex>"
-  },
-  "proof_bytes": "<base64 256-byte Groth16 proof>",
-  "swap": {
-    "output_mint": "<base58 mint>",
-    "slippage_bps": 100,
-    "min_output_amount": 1000000
-  }
-}
-```
-
-Notes:
-
-- `proof_bytes` must decode to exactly 256 bytes.
-- `swap` is optional.
-- Response includes `data.request_id` for status polling.
-
-## `POST /transact`
-
-Used by SDK UTXO `transact` flow.
+## `POST /transact` (UTXO)
 
 ```json
 {
   "proof_bytes": "<base64 256-byte proof>",
-  "public_inputs": "<base64 232-byte blob>",
-  "recipient": "<base58 optional>",
-  "encrypted_notes": []
+  "public_inputs": "<base64 264-byte blob>",
+  "recipient": "<base58 optional, required for withdrawals>",
+  "encrypted_notes": ["<base64 compact chain note>"]
 }
 ```
 
-`public_inputs` layout (232 bytes):
+`public_inputs` byte layout (`264` bytes):
 
 - `root[32]`
-- `publicAmount[8]` (i64, LE)
+- `publicAmount[8]` (`i64`, LE)
 - `extDataHash[32]`
 - `mintAddress[32]`
 - `nullifiers[64]`
 - `commitments[64]`
+- `chainNoteHash[32]`
 
-## `POST /transact_swap`
+Validation highlights:
 
-Used by SDK UTXO `swapUtxo` / `swapWithChange` flow.
+- `proof_bytes` must decode to exactly `256` bytes.
+- `public_inputs` must decode to exactly `264` bytes.
+- `recipient` is required when `publicAmount < 0`.
+- `encrypted_notes` supports max 2 entries and bounded total bytes.
+
+## `POST /transact_swap` (UTXO swap)
 
 ```json
 {
   "proof_bytes": "<base64 256-byte proof>",
-  "public_inputs": "<base64 232-byte blob>",
+  "public_inputs": "<base64 264-byte blob>",
   "output_mint": "<base58>",
   "recipient_ata": "<base58>",
   "recipient": "<base58 optional wallet>",
-  "min_output_amount": 1000000
+  "min_output_amount": 1000000,
+  "encrypted_notes": ["<optional base64 notes>"]
 }
 ```
 
-This route creates `SwapState`, then queues swap execution.
+- Requires withdrawal semantics (`publicAmount < 0`).
+- Submits `TransactSwap`, then queues swap execution job.
+- Response includes `swap_state_pda` and `nullifier` when available.
+
+## `POST /viewing-key/register`
+
+Registers a 32-byte viewing key (hex) after wallet signature verification.
+
+```json
+{
+  "user_pubkey": "<wallet base58>",
+  "viewing_key": "<32-byte hex>",
+  "identifier": "<optional 64-hex>",
+  "signature": "<base64 64-byte ed25519 signature>"
+}
+```
+
+- Signature must be over the fixed Cloak sign-in message.
+- If `identifier` is omitted, relay computes `sha256(user_pubkey || viewing_key_hex)`.
+- Relay stores identifier + viewing key; no raw wallet column is required.
+
+## `GET /commitments`
+
+Returns DB-backed commitments for Merkle rebuild:
+
+```json
+{
+  "commitments": [
+    { "index": 0, "commitment": "<hex32>" }
+  ],
+  "count": 1
+}
+```
+
+- Served from Postgres (populated by background commitment sync).
+- Does not block on real-time RPC scan.
+
+## `GET /merkle-root`
+
+Returns latest chain root and tree address:
+
+```json
+{
+  "root": "<hex32>",
+  "merkle_tree": "<base58>"
+}
+```
+
+If Merkle tree account is missing, endpoint returns `503` with pool-init guidance.
 
 ## `GET /status/:id`
 
@@ -105,6 +138,13 @@ Returns:
 
 ## `GET /risk-quote`
 
-Currently returns `501 Not Implemented` in relay.
+Always `501` in this relay build with guidance text.
 
-If deposits require risk-oracle quotes, point SDK `riskQuoteUrl` to a dedicated quote service, or provide `getRiskQuoteInstruction` directly in `TransactOptions`.
+Use one of:
+
+- SDK `TransactOptions.riskQuoteUrl` to an external quote service implementing `GET /risk-quote?wallet=<pubkey>`.
+- SDK `TransactOptions.getRiskQuoteInstruction` to inject quote instruction directly.
+
+## Legacy note route
+
+`POST /withdraw` remains for legacy note-model clients, but current SDK/web transaction flow is UTXO-first via `/transact` and `/transact_swap`.

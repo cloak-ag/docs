@@ -22,7 +22,9 @@ mint dev
 
 - `sdk/` SDK guides and API references
 - `protocol/` on-chain architecture and Shield Pool docs
+- `architecture/` viewing-key and compliance model docs
 - `services/` relay API docs
+- `operations/` local runbooks and operational troubleshooting
 - `ai-tools/` IDE/assistant setup pages
 
 ## Source of truth
@@ -33,6 +35,8 @@ When updating docs, prioritize these sources:
 - SDK runtime behavior: `sdk/src/core/*`, `sdk/src/utils/*`
 - Program behavior: `programs/shield-pool/src/*`
 - Relay routes/payloads: `services/relay/src/main.rs`, `services/relay/src/api/*`
+- Relay sync behavior: `services/relay/src/commitment_sync.rs`
+- Web privacy/cache behavior: `web/hooks/*`, `web/lib/compliance-cache.ts`
 
 ## Notes
 

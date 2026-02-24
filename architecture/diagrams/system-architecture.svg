@@ -1,0 +1,93 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 740" role="img" aria-label="Cloak system architecture">
+  <defs>
+    <style>
+      .title { font: 700 34px 'Inter', 'Segoe UI', Arial, sans-serif; fill: #0f172a; }
+      .subtitle { font: 500 15px 'Inter', 'Segoe UI', Arial, sans-serif; fill: #475569; }
+      .h { font: 700 20px 'Inter', 'Segoe UI', Arial, sans-serif; fill: #0f172a; }
+      .b { font: 500 14px 'Inter', 'Segoe UI', Arial, sans-serif; fill: #334155; }
+      .chip { font: 600 12px 'Inter', 'Segoe UI', Arial, sans-serif; fill: #1e293b; }
+      .line { stroke: #334155; stroke-width: 2.2; fill: none; }
+      .soft { stroke: #94a3b8; stroke-width: 1.6; fill: none; stroke-dasharray: 5 5; }
+    </style>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#f8fafc"/>
+      <stop offset="100%" stop-color="#eef2ff"/>
+    </linearGradient>
+    <marker id="arrow" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto">
+      <path d="M0,0 L10,4 L0,8 Z" fill="#334155"/>
+    </marker>
+  </defs>
+
+  <rect width="1280" height="740" fill="url(#bg)"/>
+
+  <text x="640" y="56" class="title" text-anchor="middle">Cloak Protocol - Runtime Architecture</text>
+  <text x="640" y="84" class="subtitle" text-anchor="middle">Chain-native scanner + relay-assisted submission + on-chain shield pool</text>
+
+  <rect x="70" y="130" width="250" height="96" rx="14" fill="#ffffff" stroke="#cbd5e1"/>
+  <text x="195" y="166" class="h" text-anchor="middle">Web App</text>
+  <text x="195" y="193" class="b" text-anchor="middle">Next.js privacy UX</text>
+  <text x="195" y="212" class="b" text-anchor="middle">deposit/send/swap/history</text>
+
+  <rect x="70" y="248" width="250" height="96" rx="14" fill="#ffffff" stroke="#cbd5e1"/>
+  <text x="195" y="284" class="h" text-anchor="middle">Mobile / TWA</text>
+  <text x="195" y="311" class="b" text-anchor="middle">Wallet adapter client</text>
+  <text x="195" y="330" class="b" text-anchor="middle">uses SDK directly</text>
+
+  <rect x="380" y="170" width="310" height="172" rx="16" fill="#eff6ff" stroke="#3b82f6" stroke-width="2"/>
+  <text x="535" y="206" class="h" text-anchor="middle">@cloak.ag/sdk</text>
+  <text x="535" y="235" class="b" text-anchor="middle">UTXO proof generation (Groth16)</text>
+  <text x="535" y="256" class="b" text-anchor="middle">Merkle proofs + root retry strategy</text>
+  <text x="535" y="277" class="b" text-anchor="middle">Mandatory viewing-key registration</text>
+  <text x="535" y="298" class="b" text-anchor="middle">Chain-native transaction scanner</text>
+  <rect x="455" y="311" width="160" height="22" rx="11" fill="#dbeafe" stroke="#93c5fd"/>
+  <text x="535" y="326" class="chip" text-anchor="middle">264-byte public inputs</text>
+
+  <rect x="750" y="170" width="270" height="172" rx="16" fill="#ecfdf5" stroke="#16a34a" stroke-width="2"/>
+  <text x="885" y="206" class="h" text-anchor="middle">Relay Service</text>
+  <text x="885" y="235" class="b" text-anchor="middle">/transact, /transact_swap</text>
+  <text x="885" y="256" class="b" text-anchor="middle">/viewing-key/register</text>
+  <text x="885" y="277" class="b" text-anchor="middle">/commitments, /merkle-root</text>
+  <text x="885" y="298" class="b" text-anchor="middle">admin compliance export endpoints</text>
+  <text x="885" y="319" class="b" text-anchor="middle">commitment sync + DB cache</text>
+
+  <rect x="1080" y="170" width="170" height="172" rx="16" fill="#fef2f2" stroke="#dc2626" stroke-width="2"/>
+  <text x="1165" y="206" class="h" text-anchor="middle">Shield Pool</text>
+  <text x="1165" y="235" class="b" text-anchor="middle">Transact</text>
+  <text x="1165" y="256" class="b" text-anchor="middle">TransactSwap</text>
+  <text x="1165" y="277" class="b" text-anchor="middle">Merkle tree</text>
+  <text x="1165" y="298" class="b" text-anchor="middle">Nullifiers</text>
+  <text x="1165" y="319" class="b" text-anchor="middle">Fees on-chain</text>
+
+  <rect x="380" y="402" width="870" height="118" rx="16" fill="#ffffff" stroke="#cbd5e1"/>
+  <text x="815" y="435" class="h" text-anchor="middle">Chain-Note Compliance Path (User Facing)</text>
+  <text x="815" y="462" class="b" text-anchor="middle">SDK scanner reads program transactions from RPC, decrypts compact notes with nk, computes fees/net, and returns report</text>
+  <text x="815" y="483" class="b" text-anchor="middle">Web caches report in encrypted localStorage and supports clear-cache + rescan</text>
+
+  <rect x="70" y="402" width="250" height="118" rx="16" fill="#ffffff" stroke="#cbd5e1"/>
+  <text x="195" y="435" class="h" text-anchor="middle">Viewing Key Model</text>
+  <text x="195" y="462" class="b" text-anchor="middle">nk derived in client</text>
+  <text x="195" y="483" class="b" text-anchor="middle">registration required</text>
+  <text x="195" y="504" class="b" text-anchor="middle">before protocol usage</text>
+
+  <rect x="70" y="548" width="1180" height="172" rx="16" fill="#0f172a"/>
+  <text x="660" y="580" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="20" font-weight="700" fill="#f8fafc" text-anchor="middle">Operational Components</text>
+
+  <text x="130" y="616" class="b" fill="#cbd5e1">Circuits: 2-input / 2-output transaction.circom</text>
+  <text x="130" y="642" class="b" fill="#cbd5e1">Programs: shield-pool + risk-oracle</text>
+  <text x="130" y="668" class="b" fill="#cbd5e1">Services: relay + scheduler + backlog endpoint</text>
+  <text x="130" y="694" class="b" fill="#cbd5e1">Bots: cloak-bots anonymity cycles</text>
+
+  <text x="710" y="630" class="b" fill="#94a3b8">Fee formula: 0.005 SOL fixed + 0.3% variable</text>
+  <text x="710" y="656" class="b" fill="#94a3b8">Fee deduction happens on-chain during withdrawals and swaps</text>
+  <text x="710" y="682" class="b" fill="#94a3b8">Commitment sync runs in background with DB cursor + fallback</text>
+
+  <path d="M320 178 L380 215" class="soft"/>
+  <path d="M320 296 L380 260" class="soft"/>
+
+  <line x1="690" y1="256" x2="750" y2="256" class="line" marker-end="url(#arrow)"/>
+  <line x1="1020" y1="256" x2="1080" y2="256" class="line" marker-end="url(#arrow)"/>
+
+  <line x1="885" y1="342" x2="885" y2="402" class="soft"/>
+  <line x1="535" y1="342" x2="535" y2="402" class="soft"/>
+  <line x1="195" y1="520" x2="195" y2="548" class="soft"/>
+</svg>

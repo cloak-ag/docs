@@ -56,12 +56,15 @@ const result = await transact(params, {
 });
 ```
 
+For web flows, make sure wallet supports `signMessage` so viewing-key registration can be completed before transactions.
+
 ## UX requirements
 
-- Persist note data in `onNoteGenerated` before deposit proceeds.
 - Show progress during proof generation (`onProgress`, `onProofProgress`).
 - Handle stale-root retries gracefully (`isRootNotFoundError`).
 - Keep circuit files accessible in browser deployments.
+- Ensure viewing-key registration succeeds before transact/swap actions.
+- For privacy history pages, expose explicit cache clear + rescan controls after swaps or failed scans.
 
 ## Related pages
 

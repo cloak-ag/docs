@@ -4,10 +4,12 @@ description: "Private transactions on Solana with note-based and UTXO-based APIs
 icon: "shield-halved"
 ---
 
-Cloak SDK v2 ships with two transaction interfaces:
+Cloak SDK v2 exposes two interfaces, with UTXO as the primary runtime path:
 
 - **Note API** via `CloakSDK` (`deposit`, `withdraw`, `send`, `swap`)
 - **UTXO API** via top-level functions (`transact`, `transfer`, `swapUtxo`, ...)
+
+Current web and relay transaction paths use the UTXO API (`/transact`, `/transact_swap`).
 
 <CardGroup cols={3}>
 <Card title="Quickstart" icon="rocket" href="/sdk/quickstart">
@@ -93,3 +95,5 @@ From shared constants (`programs/shield-pool`, `sdk`, `services/relay`):
 - System overview: [Protocol Architecture](/protocol/architecture)
 - Program-level details: [Shield Pool Program](/protocol/shield-pool)
 - Relay endpoints: [Relay API](/services/relay-api)
+- Viewing-key model: [Viewing Keys and Compliance](/architecture/viewing-keys-compliance)
+- Local integration: [Local Dev Runbook](/operations/local-dev-runbook)

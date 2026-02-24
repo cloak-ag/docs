@@ -1,23 +1,23 @@
 ---
 title: "UTXO Transactions (v2)"
-description: "Use the v2 UTXO APIs for deposits, transfers, withdrawals, and swaps"
+description: "Transact, swap, viewing-key registration, and scanner-friendly transaction flows"
 icon: "vault"
 ---
 
-The SDK now exposes a full UTXO transaction API in addition to the note-based `CloakSDK` client.
+The UTXO API is the current production path used by SDK and web transaction flows.
 
-## What changed
+## Core APIs
 
-The v2 API is built around explicit UTXOs and proof generation:
+- `transact(params, options)`
+- `transfer(...)`
+- `partialWithdraw(...)`
+- `fullWithdraw(...)`
+- `swapUtxo(...)`
+- `swapWithChange(...)`
 
-- `transact` for core UTXO transactions
-- `transfer` for shield-to-shield sends
-- `partialWithdraw` and `fullWithdraw`
-- `swapUtxo` and `swapWithChange`
+All are exported from `@cloak.ag/sdk`.
 
-These APIs are exported directly from `@cloak.ag/sdk`.
-
-## Core model
+## Transaction semantics
 
 ```typescript
 import type { Utxo, TransactParams, TransactOptions } from "@cloak.ag/sdk";
@@ -36,6 +36,15 @@ interface TransactParams {
 - `< 0`: public withdrawal from the pool
 - `0`: fully shielded transfer
 
+Under the hood, SDK builds proof + `264`-byte public inputs and submits to relay `/transact`.
+
+## Fees
+
+- `gross = abs(externalAmount)` when withdrawing/swapping
+- `fee = 5_000_000 + gross * 3 / 1000`
+- `net = gross - fee`
+- deposits have no protocol fee but still must satisfy min deposit (`10_000_000` lamports)
+
 ## Create UTXOs
 
 ```typescript
@@ -49,7 +58,7 @@ const keypair = await generateUtxoKeypair();
 const utxo = await createUtxo(100_000_000n, keypair, NATIVE_SOL_MINT);
 ```
 
-## Deposit example
+## Deposit example (`transact`)
 
 ```typescript
 import { transact, createUtxo, generateUtxoKeypair } from "@cloak.ag/sdk";
@@ -79,7 +88,7 @@ const result = await transact(
 console.log(result.signature, result.commitmentIndices);
 ```
 
-## Transfer / withdraw helpers
+## Withdraw and transfer helpers
 
 ```typescript
 import { transfer, partialWithdraw, fullWithdraw } from "@cloak.ag/sdk";
@@ -89,7 +98,9 @@ await partialWithdraw(inputUtxos, recipientWallet, 10_000_000n, options);
 await fullWithdraw(inputUtxos, recipientWallet, options);
 ```
 
-## Swap helpers
+`partialWithdraw`/`fullWithdraw` use `/transact` with negative `externalAmount`.
+
+## Swap example (`/transact_swap`)
 
 ```typescript
 import { swapWithChange } from "@cloak.ag/sdk";
@@ -109,6 +120,16 @@ await swapWithChange(
 );
 ```
 
+`swapWithChange` sends `TransactSwap` payload (`proof + 264-byte public inputs + swap params`) to relay `/transact_swap`.
+
+## Viewing-key registration requirements
+
+- Default behavior enforces viewing-key registration before protocol txs.
+- `TransactOptions.enforceViewingKeyRegistration` defaults to `true`.
+- Registration signs fixed sign-in message and posts to `/viewing-key/register`.
+
+If viewing key is missing, web history/decrypt flows cannot resolve your transaction data.
+
 ## Risk-oracle deposits
 
 When deposits require Range/Switchboard validation, include:
@@ -116,17 +137,38 @@ When deposits require Range/Switchboard validation, include:
 - `riskOracleQueue`
 - `riskQuoteUrl` (or `getRiskQuoteInstruction`)
 
-If you submit V0 deposits with extra accounts, pass `addressLookupTableAccounts` in `TransactOptions`.
+Relay `GET /risk-quote` is not implemented (`501`), so provide your own quote backend or direct instruction callback.
+
+If deposit account list is too large for legacy transactions, use V0 + `addressLookupTableAccounts`.
 
 ## Operational notes
 
 - Amounts use `bigint` in the UTXO API.
 - Proof retries are built in for stale roots (`0x1001`).
-- Relay-backed Merkle tree reconstruction is preferred for older UTXO indices.
-- `MIN_DEPOSIT_LAMPORTS` is `10_000_000` (0.01 SOL).
+- Relay-backed Merkle reconstruction (`/commitments`) is preferred for older indices.
+- Optional `cachedMerkleTree` helps sequential txs avoid extra rebuild/fetch.
+- Optional `useUniqueNullifiers` helps local/surfpool repeated test runs.
+
+## Verification commands
+
+Run from `sdk/`:
+
+```bash
+npm run build
+npm run example:verify
+npx tsx examples/scan-history.ts
+```
+
+## Troubleshooting
+
+- `Invalid public inputs size`: relay expects `264` bytes, not `232`.
+- `RootNotFound` / `0x1001`: regenerate proof with fresh root (SDK retry usually handles this).
+- `0x1020` in local repeated runs: set `CLOAK_UNIQUE_NULLIFIERS=1`.
+- `viewing key not found`: re-run a transaction with registration enabled, then rescan history.
 
 ## Next
 
 - Protocol internals: [Shield Pool Program](/protocol/shield-pool)
 - Relay routes and payloads: [Relay API](/services/relay-api)
+- Commitment indexing behavior: [Commitment Sync Operations](/services/commitment-sync-operations)
 - Full SDK exports: [API Reference](/sdk/api-reference)

@@ -1,0 +1,65 @@
+---
+title: "Commitment Sync Operations"
+description: "How relay keeps /commitments fresh and how to operate it"
+icon: "arrows-rotate"
+---
+
+Source: `services/relay/src/commitment_sync.rs`.
+
+## What it does
+
+- On startup, relay schedules a non-blocking initial sync.
+- Then it continuously syncs in the background (about every 30s).
+- It stores commitments in Postgres and serves them through `GET /commitments`.
+- It tracks progress with an incremental signature cursor in DB.
+
+## Sync strategy
+
+- Fetch new signatures for the Merkle tree account since last cursor.
+- Group signatures by slot.
+- Primary parse path: `getBlock` for slot batches.
+- Fallback path: if `getBlock` fails/misses txs, fetch per transaction with `getTransaction`.
+- Persist commitments in order and advance cursor only when safe.
+
+Important guardrail: relay does not advance cursor when new signatures were seen but zero commitments were parsed, preventing permanent history gaps.
+
+## RPC behavior and retries
+
+- Uses retry/backoff around signature and transaction fetches.
+- Handles flaky RPC behavior (including common local/Surfpool internal errors).
+- Supports separate sync RPC via `COMMITMENT_SYNC_RPC_URL`.
+
+## Configuration
+
+- `SOLANA_RPC_URL`: main RPC for relay operations.
+- `COMMITMENT_SYNC_RPC_URL` (optional): separate RPC for commitment sync/scanning.
+
+If `COMMITMENT_SYNC_RPC_URL` is set, relay uses it for sync while keeping normal submit flow on `SOLANA_RPC_URL`.
+
+## Operational checks
+
+Run from `services/`:
+
+```bash
+cargo run -p relay --release
+```
+
+Then validate:
+
+```bash
+curl http://127.0.0.1:5500/health
+curl http://127.0.0.1:5500/commitments
+curl http://127.0.0.1:5500/merkle-root
+```
+
+## Troubleshooting
+
+- `/commitments` empty while chain has activity:
+  - check relay logs for sync errors
+  - verify `CLOAK_PROGRAM_ID`
+  - set `COMMITMENT_SYNC_RPC_URL` to a full-history/archive RPC
+- Frequent `RootNotFound` in clients:
+  - expected under high throughput; SDK retries with rebuilt proofs
+  - verify sync is healthy and clients are not reusing stale Merkle snapshots too long
+- Sync cursor appears stale after DB reset:
+  - relay self-heals when commitments table is empty but cursor exists by rebuilding from scratch

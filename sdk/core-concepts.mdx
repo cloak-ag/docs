@@ -1,17 +1,18 @@
 ---
 title: "Core concepts"
-description: "Protocol primitives used by both note-based and UTXO-based SDK flows"
+description: "Current primitives: UTXOs, fees, viewing keys, scanner, and root retries"
 icon: "lightbulb"
 ---
 
-## Two transaction interfaces
+## Canonical transaction path
 
-Cloak SDK v2 supports:
+The active runtime path is UTXO transactions through:
 
-- **Note model** (`CloakSDK`) for app-oriented deposit/withdraw UX
-- **UTXO model** (`transact` and helpers) for explicit state control
+- `transact` for deposit/withdraw/transfer
+- `swapWithChange` / `swapUtxo` for swap flows
+- Relay endpoints `/transact` and `/transact_swap`
 
-Both rely on the same proof system and on-chain state.
+Legacy note-model methods still exist, but protocol docs and web flows are UTXO-first.
 
 ## Commitments and Merkle tree
 
@@ -42,7 +43,7 @@ The SDK includes retry paths that:
 - regenerate proof
 - resubmit
 
-## Fee model
+## Fee model: gross, fee, net
 
 Shared constants:
 
@@ -50,13 +51,37 @@ Shared constants:
 - Variable fee: `amount * 3 / 1000`
 - Minimum deposit: `10_000_000` lamports
 
+For withdrawals/swaps:
+
+- `gross` = absolute public withdrawal amount
+- `fee` = fixed + variable
+- `net` = `gross - fee`
+
 ## Proof data shapes
 
-- Note-based withdraw requests use 104-byte public input fields at relay boundary.
-- UTXO transact requests use 232-byte public input blobs (`root + publicAmount + extDataHash + mint + nullifiers + commitments`).
+- UTXO transact and swap requests use `264`-byte public inputs:
+  `root + publicAmount + extDataHash + mint + nullifiers + commitments + chainNoteHash`.
+- Proof bytes are always `256` bytes (Groth16).
+
+## Viewing key registration
+
+- SDK/web enforce viewing-key registration by default before protocol transactions.
+- Registration uses `POST /viewing-key/register` with:
+  - wallet pubkey
+  - 32-byte viewing key (`nk`)
+  - signature over fixed sign-in message
+- Registration is cached in-process to avoid repeat calls.
+
+## Chain-native scanner and cache model
+
+- `scanTransactions` reads chain transactions directly from RPC (no relay dependency).
+- It decrypts compact chain notes with viewing key `nk` and verifies `chainNoteHash` integrity.
+- It computes per-tx `gross`, `fee`, `netAmount`, and running balance.
+- Web stores report snapshots in encrypted local storage and exposes explicit cache clear + rescan.
 
 ## Related pages
 
 - UTXO details: [UTXO Transactions (v2)](/sdk/utxo-transactions)
 - Program internals: [Shield Pool Program](/protocol/shield-pool)
 - Relay routes: [Relay API](/services/relay-api)
+- Sync ops: [Commitment Sync Operations](/services/commitment-sync-operations)

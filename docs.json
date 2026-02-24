@@ -39,13 +39,21 @@
             "group": "Protocol",
             "pages": [
               "protocol/architecture",
-              "protocol/shield-pool"
+              "protocol/shield-pool",
+              "architecture/viewing-keys-compliance"
             ]
           },
           {
             "group": "Relay Service",
             "pages": [
-              "services/relay-api"
+              "services/relay-api",
+              "services/commitment-sync-operations"
+            ]
+          },
+          {
+            "group": "Operations",
+            "pages": [
+              "operations/local-dev-runbook"
             ]
           },
           {

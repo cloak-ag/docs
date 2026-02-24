@@ -1,29 +1,46 @@
 ---
 title: "Shield Pool Program"
-description: "Instruction set, fees, PDAs, and error model for the on-chain program"
+description: "Current instruction semantics, fees, constraints, and operational limits"
 icon: "microchip"
 ---
 
 Source: `programs/shield-pool`.
 
-## Program identifiers
+## Program identifier
 
-From `programs/shield-pool/src/lib.rs`:
+`programs/shield-pool/src/lib.rs`:
 
-- Mainnet (default build): `c1oak6tetxYnNfvXKFkpn1d98FxtK7B68vBQLYQpWKp`
-- Development feature build: `3EvH6XYQir7D2RyzCdP7QFmJFfSPfdeoB8VnpLdEF4Kr`
+- `c1oak6tetxYnNfvXKFkpn1d98FxtK7B68vBQLYQpWKp`
 
-## Instruction discriminants
+## Instruction surface
 
 From `programs/shield-pool/src/instructions/mod.rs`:
 
-- `0`: `Initialize`
-- `4`: `PrepareSwapSol`
-- `5`: `ExecuteSwap`
-- `8`: `Transact`
-- `9`: `TransactSwap`
+- User-facing:
+  - `0`: `Transact`
+  - `1`: `TransactSwap`
 
-## Fees
+- Relay/ops-facing:
+  - `10`: `Initialize`
+  - `11`: `PrepareSwapSol`
+  - `12`: `ExecuteSwap`
+  - `13`: `CloseSwapState`
+
+## Public input layout
+
+`Transact` and `TransactSwap` both use a `264`-byte public input blob:
+
+- `root[32]`
+- `publicAmount[8]` (`i64`, LE)
+- `extDataHash[32]`
+- `mintAddress[32]`
+- `inputNullifiers[64]` (2 x 32)
+- `outputCommitments[64]` (2 x 32)
+- `chainNoteHash[32]`
+
+This matches `packages/circuits/transaction.circom` and relay validators.
+
+## Fees and amount semantics
 
 From `programs/shield-pool/src/constants.rs`:
 
@@ -31,7 +48,13 @@ From `programs/shield-pool/src/constants.rs`:
 - Variable fee: `amount * 3 / 1000` (0.3%)
 - `MIN_DEPOSIT_LAMPORTS = 10_000_000` (0.01 SOL)
 
-The SDK (`sdk/src/utils/fees.ts`) and relay (`services/relay/src/fee_constants.rs`) are aligned to these constants.
+Withdrawal and swap math:
+
+- `gross = abs(publicAmount)`
+- `fee = 5_000_000 + gross * 3 / 1000`
+- `net = gross - fee`
+
+The program enforces sufficient withdrawal amount so `net > 0`.
 
 ## Merkle tree and nullifiers
 
@@ -51,25 +74,36 @@ Relevant seeds:
 
 ### `Transact`
 
-- Verifies 256-byte Groth16 proof
-- Validates root in root history
-- Marks input nullifiers as spent
-- Appends output commitments
-- Handles deposit/withdraw public amount path
+- Verifies 256-byte Groth16 proof against transaction verifier key.
+- Validates root exists in root history ring.
+- Creates nullifier PDAs for non-zero input nullifiers (double-spend protection).
+- Appends non-zero output commitments to Merkle tree.
+- Applies external transfer based on `publicAmount`:
+  - positive: deposit from payer to pool
+  - negative: withdrawal from pool to recipient + fee to treasury
+  - zero: pure shield transfer (no external SOL movement)
+- Deposit path can require risk-oracle quote accounts when configured.
 
 ### `TransactSwap`
 
-- Performs transact semantics
-- Stores swap parameters in `SwapState`
-- Defers DEX execution to subsequent instructions
+- Runs the same proof/nullifier/commitment checks as `Transact`.
+- Requires negative `publicAmount` (swap is a withdrawal path).
+- Creates `SwapState` PDA with output mint, recipient ATA, min output, timeout data.
+- Moves SOL into swap state path for follow-up execution.
 
 ### `PrepareSwapSol` + `ExecuteSwap`
 
-- Moves SOL into wSOL ATA
-- Executes swap CPI
-- Closes swap state
+- Wraps SOL into wSOL context, executes swap CPI route, then settles output.
+- `CloseSwapState` closes state account once complete/eligible.
 
-## Error code families
+## Circuit assumptions the program relies on
+
+- Transaction circuit is fixed to 2 inputs / 2 outputs.
+- Tree depth is fixed to 32 levels.
+- Circuit enforces value conservation: `sum(inputs) + publicAmount = sum(outputs)`.
+- Circuit includes `chainNoteHash` binding constraints for chain-note integrity.
+
+## Error families
 
 From `programs/shield-pool/src/error.rs`:
 
@@ -83,3 +117,9 @@ From `programs/shield-pool/src/error.rs`:
 - `0x10A0-0x10A1`: risk-oracle checks
 
 For SDK-side mapping utilities, see `ShieldPoolErrors` in [Error Handling](/sdk/error-handling).
+
+## Common failure modes
+
+- `0x1001 RootNotFound`: proof used an old root no longer in ring history.
+- `0x1020`/nullifier-already-used: input already spent (or reused test nullifier).
+- Invalid instruction data: wrong public input length (must be 264 bytes).

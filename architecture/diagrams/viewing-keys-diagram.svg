@@ -1,85 +1,69 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 500">
-  <!-- Background -->
-  <rect width="900" height="500" fill="#ffffff"/>
-  
-  <!-- Title -->
-  <text x="450" y="30" font-family="Arial" font-size="24" font-weight="bold" text-anchor="middle">Viewing Key Chains</text>
-  
-  <!-- User's View Key Box -->
-  <rect x="50" y="60" width="380" height="180" rx="5" fill="#e0e0ff" stroke="#000" stroke-width="2"/>
-  <text x="240" y="85" font-family="Arial" font-size="16" font-weight="bold" text-anchor="middle">USER'S VIEW KEY</text>
-  <text x="70" y="115" font-family="Arial" font-size="12">(derived from encryption key)</text>
-  
-  <!-- Encryption Key -->
-  <rect x="80" y="130" width="120" height="40" rx="3" fill="#fff8e0" stroke="#000" stroke-width="1"/>
-  <text x="140" y="155" font-family="Arial" font-size="12" text-anchor="middle">Encryption Key</text>
-  <text x="140" y="170" font-family="Arial" font-size="9" text-anchor="middle">(from wallet sig)</text>
-  
-  <!-- Arrow -->
-  <line x1="200" y1="150" x2="260" y2="150" stroke="#000" stroke-width="2" marker-end="url(#arrowhead)"/>
-  
-  <!-- PBKDF2 -->
-  <rect x="260" y="130" width="100" height="40" rx="3" fill="#e0ffe0" stroke="#000" stroke-width="1"/>
-  <text x="310" y="155" font-family="Arial" font-size="12" text-anchor="middle">PBKDF2</text>
-  
-  <!-- Arrow -->
-  <line x1="360" y1="150" x2="400" y2="150" stroke="#000" stroke-width="2" marker-end="url(#arrowhead)"/>
-  
-  <!-- User's View Key -->
-  <rect x="400" y="130" width="120" height="40" rx="3" fill="#ffe0e0" stroke="#000" stroke-width="1"/>
-  <text x="460" y="150" font-family="Arial" font-size="11" text-anchor="middle">User's View Key</text>
-  <text x="460" y="165" font-family="Arial" font-size="9" text-anchor="middle">(private)</text>
-  
-  <!-- Arrow down -->
-  <line x1="460" y1="170" x2="460" y2="200" stroke="#000" stroke-width="2" marker-end="url(#arrowhead)"/>
-  
-  <!-- Decrypt Own UTXOs -->
-  <rect x="350" y="200" width="220" height="35" rx="3" fill="#f0f0f0" stroke="#000" stroke-width="1"/>
-  <text x="460" y="223" font-family="Arial" font-size="12" text-anchor="middle">Decrypt own UTXOs</text>
-  
-  <!-- Compliance View Key Box -->
-  <rect x="470" y="60" width="380" height="180" rx="5" fill="#ffe0e0" stroke="#000" stroke-width="2"/>
-  <text x="660" y="85" font-family="Arial" font-size="16" font-weight="bold" text-anchor="middle">COMPLIANCE VIEW KEY</text>
-  <text x="490" y="115" font-family="Arial" font-size="12">(shared with Cloak for compliance)</text>
-  
-  <!-- Master Compliance Key -->
-  <rect x="500" y="130" width="150" height="40" rx="3" fill="#fff8e0" stroke="#000" stroke-width="1"/>
-  <text x="575" y="155" font-family="Arial" font-size="11" text-anchor="middle">Master Compliance Key</text>
-  <text x="575" y="170" font-family="Arial" font-size="9" text-anchor="middle">(relay's public key)</text>
-  
-  <!-- Arrow -->
-  <line x1="650" y1="150" x2="700" y2="150" stroke="#000" stroke-width="2" marker-end="url(#arrowhead)"/>
-  
-  <!-- Derive -->
-  <rect x="700" y="130" width="130" height="40" rx="3" fill="#e0ffe0" stroke="#000" stroke-width="1"/>
-  <text x="765" y="155" font-family="Arial" font-size="11" text-anchor="middle">Derive user-</text>
-  <text x="765" y="170" font-family="Arial" font-size="9" text-anchor="middle">specific key</text>
-  
-  <!-- Arrow -->
-  <line x1="765" y1="170" x2="765" y2="200" stroke="#000" stroke-width="2" marker-end="url(#arrowhead)"/>
-  
-  <!-- Compliance Encrypted Blob -->
-  <rect x="685" y="200" width="160" height="35" rx="3" fill="#ffe0e0" stroke="#000" stroke-width="1"/>
-  <text x="765" y="223" font-family="Arial" font-size="11" text-anchor="middle">Compliance-encrypted blob</text>
-  
-  <!-- Arrow down -->
-  <line x1="765" y1="235" x2="765" y2="260" stroke="#000" stroke-width="2" marker-end="url(#arrowhead)"/>
-  
-  <!-- Admin View -->
-  <rect x="655" y="260" width="220" height="35" rx="3" fill="#f0f0f0" stroke="#000" stroke-width="1"/>
-  <text x="765" y="283" font-family="Arial" font-size="12" text-anchor="middle">Admin compliance view (via relay)</text>
-  
-  <!-- Key Points -->
-  <rect x="50" y="280" width="800" height="100" rx="5" fill="#fff8e0" stroke="#000" stroke-width="2"/>
-  <text x="450" y="305" font-family="Arial" font-size="16" font-weight="bold" text-anchor="middle">KEY POINTS</text>
-  <text x="70" y="335" font-family="Arial" font-size="12">• User's View Key: Private, stays on device, allows viewing own UTXOs</text>
-  <text x="70" y="360" font-family="Arial" font-size="12">• Compliance View Key: Shared with Cloak relay, enables regulatory compliance</text>
-  <text x="70" y="385" font-family="Arial" font-size="12">• Both derived from user's encryption key (which comes from wallet signature)</text>
-  
-  <!-- Arrow definitions -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 700" role="img" aria-label="Cloak viewing key lifecycle">
   <defs>
-    <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-      <polygon points="0 0, 10 3.5, 0 7" fill="#000"/>
+    <style>
+      .title { font: 700 34px 'Inter', 'Segoe UI', Arial, sans-serif; fill: #0f172a; }
+      .subtitle { font: 500 15px 'Inter', 'Segoe UI', Arial, sans-serif; fill: #475569; }
+      .h { font: 700 21px 'Inter', 'Segoe UI', Arial, sans-serif; fill: #0f172a; }
+      .b { font: 500 14px 'Inter', 'Segoe UI', Arial, sans-serif; fill: #334155; }
+      .k { font: 600 13px 'Inter', 'Segoe UI', Arial, sans-serif; fill: #0f172a; }
+      .line { stroke: #334155; stroke-width: 2.2; fill: none; }
+      .dash { stroke: #94a3b8; stroke-width: 1.6; fill: none; stroke-dasharray: 6 5; }
+    </style>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#f8fafc"/>
+      <stop offset="100%" stop-color="#f1f5f9"/>
+    </linearGradient>
+    <marker id="arrow" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto">
+      <path d="M0,0 L10,4 L0,8 Z" fill="#334155"/>
     </marker>
   </defs>
+
+  <rect width="1100" height="700" fill="url(#bg)"/>
+
+  <text x="550" y="58" class="title" text-anchor="middle">Viewing Keys + Compliance Flow (Current)</text>
+  <text x="550" y="84" class="subtitle" text-anchor="middle">nk-derived chain-note decryption, identifier-based registration, scanner-first user history</text>
+
+  <rect x="70" y="130" width="460" height="292" rx="18" fill="#eef2ff" stroke="#6366f1" stroke-width="2"/>
+  <text x="300" y="169" class="h" text-anchor="middle">Client (Web / SDK)</text>
+
+  <rect x="98" y="190" width="404" height="62" rx="12" fill="#ffffff" stroke="#cbd5e1"/>
+  <text x="300" y="216" class="k" text-anchor="middle">1) Derive wallet keys from sign-in signature</text>
+  <text x="300" y="238" class="b" text-anchor="middle">Use sk_spend -> derive nk for chain-note viewing</text>
+
+  <rect x="98" y="266" width="404" height="64" rx="12" fill="#ffffff" stroke="#cbd5e1"/>
+  <text x="300" y="292" class="k" text-anchor="middle">2) Register viewing key with relay</text>
+  <text x="300" y="314" class="b" text-anchor="middle">Send user_pubkey + viewing_key(nk hex) + signature + identifier</text>
+
+  <rect x="98" y="344" width="404" height="62" rx="12" fill="#ffffff" stroke="#cbd5e1"/>
+  <text x="300" y="370" class="k" text-anchor="middle">3) Submit protocol txs (deposit/send/withdraw/swap)</text>
+  <text x="300" y="392" class="b" text-anchor="middle">Each tx carries CLVK compact chain-note envelope on-chain</text>
+
+  <rect x="570" y="130" width="460" height="292" rx="18" fill="#ecfdf5" stroke="#16a34a" stroke-width="2"/>
+  <text x="800" y="169" class="h" text-anchor="middle">Relay + Admin Compliance</text>
+
+  <rect x="598" y="190" width="404" height="62" rx="12" fill="#ffffff" stroke="#cbd5e1"/>
+  <text x="800" y="216" class="k" text-anchor="middle">A) Verify signature and compute identifier</text>
+  <text x="800" y="238" class="b" text-anchor="middle">identifier = sha256(user_pubkey || viewing_key_hex)</text>
+
+  <rect x="598" y="266" width="404" height="64" rx="12" fill="#ffffff" stroke="#cbd5e1"/>
+  <text x="800" y="292" class="k" text-anchor="middle">B) Store (identifier, viewing_key) in DB</text>
+  <text x="800" y="314" class="b" text-anchor="middle">Supports multiple keys per user_pubkey across resets</text>
+
+  <rect x="598" y="344" width="404" height="62" rx="12" fill="#ffffff" stroke="#cbd5e1"/>
+  <text x="800" y="370" class="k" text-anchor="middle">C) Admin endpoints decrypt from chain notes</text>
+  <text x="800" y="392" class="b" text-anchor="middle">Try matching keys, verify chain_note_hash integrity</text>
+
+  <line x1="502" y1="298" x2="598" y2="298" class="line" marker-end="url(#arrow)"/>
+  <line x1="502" y1="375" x2="598" y2="375" class="line" marker-end="url(#arrow)"/>
+
+  <rect x="70" y="462" width="960" height="176" rx="18" fill="#ffffff" stroke="#cbd5e1"/>
+  <text x="550" y="499" class="h" text-anchor="middle">User-Facing History Path</text>
+
+  <text x="110" y="531" class="k">- Primary path: SDK scanner reads chain transactions directly (no relay dependency for user history)</text>
+  <text x="110" y="555" class="b">Decrypt with nk, compute gross/fee/net, return compliance report + lastSignature cursor</text>
+  <text x="110" y="579" class="k">- Web cache: encrypted localStorage key `cloak_compliance_{wallet}`</text>
+  <text x="110" y="603" class="b">History page loads cache first, supports clear-cache + rescan for freshness</text>
+
+  <line x1="300" y1="422" x2="300" y2="462" class="dash"/>
+  <line x1="800" y1="422" x2="800" y2="462" class="dash"/>
 </svg>
