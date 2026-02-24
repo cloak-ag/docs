@@ -75,7 +75,7 @@ await sdk.withdraw(connection, deposit.note, new PublicKey("RECIPIENT"), {
 
 ## Network and program IDs
 
-`programs/shield-pool/src/lib.rs` defines:
+Current deployment constants:
 
 - Mainnet/default build: `c1oak6tetxYnNfvXKFkpn1d98FxtK7B68vBQLYQpWKp`
 - Development build: `3EvH6XYQir7D2RyzCdP7QFmJFfSPfdeoB8VnpLdEF4Kr`
@@ -84,7 +84,7 @@ await sdk.withdraw(connection, deposit.note, new PublicKey("RECIPIENT"), {
 
 ## Core protocol fees
 
-From shared constants (`programs/shield-pool`, `sdk`, `services/relay`):
+Shared protocol constants:
 
 - Fixed: `5_000_000` lamports (0.005 SOL)
 - Variable: `amount * 3 / 1000` (0.3%)

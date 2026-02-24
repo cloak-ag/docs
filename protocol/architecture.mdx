@@ -6,11 +6,11 @@ icon: "diagram-project"
 
 Cloak is a UTXO privacy system on Solana with five active runtime surfaces:
 
-- `web/` wallet UX, encrypted local cache, and scan/export flows
-- `sdk/` proof generation, transaction orchestration, chain-note scan/decrypt
-- `services/relay/` API for submit/status/viewing-key registration and chain indexing
-- `programs/shield-pool/` on-chain proof verifier + state machine
-- `packages/circuits/` Circom constraints (2-in/2-out transaction circuit)
+- Web app wallet UX, encrypted local cache, and scan/export flows
+- SDK proof generation, transaction orchestration, and chain-note scan/decrypt
+- Relay API for submit/status/viewing-key registration and chain indexing
+- Shield Pool on-chain proof verifier + state machine
+- Circuit layer constraints (2-in/2-out transaction circuit)
 
 ## End-to-end flow
 
@@ -43,15 +43,11 @@ flowchart LR
 - Net recipient amount: `gross - fee`
 - Minimum deposit: `10_000_000` lamports
 
-These constants are aligned in:
-
-- `programs/shield-pool/src/constants.rs`
-- `sdk/src/utils/fees.ts`
-- `services/relay/src/fee_constants.rs`
+These constants are aligned across program, relay, and SDK.
 
 ## On-chain state
 
-`programs/shield-pool` maintains:
+Shield Pool maintains:
 
 - Merkle tree (`MERKLE_TREE_HEIGHT = 32`)
 - Root history ring (`ROOT_HISTORY_SIZE = 100`)
@@ -79,7 +75,7 @@ These constants are aligned in:
 
 ## Program IDs
 
-`programs/shield-pool/src/lib.rs` currently defines:
+Current deployment program ID:
 
 - `c1oak6tetxYnNfvXKFkpn1d98FxtK7B68vBQLYQpWKp` (default)
 

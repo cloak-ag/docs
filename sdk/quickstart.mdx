@@ -10,9 +10,9 @@ This quickstart uses the current UTXO API (`transact` + `partialWithdraw`).
 
 - Node.js 18+
 - A funded Solana keypair
-- Relay endpoint (`CLOAK_RELAY_URL`)
-- RPC endpoint (`SOLANA_RPC_URL`)
-- Circuit artifacts available to SDK (`CIRCUITS_PATH`, usually `web/public/circuits`)
+- Relay URL
+- Solana RPC URL
+- Hosted circuit artifacts at `https://cloak.ag/circuits`
 
 ## Install
 
@@ -53,7 +53,7 @@ const programId = new PublicKey(
   process.env.CLOAK_PROGRAM_ID || "c1oak6tetxYnNfvXKFkpn1d98FxtK7B68vBQLYQpWKp"
 );
 const relayUrl = process.env.CLOAK_RELAY_URL || "http://127.0.0.1:5500";
-setCircuitsPath(process.env.CIRCUITS_PATH || "../web/public/circuits");
+setCircuitsPath(process.env.CIRCUITS_PATH || "https://cloak.ag/circuits");
 
 const owner = await generateUtxoKeypair();
 const depositAmount = BigInt(0.02 * LAMPORTS_PER_SOL); // 0.02 SOL
@@ -107,13 +107,22 @@ npx tsx demo.ts
 
 ## Verify scanner output
 
-From `sdk/`:
+Add a scanner step in your app/script:
 
-```bash
-npx tsx examples/compliance-report-simple.ts
+```typescript
+import { scanTransactions, toComplianceReport } from "@cloak.ag/sdk";
+
+const scan = await scanTransactions({
+  connection,
+  programId,
+  viewingKeyNk: /* your 32-byte nk */,
+});
+
+const report = toComplianceReport(scan);
+console.log(report.summary);
 ```
 
-This runs a small deposit/withdraw flow, scans chain-native history, and prints totals including fees.
+This returns chain-native totals (deposits, withdrawals, fees, final balance).
 
 ## Next steps
 

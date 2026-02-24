@@ -4,17 +4,11 @@ description: "Current instruction semantics, fees, constraints, and operational 
 icon: "microchip"
 ---
 
-Source: `programs/shield-pool`.
-
 ## Program identifier
-
-`programs/shield-pool/src/lib.rs`:
 
 - `c1oak6tetxYnNfvXKFkpn1d98FxtK7B68vBQLYQpWKp`
 
 ## Instruction surface
-
-From `programs/shield-pool/src/instructions/mod.rs`:
 
 - User-facing:
   - `0`: `Transact`
@@ -38,11 +32,9 @@ From `programs/shield-pool/src/instructions/mod.rs`:
 - `outputCommitments[64]` (2 x 32)
 - `chainNoteHash[32]`
 
-This matches `packages/circuits/transaction.circom` and relay validators.
+This matches the transaction circuit constraints and relay-side validators.
 
 ## Fees and amount semantics
-
-From `programs/shield-pool/src/constants.rs`:
 
 - `FIXED_FEE_LAMPORTS = 5_000_000` (0.005 SOL)
 - Variable fee: `amount * 3 / 1000` (0.3%)
@@ -104,8 +96,6 @@ Relevant seeds:
 - Circuit includes `chainNoteHash` binding constraints for chain-note integrity.
 
 ## Error families
-
-From `programs/shield-pool/src/error.rs`:
 
 - `0x1000-0x1002`: root management
 - `0x1010-0x1013`: proof input/proof shape errors
