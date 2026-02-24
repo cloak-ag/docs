@@ -1,29 +1,25 @@
 ---
 title: "Relay API"
-description: "Current routes, payload contracts, and operational behavior in services/relay"
+description: "SDK-facing relay routes and payload contracts"
 icon: "server"
 ---
 
-Source: `services/relay/src/main.rs` and `services/relay/src/api/*`.
+This page documents only the relay endpoints used by SDK/web runtime flows.
 
-## Route map
+For the complete relay route surface (admin/internal/ops), use `services/relay/` as source of truth.
 
-- `GET /` service metadata
-- `GET /health` liveness status
-- `POST /withdraw` legacy note-model entrypoint
-- `POST /transact` canonical UTXO submit
-- `POST /transact_swap` canonical UTXO swap submit
-- `GET /status/:id` request status
+## SDK-facing route map
+
+- `POST /transact` UTXO submit
+- `POST /transact_swap` UTXO swap submit
+- `GET /status/:id` async job status
 - `POST /viewing-key/register` viewing-key registration
-- `GET /compliance-key` compliance key metadata
-- `POST /admin/compliance/decrypt`
-- `POST /admin/compliance/export`
-- `POST /admin/compliance/user-export`
-- `GET /admin/compliance/nonce`
-- `GET /commitments` DB-backed commitment list
-- `GET /merkle-root` latest chain root
-- `GET /risk-quote` returns `501 Not Implemented`
-- `GET /backlog` queue snapshot
+- `GET /commitments` commitment list for Merkle rebuild
+- `GET /merkle-root` latest on-chain root
+
+Not part of normal SDK happy-path:
+
+- `GET /risk-quote` in this relay build returns `501 Not Implemented`
 
 ## `POST /transact` (UTXO)
 
@@ -138,13 +134,15 @@ Returns:
 
 ## `GET /risk-quote`
 
-Always `501` in this relay build with guidance text.
+`501` in this relay build.
 
 Use one of:
 
 - SDK `TransactOptions.riskQuoteUrl` to an external quote service implementing `GET /risk-quote?wallet=<pubkey>`.
 - SDK `TransactOptions.getRiskQuoteInstruction` to inject quote instruction directly.
 
-## Legacy note route
+## Scope note
 
-`POST /withdraw` remains for legacy note-model clients, but current SDK/web transaction flow is UTXO-first via `/transact` and `/transact_swap`.
+This page intentionally excludes admin/internal relay routes.
+
+If you need full relay route coverage, document and maintain it under `services/relay/` only.
