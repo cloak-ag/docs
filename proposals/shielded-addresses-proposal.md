@@ -517,17 +517,17 @@ bulletproofs = "4"       # Range proofs
 │                       MIGRATION STRATEGY                                    │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                             │
-│  Phase 1 (v1.0): Backward Compatible                                      │
+│  Phase 1: Backward Compatible                                             │
 │  • Introduce shielded addresses alongside existing                         │
 │  • Users can have both public and shielded addresses                       │
 │  • No breaking changes                                                    │
 │                                                                             │
-│  Phase 2 (v1.5): Feature Parity                                           │
+│  Phase 2: Feature Parity                                                  │
 │  • Shielded transfers between users                                       │
 │  • Shielded to public conversions                                          │
 │  • Full feature set available                                              │
 │                                                                             │
-│  Phase 3 (v2.0): Default Privacy                                          │
+│  Phase 3: Default Privacy                                                 │
 │  • New users get shielded addresses by default                            │
 │  • Deprecate public-only mode                                             │
 │  • Migration tools for existing users                                      │

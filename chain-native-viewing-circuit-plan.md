@@ -42,7 +42,7 @@ This document tracks:
 - Compact encrypted chain note format implemented (`CLVK` envelope in tx instruction tail).
 - Notes are encrypted with X25519 shared secret + AES-256-GCM.
 - Current SDK uses HKDF-SHA256 key derivation for chain-note version `2`.
-- Relay supports decrypt for v1/v2 notes.
+- Relay supports decrypt for compact notes that follow the current envelope format.
 
 ### Integrity checks currently enforced (relay side)
 
@@ -275,7 +275,7 @@ Post-upgrade transact instruction bytes:
 - Count byte: number of note payloads
 - Repeated entries: `[len:u16 LE][note_bytes]`
 
-Compact note payload remains versioned and encrypted (v2 key derivation currently in SDK).
+Compact note payload remains versioned and encrypted using the current SDK key derivation.
 
 ### 7) SDK and relay invariants
 

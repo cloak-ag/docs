@@ -17,8 +17,7 @@
             "group": "Getting Started",
             "pages": [
               "sdk/introduction",
-              "sdk/quickstart",
-              "sdk/migration-v1-v2"
+              "sdk/quickstart"
             ]
           },
           {
