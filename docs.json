@@ -45,14 +45,7 @@
           {
             "group": "Relay Service",
             "pages": [
-              "services/relay-api",
-              "services/commitment-sync-operations"
-            ]
-          },
-          {
-            "group": "Operations",
-            "pages": [
-              "operations/local-dev-runbook"
+              "services/relay-api"
             ]
           },
           {

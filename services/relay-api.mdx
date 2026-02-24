@@ -4,9 +4,7 @@ description: "SDK-facing relay routes and payload contracts"
 icon: "server"
 ---
 
-This page documents only the relay endpoints used by SDK/web runtime flows.
-
-For the complete relay route surface (admin/internal/ops), use `services/relay/` as source of truth.
+This page documents only relay endpoints used by SDK/web runtime flows.
 
 ## SDK-facing route map
 
@@ -93,8 +91,7 @@ Returns DB-backed commitments for Merkle rebuild:
 }
 ```
 
-- Served from Postgres (populated by background commitment sync).
-- Does not block on real-time RPC scan.
+- Use this endpoint when rebuilding Merkle state for proof generation.
 
 ## `GET /merkle-root`
 
@@ -127,9 +124,3 @@ Returns:
   }
 }
 ```
-
-## Scope note
-
-This page intentionally excludes admin/internal relay routes.
-
-If you need full relay route coverage, document and maintain it under `services/relay/` only.
