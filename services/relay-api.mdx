@@ -17,10 +17,6 @@ For the complete relay route surface (admin/internal/ops), use `services/relay/`
 - `GET /commitments` commitment list for Merkle rebuild
 - `GET /merkle-root` latest on-chain root
 
-Not part of normal SDK happy-path:
-
-- `GET /risk-quote` in this relay build returns `501 Not Implemented`
-
 ## `POST /transact` (UTXO)
 
 ```json
@@ -131,15 +127,6 @@ Returns:
   }
 }
 ```
-
-## `GET /risk-quote`
-
-`501` in this relay build.
-
-Use one of:
-
-- SDK `TransactOptions.riskQuoteUrl` to an external quote service implementing `GET /risk-quote?wallet=<pubkey>`.
-- SDK `TransactOptions.getRiskQuoteInstruction` to inject quote instruction directly.
 
 ## Scope note
 
