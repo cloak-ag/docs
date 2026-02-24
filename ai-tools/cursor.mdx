@@ -1,108 +1,98 @@
 ---
 title: "Cursor setup"
-description: "Cursor rules and prompt recipes for fast SDK app delivery"
+description: "Cursor rules and prompts for fast, correct Cloak SDK builds"
 icon: "arrow-pointer"
 ---
 
-Use Cursor with a strict SDK-first ruleset so generated code is immediately usable in real Cloak apps.
+Use this setup to keep Cursor focused on real SDK contracts and production-safe app behavior.
 
-## Project rules
+## 1) Rules file
 
-Create `.cursor/rules.md` in your app root:
+Create `.cursor/rules.md`:
 
 <Accordion title="View .cursor/rules.md template">
 
-# Cloak SDK Rules (Current)
+# Cursor Rules for Cloak SDK
 
-This project uses `@cloak.ag/sdk` for private Solana transactions.
+This project integrates `@cloak.ag/sdk`.
 
-## Primary APIs
+## Fixed integration constants
 
-Use UTXO helpers as default:
-- `transact`
-- `partialWithdraw`
-- `fullWithdraw`
-- `swapWithChange`
+- Program ID: `c1oak6tetxYnNfvXKFkpn1d98FxtK7B68vBQLYQpWKp`
+- Circuit base URL: `https://www.cloak.ag/circuits`
 
-Always handle lamports as bigint.
+## SDK capability coverage (must evaluate all)
 
-## Security constraints
+1. `CloakSDK` note API
+2. UTXO primitives + transaction API
+3. scanner/compliance API
+4. viewing-key + metadata encryption API
+5. relay/proof/Merkle helpers
+6. fees/errors/network/wallet/storage utilities
 
-- Never log secrets (UTXO keys, viewing keys, wallet signatures).
-- Never downgrade encrypted local storage flows.
-- Never bypass viewing-key registration requirements.
+## Required behavior
 
-## Program ID
+- UTXO path is primary for new integrations.
+- Amounts are `bigint` in tx logic.
+- Enforce viewing-key registration before protocol actions.
+- Keep history cache-first with explicit rescan.
 
-- `c1oak6tetxYnNfvXKFkpn1d98FxtK7B68vBQLYQpWKp`
+## Safety
 
-Set `programId` explicitly in config.
+- Never log private keys, viewing keys, signatures, or raw note secrets.
+- Use retry/backoff for stale-root and transient RPC failures.
 
-## Fees
+## Reference docs
 
-- Fixed: `5_000_000`
-- Variable: `amount * 3 / 1000`
-- Applied on-chain for withdrawals/swaps.
-
-## Error handling
-
-- Treat stale-root errors as retryable.
-- Distinguish network, RPC rate-limit, and validation errors.
-- Surface user-safe messages in UI.
-
-## UX expectations
-
-- Compliance history: cache-first, rescan on explicit user action.
-- Show progress for proof generation and scanner phases.
-- Keep deposit/send/swap/withdraw handlers deterministic and testable.
-
-## References
-
-- `/sdk/quickstart`
+- `/sdk/llms.txt`
+- `/sdk/api-reference`
 - `/sdk/utxo-transactions`
 - `/sdk/wallet-integration`
-- `/sdk/api-reference`
-- `/services/relay-api`
-- `/architecture/viewing-keys-compliance`
 
 </Accordion>
 
-## Prompt recipes
+## 2) Starter prompt
+
+<Accordion title="Copy starter prompt">
+
+Implement this feature with `@cloak.ag/sdk`.
+
+First, output a matrix for these capability groups:
+- Note API
+- UTXO API
+- Scanner/compliance
+- Viewing keys + metadata encryption
+- Relay/proof/Merkle helpers
+- Utility modules
+
+For each group: `used` or `not used` + reason.
+
+Then:
+- produce file-by-file patches
+- keep bigint-safe logic
+- include wallet-adapter and keypair-bytes examples where applicable
+- run checks and summarize verification output
+
+</Accordion>
+
+## 3) High-value prompts
 
 <AccordionGroup>
-<Accordion title="Generate full SDK integration scaffold">
-Create a production-ready React integration for `@cloak.ag/sdk` in this codebase.
-
-Deliver:
-- `useCloak` hook (deposit/send/withdraw/swap)
-- compliance history loader (cache-first + rescan)
-- typed errors + progress states
-- minimal tests for amount and fee calculations
-
-Use only current SDK APIs and existing project conventions.
+<Accordion title="Generate complete SDK integration scaffold">
+Create hooks/services for deposit/send/withdraw/swap + compliance history + CSV export.
 </Accordion>
 
-<Accordion title="Patch existing code to current SDK contract">
-Audit the current repo for mismatches with current Cloak SDK runtime model.
-
-Patch all mismatches and return:
-1) files changed,
-2) exact API contract updates,
-3) verification commands and results.
+<Accordion title="Fix contract mismatches">
+Audit and patch all mismatches against current SDK API and runtime behavior.
 </Accordion>
 
-<Accordion title="Build a polished history page">
-Implement a user-facing privacy history page with:
-- transaction table using fee/net/runningBalance
-- summary cards
-- encrypted cache integration
-- explicit clear-cache + rescan control
-- smooth modal timing (no first-paint flash)
+<Accordion title="Production hardening pass">
+Improve retries, error mapping, progress UX, and secret-safe logging for all transaction flows.
 </Accordion>
 </AccordionGroup>
 
-## Recommended links for context
+## Related docs
 
+- [LLM Reference](/sdk/llms.txt)
+- [API Reference](/sdk/api-reference)
 - [Quickstart](/sdk/quickstart)
-- [UTXO Transactions](/sdk/utxo-transactions)
-- [Wallet Integration](/sdk/wallet-integration)

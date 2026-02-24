@@ -1,6 +1,6 @@
 ---
 title: "Viewing Keys and Compliance"
-description: "Current registration, trust model, chain-native scanning, and web cache behavior"
+description: "Current registration, trust model, chain-native scanning, and client cache behavior"
 icon: "key"
 ---
 
@@ -9,7 +9,7 @@ icon: "key"
 - Users derive viewing material client-side (`nk` used for chain-note decrypt).
 - Transactions include compact encrypted chain notes; scanner decrypts directly from chain data.
 - Relay stores registered viewing keys for compliance export/decrypt endpoints.
-- Web history uses encrypted local cache and can be force-refreshed.
+- App history can use encrypted local cache and be force-refreshed.
 
 ## Registration flow
 
@@ -28,8 +28,8 @@ Identifier behavior:
 
 ## Enforcement and UX behavior
 
-- SDK/web default behavior enforces viewing-key registration before transact/swap flows.
-- Web reuses wallet sign-in signature to avoid extra signature prompts.
+- SDK default behavior enforces viewing-key registration before transact/swap flows.
+- Apps can reuse wallet sign-in signatures to reduce extra prompts.
 - If registration is missing, history/decrypt flow surfaces `viewing key not found` and prompts user to transact/register first.
 
 ## Chain-native scanner behavior
@@ -44,11 +44,11 @@ Identifier behavior:
   - net amount
   - running balance
 
-## Compliance caching in web
+## Compliance caching in apps
 
 - Reports are cached under `cloak_compliance_<wallet>`.
 - Cache is encrypted using key material derived from wallet sign-message output.
-- Privacy history page supports explicit `Clear cache & rescan` for stale/incomplete views.
+- Privacy history pages should expose explicit `Clear cache & rescan` for stale/incomplete views.
 
 ## Trust model
 
@@ -58,6 +58,6 @@ Identifier behavior:
 
 ## Operational tips
 
-- Keep sign-in message string exactly aligned across web and relay verification.
+- Keep sign-in message string exactly aligned across your client app and relay verification.
 - After key rotation or wallet changes, clear local cache and re-register.
 - For support/debugging, never log raw viewing keys or full decrypted notes.

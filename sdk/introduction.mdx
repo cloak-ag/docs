@@ -4,12 +4,12 @@ description: "Private transactions on Solana with note-based and UTXO-based APIs
 icon: "shield-halved"
 ---
 
-Cloak SDK exposes two interfaces, with UTXO as the primary runtime path:
+Cloak SDK exposes two interfaces, with UTXO as the primary integration path:
 
 - **Note API** via `CloakSDK` (`deposit`, `withdraw`, `send`, `swap`)
 - **UTXO API** via top-level functions (`transact`, `transfer`, `swapUtxo`, ...)
 
-Current web and relay transaction paths use the UTXO API (`/transact`, `/transact_swap`).
+Most production integrations use the UTXO API (`/transact`, `/transact_swap`).
 
 <CardGroup cols={3}>
 <Card title="Quickstart" icon="rocket" href="/sdk/quickstart">
@@ -53,34 +53,63 @@ npm install @solana/spl-token
 
 ## Minimal note-based example
 
-```typescript
+<CodeGroup>
+```typescript Keypair bytes
 import { CloakSDK } from "@cloak.ag/sdk";
-import { Connection, Keypair, PublicKey } from "@solana/web3.js";
+import { Connection, Keypair } from "@solana/web3.js";
 
-const connection = new Connection("https://api.devnet.solana.com", "confirmed");
+const connection = new Connection("https://api.mainnet-beta.solana.com", "confirmed");
 const keypair = Keypair.fromSecretKey(/* Uint8Array secret key */);
 
 const sdk = new CloakSDK({
   keypairBytes: keypair.secretKey,
-  network: "devnet",
-  // Set explicitly when using development/devnet deployments
-  programId: new PublicKey("3EvH6XYQir7D2RyzCdP7QFmJFfSPfdeoB8VnpLdEF4Kr"),
+  network: "mainnet",
+  programId: new PublicKey("c1oak6tetxYnNfvXKFkpn1d98FxtK7B68vBQLYQpWKp"),
 });
 
 const deposit = await sdk.deposit(connection, 100_000_000);
-await sdk.withdraw(connection, deposit.note, new PublicKey("RECIPIENT"), {
-  withdrawAll: true,
-});
+const recipient = Keypair.generate().publicKey;
+
+const sent = await sdk.send(connection, deposit.note, [
+  { recipient, amount: 30_000_000 },
+]);
+
+console.log("Send tx:", sent.signature);
 ```
+
+```typescript Wallet adapter
+import { useMemo } from "react";
+import { CloakSDK } from "@cloak.ag/sdk";
+import { useWallet } from "@solana/wallet-adapter-react";
+import { PublicKey, Connection, Keypair } from "@solana/web3.js";
+
+export function useCloakNoteClient() {
+  const { publicKey, signTransaction, sendTransaction } = useWallet();
+
+  return useMemo(() => {
+    if (!publicKey || !signTransaction || !sendTransaction) return null;
+
+    return new CloakSDK({
+      wallet: { publicKey, signTransaction, sendTransaction },
+      network: "mainnet",
+      programId: new PublicKey("c1oak6tetxYnNfvXKFkpn1d98FxtK7B68vBQLYQpWKp"),
+    });
+  }, [publicKey, signTransaction, sendTransaction]);
+}
+
+async function exampleFlow(sdk: CloakSDK, connection: Connection) {
+  const deposit = await sdk.deposit(connection, 100_000_000);
+  const recipient = Keypair.generate().publicKey;
+  await sdk.send(connection, deposit.note, [{ recipient, amount: 30_000_000 }]);
+}
+```
+</CodeGroup>
 
 ## Network and program IDs
 
-Current deployment constants:
+Current deployment program ID (use for mainnet and current devnet/surfpool environments):
 
-- Mainnet/default build: `c1oak6tetxYnNfvXKFkpn1d98FxtK7B68vBQLYQpWKp`
-- Development build: `3EvH6XYQir7D2RyzCdP7QFmJFfSPfdeoB8VnpLdEF4Kr`
-
-`CloakSDK` defaults to `CLOAK_PROGRAM_ID` (mainnet constant), so set `programId` explicitly for development deployments.
+- `c1oak6tetxYnNfvXKFkpn1d98FxtK7B68vBQLYQpWKp`
 
 ## Core protocol fees
 

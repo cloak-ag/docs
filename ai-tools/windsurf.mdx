@@ -1,97 +1,93 @@
 ---
 title: "Windsurf setup"
-description: "Windsurf rules and starter prompts for building Cloak SDK apps"
+description: "Windsurf workflow for complete Cloak SDK app integrations"
 icon: "wind"
 ---
 
-Use this setup to make Windsurf generate app code that matches current Cloak SDK behavior on the first pass.
+Use this as a practical Windsurf playbook for shipping SDK-powered privacy apps.
 
-## Rule file
+## 1) Rules file
 
 Create `.windsurf/rules.md`:
 
 <Accordion title="View .windsurf/rules.md template">
 
-# Cloak SDK Rules (Current)
+# Windsurf Rules for Cloak SDK
 
-Project uses `@cloak.ag/sdk` for private Solana transactions.
+We integrate `@cloak.ag/sdk`.
 
-## Use these APIs by default
-
-- `transact`
-- `partialWithdraw`
-- `fullWithdraw`
-- `swapWithChange`
-
-Amounts are bigint (lamports), never floating-point in logic.
-
-## Mandatory behavior
-
-- Enforce viewing-key registration before protocol actions.
-- Keep compliance history cache encrypted in localStorage.
-- Prefer scanner-based history (chain-native) for user-facing flows.
-
-## Security
-
-- Never print secret keys, viewing keys, signatures, or note payload secrets.
-- Never add debug logs containing transaction private inputs.
-
-## Program + fee constants
+## Constants
 
 - Program ID: `c1oak6tetxYnNfvXKFkpn1d98FxtK7B68vBQLYQpWKp`
-- Fee fixed: `5_000_000`
-- Fee variable: `amount * 3 / 1000`
+- Circuit base URL: `https://www.cloak.ag/circuits`
 
-## Error policy
+## Capability groups (must check all)
 
-- Retry stale-root failures with fresh Merkle data.
-- Retry transient RPC/network errors with backoff.
-- Return user-safe error messages in UI.
+1. Note API
+2. UTXO API
+3. Scanner/compliance
+4. Viewing keys + metadata encryption
+5. Relay/proof/Merkle helpers
+6. Utility modules (fees/errors/network/wallet/storage)
 
-## References
+## Runtime rules
 
-- `/sdk/quickstart`
-- `/sdk/utxo-transactions`
-- `/sdk/wallet-integration`
+- Prefer UTXO flows for new features.
+- Keep transaction amounts as `bigint`.
+- Enforce viewing-key registration before actions.
+- Build cache-first history with explicit rescan.
+
+## Security rules
+
+- Never output secrets in logs.
+- Never include raw private material in telemetry.
+
+## Docs
+
+- `/sdk/llms.txt`
 - `/sdk/api-reference`
-- `/services/relay-api`
-- `/architecture/viewing-keys-compliance`
+- `/sdk/utxo-transactions`
+- `/sdk/error-handling`
 
 </Accordion>
 
-## Prompt templates
+## 2) Starter prompt
+
+<Accordion title="Copy starter prompt">
+
+Implement this feature using the complete `@cloak.ag/sdk` model.
+
+Step 1: output a capability matrix (all 6 groups) with used/not-used + reason.
+
+Step 2: implement with:
+- bigint-safe logic
+- wallet-adapter-compatible flow
+- keypair-bytes fallback where relevant
+- scanner/compliance handling
+- robust retry/error UX
+
+Step 3: run checks and return changed files + rationale + verification summary.
+
+</Accordion>
+
+## 3) Prompt pack
 
 <AccordionGroup>
-<Accordion title="Scaffold a complete app integration">
-Build a production-ready Cloak integration layer for this app:
-- wallet adapter wiring
-- deposit/send/withdraw/swap handlers
-- compliance history fetch + cache + CSV export
-- typed status/progress state
-
-Return full file patches and the exact validation commands.
+<Accordion title="Scaffold feature-complete integration">
+Generate deposit/send/withdraw/swap handlers, history scanner integration, cache, and CSV export.
 </Accordion>
 
-<Accordion title="Implement transaction handlers">
-Implement transaction handlers using current SDK APIs with:
-- bigint-safe parsing
-- retry policy for stale roots
-- clear error categories for UI
-- no secret leakage in logs
+<Accordion title="Refactor existing codebase">
+Patch existing app code to current SDK contracts with minimal UI churn.
 </Accordion>
 
-<Accordion title="Ship-ready refactor pass">
-Audit my existing code and refactor it to current Cloak runtime behavior.
-
-Constraints:
-- keep existing UX behavior unless broken
-- minimize API surface changes in UI components
-- include a migration note per changed module
+<Accordion title="Reliability and UX pass">
+Improve error categorization, progress states, stale-root handling, and operational resilience.
 </Accordion>
 </AccordionGroup>
 
 ## Related docs
 
-- [Quickstart](/sdk/quickstart)
-- [UTXO Transactions](/sdk/utxo-transactions)
+- [LLM Reference](/sdk/llms.txt)
+- [API Reference](/sdk/api-reference)
 - [Wallet Integration](/sdk/wallet-integration)

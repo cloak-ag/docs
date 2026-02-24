@@ -1,6 +1,6 @@
 ---
 title: "Shield Pool Program"
-description: "Current instruction semantics, fees, constraints, and operational limits"
+description: "Program behavior that SDK and app integrators need to know"
 icon: "microchip"
 ---
 
@@ -10,15 +10,10 @@ icon: "microchip"
 
 ## Instruction surface
 
-- User-facing:
-  - `0`: `Transact`
-  - `1`: `TransactSwap`
+- `0`: `Transact` (deposit, withdraw, shielded transfer)
+- `1`: `TransactSwap` (swap flow entrypoint)
 
-- Relay/ops-facing:
-  - `10`: `Initialize`
-  - `11`: `PrepareSwapSol`
-  - `12`: `ExecuteSwap`
-  - `13`: `CloseSwapState`
+SDK consumers typically interact through `Transact` and `TransactSwap`.
 
 ## Public input layout
 
@@ -32,7 +27,7 @@ icon: "microchip"
 - `outputCommitments[64]` (2 x 32)
 - `chainNoteHash[32]`
 
-This matches the transaction circuit constraints and relay-side validators.
+This matches the transaction circuit constraints and relay validation.
 
 ## Fees and amount semantics
 
@@ -52,15 +47,7 @@ The program enforces sufficient withdrawal amount so `net > 0`.
 
 - Tree height: `32`
 - Root history size: `100`
-- Nullifiers are PDA-backed for O(1) spent checks
-
-Relevant seeds:
-
-- Pool: `["pool"]`
-- Treasury: `["treasury"]`
-- Merkle tree: `["merkle_tree"]`
-- Nullifier: `["nullifier", nullifier_hash]`
-- Swap state: `["swap_state", pool_pubkey, nullifier]`
+- Nullifiers prevent double spends
 
 ## Execution model
 
@@ -80,13 +67,7 @@ Relevant seeds:
 
 - Runs the same proof/nullifier/commitment checks as `Transact`.
 - Requires negative `publicAmount` (swap is a withdrawal path).
-- Creates `SwapState` PDA with output mint, recipient ATA, min output, timeout data.
-- Moves SOL into swap state path for follow-up execution.
-
-### `PrepareSwapSol` + `ExecuteSwap`
-
-- Wraps SOL into wSOL context, executes swap CPI route, then settles output.
-- `CloseSwapState` closes state account once complete/eligible.
+- Queues the follow-up swap settlement path handled by the relay service.
 
 ## Circuit assumptions the program relies on
 
@@ -95,16 +76,7 @@ Relevant seeds:
 - Circuit enforces value conservation: `sum(inputs) + publicAmount = sum(outputs)`.
 - Circuit includes `chainNoteHash` binding constraints for chain-note integrity.
 
-## Error families
-
-- `0x1000-0x1002`: root management
-- `0x1010-0x1013`: proof input/proof shape errors
-- `0x1020-0x1026`: nullifier and signer checks
-- `0x1030-0x1039`: output/conservation/fee constraints
-- `0x1050-0x105D`: account validation
-- `0x1070-0x1076`: Groth16 verifier failures
-- `0x1080-0x1082`: Merkle tree bounds/hash errors
-- `0x10A0-0x10A1`: risk-oracle checks
+## Error mapping
 
 For SDK-side mapping utilities, see `ShieldPoolErrors` in [Error Handling](/sdk/error-handling).
 

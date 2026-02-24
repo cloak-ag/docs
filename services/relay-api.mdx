@@ -4,7 +4,7 @@ description: "SDK-facing relay routes and payload contracts"
 icon: "server"
 ---
 
-This page documents only relay endpoints used by SDK/web runtime flows.
+This page documents relay endpoints used by SDK-powered applications.
 
 ## SDK-facing route map
 
@@ -80,7 +80,7 @@ Registers a 32-byte viewing key (hex) after wallet signature verification.
 
 ## `GET /commitments`
 
-Returns DB-backed commitments for Merkle rebuild:
+Returns commitments for Merkle rebuild:
 
 ```json
 {
@@ -104,7 +104,7 @@ Returns latest chain root and tree address:
 }
 ```
 
-If Merkle tree account is missing, endpoint returns `503` with pool-init guidance.
+If Merkle tree data is temporarily unavailable, endpoint returns `503`.
 
 ## `GET /status/:id`
 

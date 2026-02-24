@@ -12,7 +12,7 @@ The active runtime path is UTXO transactions through:
 - `swapWithChange` / `swapUtxo` for swap flows
 - Relay endpoints `/transact` and `/transact_swap`
 
-Legacy note-model methods still exist, but protocol docs and web flows are UTXO-first.
+Legacy note-model methods still exist, but recommended integrations are UTXO-first.
 
 ## Commitments and Merkle tree
 
@@ -65,7 +65,7 @@ For withdrawals/swaps:
 
 ## Viewing key registration
 
-- SDK/web enforce viewing-key registration by default before protocol transactions.
+- SDK flows enforce viewing-key registration by default before protocol transactions.
 - Registration uses `POST /viewing-key/register` with:
   - wallet pubkey
   - 32-byte viewing key (`nk`)
@@ -77,10 +77,10 @@ For withdrawals/swaps:
 - `scanTransactions` reads chain transactions directly from RPC (no relay dependency).
 - It decrypts compact chain notes with viewing key `nk` and verifies `chainNoteHash` integrity.
 - It computes per-tx `gross`, `fee`, `netAmount`, and running balance.
-- Web stores report snapshots in encrypted local storage and exposes explicit cache clear + rescan.
+- Client apps can store encrypted report snapshots locally and expose explicit cache clear + rescan.
 
 ## Related pages
 
 - UTXO details: [UTXO Transactions](/sdk/utxo-transactions)
-- Program internals: [Shield Pool Program](/protocol/shield-pool)
+- Protocol rules: [Shield Pool Program](/protocol/shield-pool)
 - Relay routes: [Relay API](/services/relay-api)

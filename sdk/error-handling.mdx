@@ -16,7 +16,7 @@ icon: "triangle-exclamation"
 ```typescript
 import { CloakError } from "@cloak.ag/sdk";
 
-// category values in core/types.ts:
+// category values:
 // "network" | "indexer" | "prover" | "relay" | "validation" | "wallet" | "environment"
 ```
 
@@ -26,7 +26,8 @@ Most app flows should treat `retryable === true` as backoff-eligible.
 
 Use helpers for RootNotFound detection:
 
-```typescript
+<CodeGroup>
+```typescript Keypair bytes
 import { isRootNotFoundError, RootNotFoundError } from "@cloak.ag/sdk";
 
 try {
@@ -37,6 +38,25 @@ try {
   }
 }
 ```
+
+```typescript Wallet adapter
+import { isRootNotFoundError, RootNotFoundError } from "@cloak.ag/sdk";
+
+try {
+  await partialWithdraw(inputUtxos, recipient, 10_000_000n, {
+    connection,
+    programId,
+    relayUrl,
+    walletPublicKey: publicKey!,
+    signMessage: signMessage!,
+  });
+} catch (error) {
+  if (error instanceof RootNotFoundError || isRootNotFoundError(error)) {
+    // Rebuild with fresh commitments/root and retry
+  }
+}
+```
+</CodeGroup>
 
 SDK note and UTXO flows already include retry loops; this usually appears only after retries are exhausted.
 
@@ -53,7 +73,8 @@ console.log(ShieldPoolErrors[0x1076]); // Proof verification failed
 
 ## User-facing normalization
 
-```typescript
+<CodeGroup>
+```typescript Keypair bytes
 import { parseError, type UserFriendlyError } from "@cloak.ag/sdk";
 
 try {
@@ -64,6 +85,24 @@ try {
   // parsed.recoverable: boolean
 }
 ```
+
+```typescript Wallet adapter
+import { parseError, type UserFriendlyError } from "@cloak.ag/sdk";
+
+try {
+  await swapWithChange(inputUtxos, amountLamports, outputMint, recipientAta, minOutput, {
+    connection,
+    programId,
+    relayUrl,
+    walletPublicKey: publicKey!,
+    signMessage: signMessage!,
+  });
+} catch (error) {
+  const parsed: UserFriendlyError = parseError(error);
+  // parsed.category / parsed.recoverable
+}
+```
+</CodeGroup>
 
 ## Practical retry strategy
 

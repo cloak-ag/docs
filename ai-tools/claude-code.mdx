@@ -1,125 +1,103 @@
 ---
 title: "Claude Code setup"
-description: "Claude Code templates to build SDK-powered Cloak apps quickly"
+description: "High-signal prompts to ship Cloak SDK apps quickly"
 icon: "message-bot"
 ---
 
-This page gives you a copy-paste setup so Claude Code can generate production-ready app code with `@cloak.ag/sdk`.
+Use this page as your copy/paste playbook for Claude Code.
 
-Focus: help teams ship wallet-connected apps fast, with the current UTXO + chain-note architecture.
+## 1) Project context file
 
-## `CLAUDE.md` template
-
-Create `CLAUDE.md` in your project:
+Create `CLAUDE.md` at your project root.
 
 <Accordion title="View CLAUDE.md template">
 
-# Cloak SDK App Context (Current)
+# Cloak SDK Project Context
 
-We integrate `@cloak.ag/sdk`.
+We use `@cloak.ag/sdk`.
 
-## Runtime model
-
-- Main integration surface is UTXO helpers:
-  - `transact`
-  - `partialWithdraw`
-  - `fullWithdraw`
-  - `swapWithChange`
-- Build for bigint amounts and explicit wallet adapter wiring.
-
-## Security
-
-- Never log private key material, UTXO secrets, or raw viewing keys.
-- Keep wallet signatures in memory only when possible.
-- Treat local encrypted storage as required for user state.
-
-## Program IDs
+## Required runtime assumptions
 
 - Program ID: `c1oak6tetxYnNfvXKFkpn1d98FxtK7B68vBQLYQpWKp`
+- Circuit base URL: `https://www.cloak.ag/circuits`
+- UTXO API is primary (`transact`, `partialWithdraw`, `fullWithdraw`, `swapWithChange`)
+- Amounts are `bigint` in transaction logic
 
-Set `programId` explicitly in app config.
+## Full SDK capability groups
 
-## Fee model
+1. `CloakSDK` note API
+2. UTXO primitives + UTXO transaction API
+3. chain-note scanner/compliance APIs
+4. viewing key + metadata encryption APIs
+5. relay/proof/Merkle helpers
+6. fees/errors/network/wallet/storage utilities
 
-- Fixed fee: `5_000_000` lamports
-- Variable fee: `amount * 3 / 1000`
-- Fees apply to withdrawals/swaps on-chain.
+## Guardrails
 
-## Required UX behavior
+- Never log secrets (private keys, viewing keys, signatures, raw note secrets).
+- Enforce viewing-key registration before protocol actions.
+- Keep privacy history cache-first, then explicit rescan.
+- Handle stale-root + RPC errors with retry/backoff.
 
-- Require viewing-key registration before protocol actions.
-- For history, load cached compliance first, then rescan on demand.
-- Show progress for proof generation and scanning.
+## Required references
 
-## Docs to follow
-
-- `/sdk/quickstart`
+- `/sdk/llms.txt`
+- `/sdk/api-reference`
 - `/sdk/utxo-transactions`
 - `/sdk/wallet-integration`
-- `/sdk/api-reference`
-- `/services/relay-api`
-- `/architecture/viewing-keys-compliance`
 
 </Accordion>
 
-## Prompt Pack
+## 2) Starter prompt
 
-Use these prompts directly in Claude Code.
+Use this as your first message in Claude Code:
+
+<Accordion title="Copy starter prompt">
+
+Implement this feature using the full `@cloak.ag/sdk` model.
+
+Before coding:
+1) output a capability matrix with these rows:
+   - Note API
+   - UTXO API
+   - Scanner/compliance
+   - Viewing keys + metadata encryption
+   - Relay/proof/Merkle helpers
+   - Utility modules (fees/errors/network/wallet/storage)
+2) mark each row as `used` or `not used` and explain why.
+
+During implementation:
+- keep bigint-safe amount handling
+- include both keypair-bytes and wallet-adapter usage where relevant
+- add user-facing progress and error states
+- avoid secret leakage in logs
+
+After implementation:
+- run type checks and lint
+- provide changed files + rationale + verification summary
+
+</Accordion>
+
+## 3) Task prompts
 
 <AccordionGroup>
-<Accordion title="1) Bootstrap app integration">
-Build a React + wallet-adapter integration for `@cloak.ag/sdk` with these constraints:
-- UTXO-first flow (`transact`, `partialWithdraw`, `swapWithChange`)
-- bigint-safe amount handling
-- progress callbacks for proof/scanning
-- typed error mapping for stale root and relay/network errors
-- no secret logging
+<Accordion title="Build full integration layer">
+Build a production-ready integration module covering deposit, send, withdraw, swap, compliance history, and CSV export.
 
-Return:
-1) files to create/update,
-2) full code,
-3) run commands.
+Return complete file patches and commands to run.
 </Accordion>
 
-<Accordion title="2) Add deposit/send/withdraw/swap feature set">
-Implement production-ready handlers for deposit, private send, partial/full withdraw, and swap using current SDK APIs.
-
-Requirements:
-- Enforce viewing-key registration before actions
-- Keep local encrypted cache for compliance history
-- Reuse Merkle tree output where applicable
-- Add user-facing loading states and retries
-
-Also add minimal unit tests for amount math and state transitions.
+<Accordion title="Patch my existing app">
+Audit current code for SDK contract mismatches, patch all issues, and keep UI behavior stable unless broken.
 </Accordion>
 
-<Accordion title="3) Build history + compliance UX">
-Implement a Privacy History page that:
-- loads encrypted cached report first
-- offers explicit `clear cache + rescan`
-- uses SDK scanner-derived fee/net fields
-- renders transaction table + summary + CSV export
-
-Keep UX smooth: avoid immediate modal popups on first paint when cache may exist.
-</Accordion>
-
-<Accordion title="4) Fix and verify workflow">
-Given my current code, identify all SDK integration mismatches and patch them.
-
-Then run:
-- Type checks
-- Lint
-- one end-to-end happy path command
-
-Return only:
-- changed files
-- why each change was needed
-- verification output summary.
+<Accordion title="History UX and scanner quality">
+Implement cache-first history, clear-cache+rescan controls, fee/net rendering, and robust scanner error handling.
 </Accordion>
 </AccordionGroup>
 
 ## Related docs
 
+- [LLM Reference](/sdk/llms.txt)
+- [API Reference](/sdk/api-reference)
 - [UTXO Transactions](/sdk/utxo-transactions)
-- [Wallet Integration](/sdk/wallet-integration)
-- [Relay API](/services/relay-api)

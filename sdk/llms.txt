@@ -1,102 +1,167 @@
-# Cloak SDK - LLM Reference (v2)
+# Cloak SDK - LLM Reference
 
-This file is optimized for AI agents that need current SDK behavior.
+This file is for AI agents integrating the full `@cloak.ag/sdk` surface in external applications.
 
 ## Package
 
 - Name: `@cloak.ag/sdk`
-- Version: `2.0.0`
+- Mainnet program constant: `c1oak6tetxYnNfvXKFkpn1d98FxtK7B68vBQLYQpWKp`
 - Node: `>=18`
-- Mainnet program constant (`CLOAK_PROGRAM_ID`): `c1oak6tetxYnNfvXKFkpn1d98FxtK7B68vBQLYQpWKp`
-- Development build program ID (from on-chain crate feature): `3EvH6XYQir7D2RyzCdP7QFmJFfSPfdeoB8VnpLdEF4Kr`
 
-## APIs
+## Integration model
 
-### 1) Note-based API (`CloakSDK`)
+Use these surfaces together:
 
-Core methods:
+1. **UTXO transaction API** (primary runtime path)
+2. **Note API (`CloakSDK`)** (legacy-compatible flows)
+3. **Chain-native scanner/compliance API**
+4. **Viewing-key and metadata encryption API**
+5. **Utility layers** (fees/errors/network/relay/wallet/proof)
 
-- `deposit(connection, amountOrNote, options?)`
-- `withdraw(connection, note, recipient, options?)`
-- `send(connection, note, recipients, options?)`
-- `swap(connection, note, recipient, options)`
+## Full SDK surface by capability
 
-Also:
+### A) Main client
 
-- `privateTransfer(...)`
-- `generateNote(...)`
-- `getMerkleProof(...)`
-- `getCurrentRoot(...)`
-- `getTransactionStatus(...)`
-- local storage/key helpers (`loadNotes`, `saveNote`, `findNote`, `importWalletKeys`, `exportWalletKeys`)
+- `CloakSDK`
 
-### 2) UTXO API (top-level exports)
+### B) Note API (`CloakSDK` methods)
 
-- `transact(params, options)`
-- `transfer(...)`
-- `partialWithdraw(...)`
-- `fullWithdraw(...)`
-- `swapUtxo(params, options)`
-- `swapWithChange(...)`
+- `deposit`
+- `withdraw`
+- `send`
+- `swap`
+- `privateTransfer`
+- `getTransactionStatus`
+- note/key helpers exposed through note manager utilities
 
-UTXO primitives:
+### C) UTXO primitives
 
 - `generateUtxoKeypair`
+- `deriveUtxoKeypairFromSpendKey`
 - `createUtxo`
 - `createZeroUtxo`
 - `computeUtxoCommitment`
 - `computeUtxoNullifier`
+- `computeSignature`
+- `serializeUtxo` / `deserializeUtxo`
+- `sumUtxoAmounts` / `selectUtxos`
+- `NATIVE_SOL_MINT`
 
-## External amount semantics (UTXO)
+### D) UTXO transaction API
 
-- `externalAmount > 0`: deposit
-- `externalAmount < 0`: withdrawal
-- `externalAmount = 0`: shield-to-shield transfer
+- `transact`
+- `transfer`
+- `partialWithdraw`
+- `fullWithdraw`
+- `swapUtxo`
+- `swapWithChange`
+- `computeExtDataHash`
+- `computeChainNoteHash`
+- `fetchRiskQuoteInstruction`
+- `setCircuitsPath` / `getCircuitsPath`
 
-## Fee constants (shared across SDK/program/relay)
+### E) Chain-note encryption API
 
-- `FIXED_FEE_LAMPORTS = 5_000_000`
-- Variable fee = `amount * 3 / 1000` (0.3%)
-- `MIN_DEPOSIT_LAMPORTS = 10_000_000`
-- `getDistributableAmount(amount) = amount - calculateFee(amount)`
+- `encodeCompactChainNote` / `decodeCompactChainNote`
+- `encryptCompactChainNote` / `decryptCompactChainNote`
+- `chainNoteToBase64` / `chainNoteFromBase64`
 
-## Error model
+### F) Scanner/compliance API
 
-- `CloakError` categories include: `network | indexer | prover | relay | validation | wallet | environment`
-- `ShieldPoolErrors` maps on-chain custom codes
-- `RootNotFoundError` / `isRootNotFoundError` used for stale Merkle root (`0x1001`) handling
-- `parseError` returns user-oriented `UserFriendlyError`
+- `scanTransactions`
+- `toComplianceReport`
+- `formatComplianceCsv`
+- Types: `ScanOptions`, `ScanResult`, `ComplianceReport`, `ScannedTransaction`
 
-## Relay integration
+### G) Viewing keys + compliance keys
 
-The SDK uses relay routes such as:
+- `deriveViewingKeyFromSpendKey`
+- `deriveViewingKeyFromNk`
+- `deriveViewingKeyFromUtxoPrivateKey`
+- `deriveDiversifier`
+- `deriveDiversifiedViewingKey`
+- `getNkFromUtxoPrivateKey`
+- `expandSpendKey`
+- `generateViewingKeyPair`
+- `registerViewingKey`
+- `SIGN_IN_MESSAGE`
 
-- `POST /withdraw` (note-based)
-- `POST /transact` (UTXO transact)
-- `POST /transact_swap` (UTXO swap)
-- `GET /status/:id`
+### H) Metadata encryption
 
-Supporting endpoints often used by SDK tooling:
+- `encryptTransactionMetadata`
+- `encryptTransactionMetadataBundle`
+- `decryptTransactionMetadata`
+- `decryptComplianceMetadataWithMasterKey`
 
-- `GET /commitments`
-- `GET /merkle-root`
+### I) Relay + on-chain proof helpers
 
-## Risk-oracle deposits
+- `RelayService`
+- `fetchCommitments`
+- `buildMerkleTreeFromRelay`
+- `buildMerkleTreeFromChain`
+- `waitForRoot`
+- `validateRoot`
+- `preflightCheck`
+- `computeProofFromChain`
+- `computeProofForLatestDeposit`
+- `readMerkleTreeState`
 
-UTXO deposit flows may require Range/Switchboard quote instructions:
+### J) Proof/circuit utilities
 
-- Set `riskOracleQueue`
-- Provide `riskQuoteUrl` (or `getRiskQuoteInstruction`)
-- Use `addressLookupTableAccounts` for large V0 transactions when needed
+- `generateWithdrawRegularProof`
+- `generateWithdrawSwapProof`
+- `verifyCircuitIntegrity`
+- `verifyAllCircuits`
+- `areCircuitsAvailable`
+- `getDefaultCircuitsPath`
+- `DEFAULT_CIRCUITS_URL`
 
-## Proof and circuits
+### K) Wallet integration helpers
 
-- Note and UTXO flows both require Groth16 proof generation.
-- Browser deployments should serve circuits under `/circuits`.
-- Node can use `CIRCUITS_PATH` / SDK circuit path helpers.
+- `validateWalletConnected`
+- `getPublicKey`
+- `sendTransaction`
+- `signTransaction`
+- `keypairToAdapter`
 
-## Important caution for AI-generated code
+### L) Supporting utility modules
 
-- Preserve `bigint` usage in UTXO APIs.
-- Do not assume devnet program ID equals `CLOAK_PROGRAM_ID`; set `programId` explicitly when using development deployments.
-- Never log full note/UTXO secret material in production.
+- Fees: `calculateFee`, `calculateFeeBigint`, `getDistributableAmount`, constants
+- Errors: `ShieldPoolErrors`, `parseError`, `RootNotFoundError`, `isRootNotFoundError`, etc.
+- Network: `detectNetworkFromRpcUrl`, `getRpcUrlForNetwork`, explorer URL helpers
+- Logging: `createLogger`, `setDebugMode`, `formatSol`
+- Storage adapters: `MemoryStorageAdapter`, `LocalStorageAdapter`
+- Merkle tree: `MerkleTree`, `buildMerkleTree`
+- PDA helpers: `getShieldPoolPDAs`, `getNullifierPDA`, `getSwapStatePDA`
+- Pending operations persistence helpers
+
+## Runtime semantics you must preserve
+
+- UTXO external amount:
+  - `> 0`: deposit
+  - `< 0`: withdraw/swap path
+  - `= 0`: shield transfer
+- Public inputs are 264 bytes for transact/swap proof payloads.
+- Keep amounts as `bigint` in UTXO flows.
+- Fees (on-chain): `fixed 5_000_000 + amount*3/1000` for withdrawal/swap path.
+- Viewing-key registration is required in normal app flows before protocol actions.
+
+## Hosted circuits
+
+Use hosted circuit base URL:
+
+- `https://www.cloak.ag/circuits`
+
+Example required assets:
+
+- `/withdraw_regular_js/withdraw_regular.wasm`
+- `/withdraw_regular_final.zkey`
+- `/withdraw_swap_js/withdraw_swap.wasm`
+
+## AI generation guardrails
+
+- Never log secrets (note payloads, private keys, viewing keys, signatures).
+- Prefer scanner-based user history (`scanTransactions`) over relay compliance endpoints.
+- Implement cache-first history UX + explicit rescan controls.
+- Handle stale-root and transient RPC errors with retry/backoff.
+- Keep code strongly typed with explicit SDK option objects.

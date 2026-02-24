@@ -1,29 +1,24 @@
 ---
 title: "Protocol Architecture"
-description: "Current end-to-end data flow across web, SDK, relay, and shield-pool"
+description: "Current end-to-end data flow across apps, SDK, relay, and shield pool"
 icon: "diagram-project"
 ---
 
 Cloak is a UTXO privacy system on Solana with five active runtime surfaces:
 
-- Web app wallet UX, encrypted local cache, and scan/export flows
-- SDK proof generation, transaction orchestration, and chain-note scan/decrypt
+- Your app's wallet UX, encrypted local cache, and scan/export flows
+- SDK proof generation, transaction coordination, and chain-note scan/decrypt
 - Relay API for submit/status/viewing-key registration and chain indexing
 - Shield Pool on-chain proof verifier + state machine
 - Circuit layer constraints (2-in/2-out transaction circuit)
 
 ## End-to-end flow
 
-```mermaid
-flowchart LR
-  A[Wallet/Web app] --> B[SDK transact or swapWithChange]
-  B --> C[Generate Groth16 proof + 264-byte public inputs]
-  C --> D[Relay /transact or /transact_swap]
-  D --> E[Shield Pool Transact or TransactSwap]
-  E --> F[Merkle tree roots + nullifier PDAs + pool/treasury]
-  F --> G[SDK chain-native scanner]
-  G --> H[Web compliance history cache]
-```
+<img
+  src="/architecture/diagrams/system-architecture.svg"
+  alt="Cloak end-to-end runtime architecture"
+  style={{ width: "100%", borderRadius: 12, border: "1px solid var(--mint-border)" }}
+/>
 
 ## Core transaction model
 
@@ -60,18 +55,16 @@ Shield Pool maintains:
 - Accept submit requests (`/transact`, `/transact_swap`, legacy `/withdraw`)
 - Validate payload size/shape and queue status tracking (`/status/:id`)
 - Provide chain-index data (`/commitments`, `/merkle-root`)
-- Run background commitment sync into Postgres for fast Merkle reconstruction
 - Verify and store viewing keys (`/viewing-key/register`)
-- Offer admin compliance endpoints (`/admin/compliance/*`)
 
 `GET /risk-quote` intentionally returns `501` in relay; deposits that require risk oracle quotes must use an external quote service or `getRiskQuoteInstruction` in SDK options.
 
 ## Viewing keys and history scanning
 
-- Viewing-key registration is required for normal SDK/web flows before transact/deposit/withdraw/swap.
+- Viewing-key registration is required for normal SDK app flows before transact/deposit/withdraw/swap.
 - User signs a fixed sign-in message; relay verifies signature and stores the 32-byte viewing key with an identifier hash.
 - Scanner path is chain-native: SDK reads program transactions from RPC, decrypts compact chain notes with `nk`, verifies `chainNoteHash` integrity, and computes running balance/fees.
-- Web history uses encrypted local cache (`cloak_compliance_*`) and supports explicit `Clear cache & rescan`.
+- History UIs commonly use encrypted local cache and support explicit `Clear cache & rescan`.
 
 ## Program IDs
 
@@ -79,4 +72,4 @@ Current deployment program ID:
 
 - `c1oak6tetxYnNfvXKFkpn1d98FxtK7B68vBQLYQpWKp` (default)
 
-If you deploy a local/dev build with a different address, pass that `programId` explicitly to SDK/web.
+If your app targets a deployment with a different address, pass that `programId` explicitly to your SDK client.

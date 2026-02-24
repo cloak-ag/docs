@@ -1,6 +1,6 @@
 ---
 title: "Quickstart"
-description: "Run a minimal UTXO deposit/withdraw flow with current relay and program contracts"
+description: "Run a minimal UTXO deposit/withdraw flow with a relay endpoint and hosted circuits"
 icon: "rocket"
 ---
 
@@ -10,9 +10,9 @@ This quickstart uses the current UTXO API (`transact` + `partialWithdraw`).
 
 - Node.js 18+
 - A funded Solana keypair
-- Relay URL
+- Relay URL (hosted endpoint)
 - Solana RPC URL
-- Hosted circuit artifacts at `https://cloak.ag/circuits`
+- Hosted circuit base URL: `https://www.cloak.ag/circuits`
 
 ## Install
 
@@ -24,9 +24,8 @@ npm install @cloak.ag/sdk @solana/web3.js tsx
 
 ## Example script
 
-Create `demo.ts`:
-
-```typescript
+<CodeGroup>
+```typescript Keypair bytes
 import {
   createUtxo,
   createZeroUtxo,
@@ -40,7 +39,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 const connection = new Connection(
-  process.env.SOLANA_RPC_URL || "https://api.devnet.solana.com",
+  process.env.SOLANA_RPC_URL || "https://api.mainnet-beta.solana.com",
   "confirmed"
 );
 
@@ -52,8 +51,8 @@ const keypair = Keypair.fromSecretKey(
 const programId = new PublicKey(
   process.env.CLOAK_PROGRAM_ID || "c1oak6tetxYnNfvXKFkpn1d98FxtK7B68vBQLYQpWKp"
 );
-const relayUrl = process.env.CLOAK_RELAY_URL || "http://127.0.0.1:5500";
-setCircuitsPath(process.env.CIRCUITS_PATH || "https://cloak.ag/circuits");
+const relayUrl = process.env.CLOAK_RELAY_URL || "https://your-relay.example.com";
+setCircuitsPath(process.env.CIRCUITS_PATH || "https://www.cloak.ag/circuits");
 
 const owner = await generateUtxoKeypair();
 const depositAmount = BigInt(0.02 * LAMPORTS_PER_SOL); // 0.02 SOL
@@ -92,7 +91,75 @@ console.log("Deposit tx:", deposit.signature);
 console.log("Withdraw tx:", withdraw.signature);
 ```
 
-Run it:
+```typescript Wallet adapter
+import { useCallback } from "react";
+import {
+  createUtxo,
+  createZeroUtxo,
+  generateUtxoKeypair,
+  partialWithdraw,
+  transact,
+  setCircuitsPath,
+} from "@cloak.ag/sdk";
+import { Connection, PublicKey, LAMPORTS_PER_SOL, Keypair } from "@solana/web3.js";
+import { useWallet } from "@solana/wallet-adapter-react";
+
+const connection = new Connection(process.env.NEXT_PUBLIC_RPC_URL!, "confirmed");
+const programId = new PublicKey("c1oak6tetxYnNfvXKFkpn1d98FxtK7B68vBQLYQpWKp");
+const relayUrl = process.env.NEXT_PUBLIC_RELAY_URL!;
+setCircuitsPath("https://www.cloak.ag/circuits");
+
+export function useQuickstartFlow() {
+  const { publicKey, signTransaction } = useWallet();
+
+  return useCallback(async () => {
+    if (!publicKey || !signTransaction) throw new Error("Wallet not ready");
+
+    const owner = await generateUtxoKeypair();
+    const depositAmount = BigInt(0.02 * LAMPORTS_PER_SOL);
+    const depositUtxo = await createUtxo(depositAmount, owner);
+
+    const deposit = await transact(
+      {
+        inputUtxos: [await createZeroUtxo()],
+        outputUtxos: [depositUtxo],
+        externalAmount: depositAmount,
+        depositor: publicKey,
+      },
+      {
+        connection,
+        programId,
+        relayUrl,
+        signTransaction,
+        depositorPublicKey: publicKey,
+        walletPublicKey: publicKey,
+      }
+    );
+
+    const recipient = Keypair.generate().publicKey;
+    const withdraw = await partialWithdraw(deposit.outputUtxos, recipient, BigInt(0.005 * LAMPORTS_PER_SOL), {
+      connection,
+      programId,
+      relayUrl,
+      walletPublicKey: publicKey,
+      cachedMerkleTree: deposit.merkleTree,
+    });
+
+    return { deposit, withdraw };
+  }, [publicKey, signTransaction]);
+}
+```
+</CodeGroup>
+
+Note: `https://www.cloak.ag/circuits` is a base path (directory listing is not enabled).
+
+SDK proof generation needs concrete files under that path, including:
+
+- `https://www.cloak.ag/circuits/withdraw_regular_js/withdraw_regular.wasm`
+- `https://www.cloak.ag/circuits/withdraw_regular_final.zkey`
+- `https://www.cloak.ag/circuits/withdraw_swap_js/withdraw_swap.wasm` (swap flows)
+
+Run it (keypair script):
 
 ```bash
 npx tsx demo.ts
@@ -102,14 +169,15 @@ npx tsx demo.ts
 
 - Relay validates `proof_bytes` as 256 bytes and `public_inputs` as 264 bytes.
 - SDK retries root-staleness (`0x1001`) by rebuilding proofs.
-- Viewing-key registration is enforced by default in web/SDK transaction flows.
+- Viewing-key registration is enforced by default in SDK transaction flows.
 - If your deployment uses a different program, pass explicit `programId`.
 
 ## Verify scanner output
 
 Add a scanner step in your app/script:
 
-```typescript
+<CodeGroup>
+```typescript Keypair bytes
 import { scanTransactions, toComplianceReport } from "@cloak.ag/sdk";
 
 const scan = await scanTransactions({
@@ -121,6 +189,21 @@ const scan = await scanTransactions({
 const report = toComplianceReport(scan);
 console.log(report.summary);
 ```
+
+```typescript Wallet adapter
+import { scanTransactions, toComplianceReport } from "@cloak.ag/sdk";
+
+const nk = await getChainNoteNkFromWalletSession(); // 32-byte nk from your wallet key flow
+
+const scan = await scanTransactions({
+  connection,
+  programId,
+  viewingKeyNk: nk,
+});
+
+console.log(toComplianceReport(scan).summary);
+```
+</CodeGroup>
 
 This returns chain-native totals (deposits, withdrawals, fees, final balance).
 

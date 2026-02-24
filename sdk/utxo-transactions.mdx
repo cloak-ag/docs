@@ -4,7 +4,7 @@ description: "Transact, swap, viewing-key registration, and scanner-friendly tra
 icon: "vault"
 ---
 
-The UTXO API is the current production path used by SDK and web transaction flows.
+The UTXO API is the current production path for SDK-based app integrations.
 
 ## Core APIs
 
@@ -60,7 +60,8 @@ const utxo = await createUtxo(100_000_000n, keypair, NATIVE_SOL_MINT);
 
 ## Deposit example (`transact`)
 
-```typescript
+<CodeGroup>
+```typescript Keypair bytes
 import { transact, createUtxo, generateUtxoKeypair } from "@cloak.ag/sdk";
 import { Connection, Keypair, PublicKey } from "@solana/web3.js";
 
@@ -88,9 +89,38 @@ const result = await transact(
 console.log(result.signature, result.commitmentIndices);
 ```
 
+```typescript Wallet adapter
+import { transact, createUtxo, createZeroUtxo, generateUtxoKeypair } from "@cloak.ag/sdk";
+import { useWallet } from "@solana/wallet-adapter-react";
+
+const { publicKey, signTransaction } = useWallet();
+
+const owner = await generateUtxoKeypair();
+const output = await createUtxo(20_000_000n, owner);
+
+const result = await transact(
+  {
+    inputUtxos: [await createZeroUtxo()],
+    outputUtxos: [output],
+    externalAmount: 20_000_000n,
+    depositor: publicKey!,
+  },
+  {
+    connection,
+    programId,
+    relayUrl: process.env.NEXT_PUBLIC_RELAY_URL,
+    signTransaction: signTransaction!,
+    depositorPublicKey: publicKey!,
+    walletPublicKey: publicKey!,
+  }
+);
+```
+</CodeGroup>
+
 ## Withdraw and transfer helpers
 
-```typescript
+<CodeGroup>
+```typescript Keypair bytes
 import { transfer, partialWithdraw, fullWithdraw } from "@cloak.ag/sdk";
 
 await transfer(inputUtxos, recipientUtxoPublicKey, 30_000_000n, options);
@@ -98,11 +128,29 @@ await partialWithdraw(inputUtxos, recipientWallet, 10_000_000n, options);
 await fullWithdraw(inputUtxos, recipientWallet, options);
 ```
 
+```typescript Wallet adapter
+import { transfer, partialWithdraw, fullWithdraw } from "@cloak.ag/sdk";
+
+const walletOptions = {
+  connection,
+  programId,
+  relayUrl,
+  walletPublicKey: publicKey!,
+  signMessage: signMessage!,
+};
+
+await transfer(inputUtxos, recipientUtxoPublicKey, 30_000_000n, walletOptions);
+await partialWithdraw(inputUtxos, recipientWallet, 10_000_000n, walletOptions);
+await fullWithdraw(inputUtxos, recipientWallet, walletOptions);
+```
+</CodeGroup>
+
 `partialWithdraw`/`fullWithdraw` use `/transact` with negative `externalAmount`.
 
 ## Swap example (`/transact_swap`)
 
-```typescript
+<CodeGroup>
+```typescript Keypair bytes
 import { swapWithChange } from "@cloak.ag/sdk";
 
 await swapWithChange(
@@ -120,6 +168,27 @@ await swapWithChange(
 );
 ```
 
+```typescript Wallet adapter
+import { swapWithChange } from "@cloak.ag/sdk";
+
+await swapWithChange(
+  inputUtxos,
+  50_000_000n,
+  outputMint,
+  recipientAta,
+  1_000_000n,
+  {
+    connection,
+    programId,
+    relayUrl,
+    walletPublicKey: publicKey!,
+    signMessage: signMessage!,
+  },
+  publicKey!
+);
+```
+</CodeGroup>
+
 `swapWithChange` sends `TransactSwap` payload (`proof + 264-byte public inputs + swap params`) to relay `/transact_swap`.
 
 ## Viewing-key registration requirements
@@ -128,7 +197,7 @@ await swapWithChange(
 - `TransactOptions.enforceViewingKeyRegistration` defaults to `true`.
 - Registration signs fixed sign-in message and posts to `/viewing-key/register`.
 
-If viewing key is missing, web history/decrypt flows cannot resolve your transaction data.
+If viewing key is missing, history and decrypt flows cannot resolve your transaction data.
 
 ## Risk-oracle deposits
 
@@ -147,17 +216,7 @@ If deposit account list is too large for legacy transactions, use V0 + `addressL
 - Proof retries are built in for stale roots (`0x1001`).
 - Relay-backed Merkle reconstruction (`/commitments`) is preferred for older indices.
 - Optional `cachedMerkleTree` helps sequential txs avoid extra rebuild/fetch.
-- Optional `useUniqueNullifiers` helps local/surfpool repeated test runs.
-
-## Verification commands
-
-Run from `sdk/`:
-
-```bash
-npm run build
-npm run example:verify
-npx tsx examples/scan-history.ts
-```
+- Optional `useUniqueNullifiers` helps repeated development runs avoid nullifier collisions.
 
 ## Troubleshooting
 
@@ -168,6 +227,6 @@ npx tsx examples/scan-history.ts
 
 ## Next
 
-- Protocol internals: [Shield Pool Program](/protocol/shield-pool)
+- Protocol behavior: [Shield Pool Program](/protocol/shield-pool)
 - Relay routes and payloads: [Relay API](/services/relay-api)
 - Full SDK exports: [API Reference](/sdk/api-reference)

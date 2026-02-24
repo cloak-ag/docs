@@ -32,8 +32,8 @@ export function useCloak() {
 
     return new CloakSDK({
       wallet: { publicKey, signTransaction, sendTransaction },
-      network: "devnet",
-      programId: new PublicKey("3EvH6XYQir7D2RyzCdP7QFmJFfSPfdeoB8VnpLdEF4Kr"),
+      network: "mainnet",
+      programId: new PublicKey("c1oak6tetxYnNfvXKFkpn1d98FxtK7B68vBQLYQpWKp"),
     });
   }, [publicKey, signTransaction, sendTransaction]);
 }
@@ -56,7 +56,7 @@ const result = await transact(params, {
 });
 ```
 
-For web flows, make sure wallet supports `signMessage` so viewing-key registration can be completed before transactions.
+Make sure your wallet supports `signMessage` so viewing-key registration can complete before transactions.
 
 ## UX requirements
 
