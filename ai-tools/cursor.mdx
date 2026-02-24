@@ -1,10 +1,10 @@
 ---
 title: "Cursor setup"
-description: "Prompt and rules setup for Cloak v2 (note + UTXO APIs)"
+description: "Cursor rules and prompt recipes for fast SDK app delivery"
 icon: "arrow-pointer"
 ---
 
-Use Cursor rules that reflect the current SDK surface.
+Use Cursor with a strict SDK-first ruleset so generated code is immediately usable in real Cloak apps.
 
 ## Project rules
 
@@ -12,62 +12,93 @@ Create `.cursor/rules.md` in your app root:
 
 <Accordion title="View .cursor/rules.md template">
 
-# Cloak SDK v2 Rules
+# Cloak SDK Rules (Current)
 
 This project uses `@cloak.ag/sdk` for private Solana transactions.
 
-## API surfaces
+## Primary APIs
 
-1. Note API (`CloakSDK`): `deposit`, `withdraw`, `send`, `swap`
-2. UTXO API (top-level): `transact`, `transfer`, `partialWithdraw`, `fullWithdraw`, `swapUtxo`, `swapWithChange`
+Use UTXO helpers as default:
+- `transact`
+- `partialWithdraw`
+- `fullWithdraw`
+- `swapWithChange`
+
+Always handle lamports as bigint.
 
 ## Security constraints
 
-- Never log full note or UTXO secret material.
-- Always persist note data in `onNoteGenerated` before deposit proceeds.
-- Treat notes as spending secrets.
+- Never log secrets (UTXO keys, viewing keys, wallet signatures).
+- Never downgrade encrypted local storage flows.
+- Never bypass viewing-key registration requirements.
 
-## Program IDs
+## Program ID
 
-- Mainnet constant: `c1oak6tetxYnNfvXKFkpn1d98FxtK7B68vBQLYQpWKp`
-- Development build ID: `3EvH6XYQir7D2RyzCdP7QFmJFfSPfdeoB8VnpLdEF4Kr`
+- `c1oak6tetxYnNfvXKFkpn1d98FxtK7B68vBQLYQpWKp`
 
-Set `programId` explicitly on development deployments.
+Set `programId` explicitly in config.
 
 ## Fees
 
 - Fixed: `5_000_000`
 - Variable: `amount * 3 / 1000`
-- Min deposit: `10_000_000`
+- Applied on-chain for withdrawals/swaps.
 
 ## Error handling
 
-Use `CloakError`, `ShieldPoolErrors`, and `isRootNotFoundError`.
-Retry transient errors with backoff.
+- Treat stale-root errors as retryable.
+- Distinguish network, RPC rate-limit, and validation errors.
+- Surface user-safe messages in UI.
+
+## UX expectations
+
+- Compliance history: cache-first, rescan on explicit user action.
+- Show progress for proof generation and scanner phases.
+- Keep deposit/send/swap/withdraw handlers deterministic and testable.
 
 ## References
 
 - `/sdk/quickstart`
 - `/sdk/utxo-transactions`
-- `/sdk/migration-v1-v2`
+- `/sdk/wallet-integration`
 - `/sdk/api-reference`
 - `/services/relay-api`
+- `/architecture/viewing-keys-compliance`
+- `/operations/local-dev-runbook`
 
 </Accordion>
 
-## Prompt examples
+## Prompt recipes
 
 <AccordionGroup>
-<Accordion title="React wallet + note flow">
-Build a React hook using wallet-adapter and CloakSDK note flows (`deposit`, `withdraw`) with secure note persistence and progress callbacks.
+<Accordion title="Generate full SDK integration scaffold">
+Create a production-ready React integration for `@cloak.ag/sdk` in this codebase.
+
+Deliver:
+- `useCloak` hook (deposit/send/withdraw/swap)
+- compliance history loader (cache-first + rescan)
+- typed errors + progress states
+- minimal tests for amount and fee calculations
+
+Use only current SDK APIs and existing project conventions.
 </Accordion>
 
-<Accordion title="UTXO transfer flow">
-Implement a UTXO transfer flow using `transact`/`transfer` with bigint amounts, relay status polling, and stale-root retries.
+<Accordion title="Patch existing code to current SDK contract">
+Audit the current repo for mismatches with current Cloak SDK runtime model.
+
+Patch all mismatches and return:
+1) files changed,
+2) exact API contract updates,
+3) verification commands and results.
 </Accordion>
 
-<Accordion title="Migration task">
-Refactor this note-only integration so swap and partial withdraw use UTXO helpers while keeping existing deposit UX.
+<Accordion title="Build a polished history page">
+Implement a user-facing privacy history page with:
+- transaction table using fee/net/runningBalance
+- summary cards
+- encrypted cache integration
+- explicit clear-cache + rescan control
+- smooth modal timing (no first-paint flash)
 </Accordion>
 </AccordionGroup>
 
@@ -75,4 +106,4 @@ Refactor this note-only integration so swap and partial withdraw use UTXO helper
 
 - [Quickstart](/sdk/quickstart)
 - [UTXO Transactions](/sdk/utxo-transactions)
-- [Migration v1 → v2](/sdk/migration-v1-v2)
+- [Wallet Integration](/sdk/wallet-integration)

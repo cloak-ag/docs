@@ -1,10 +1,10 @@
 ---
 title: "Windsurf setup"
-description: "Rules and prompts for Cloak v2 development"
+description: "Windsurf rules and starter prompts for building Cloak SDK apps"
 icon: "wind"
 ---
 
-Configure Windsurf with current Cloak APIs and constraints.
+Use this setup to make Windsurf generate app code that matches current Cloak SDK behavior on the first pass.
 
 ## Rule file
 
@@ -12,58 +12,81 @@ Create `.windsurf/rules.md`:
 
 <Accordion title="View .windsurf/rules.md template">
 
-# Cloak SDK v2 Rules
+# Cloak SDK Rules (Current)
 
 Project uses `@cloak.ag/sdk` for private Solana transactions.
 
-## API surfaces
+## Use these APIs by default
 
-- Note API (`CloakSDK`)
-- UTXO API (`transact`, `transfer`, `partialWithdraw`, `fullWithdraw`, `swapUtxo`, `swapWithChange`)
+- `transact`
+- `partialWithdraw`
+- `fullWithdraw`
+- `swapWithChange`
+
+Amounts are bigint (lamports), never floating-point in logic.
+
+## Mandatory behavior
+
+- Enforce viewing-key registration before protocol actions.
+- Keep compliance history cache encrypted in localStorage.
+- Prefer scanner-based history (chain-native) for user-facing flows.
 
 ## Security
 
-- Do not log note or UTXO secrets.
-- Persist generated notes in `onNoteGenerated` before deposit execution.
+- Never print secret keys, viewing keys, signatures, or note payload secrets.
+- Never add debug logs containing transaction private inputs.
 
-## Deployment constants
+## Program + fee constants
 
-- Mainnet constant: `c1oak6tetxYnNfvXKFkpn1d98FxtK7B68vBQLYQpWKp`
-- Development build: `3EvH6XYQir7D2RyzCdP7QFmJFfSPfdeoB8VnpLdEF4Kr`
+- Program ID: `c1oak6tetxYnNfvXKFkpn1d98FxtK7B68vBQLYQpWKp`
+- Fee fixed: `5_000_000`
+- Fee variable: `amount * 3 / 1000`
 
-## Fee constants
+## Error policy
 
-- `FIXED_FEE_LAMPORTS = 5_000_000`
-- Variable fee `amount * 3 / 1000`
-- `MIN_DEPOSIT_LAMPORTS = 10_000_000`
+- Retry stale-root failures with fresh Merkle data.
+- Retry transient RPC/network errors with backoff.
+- Return user-safe error messages in UI.
 
-## Errors
-
-Use `CloakError`, `ShieldPoolErrors`, `parseError`, and `isRootNotFoundError`.
-
-## Documentation links
+## References
 
 - `/sdk/quickstart`
 - `/sdk/utxo-transactions`
-- `/sdk/migration-v1-v2`
-- `/protocol/shield-pool`
+- `/sdk/wallet-integration`
+- `/sdk/api-reference`
 - `/services/relay-api`
+- `/architecture/viewing-keys-compliance`
 
 </Accordion>
 
-## Prompt examples
+## Prompt templates
 
 <AccordionGroup>
-<Accordion title="Wallet + CloakSDK">
-Generate a wallet-adapter integration with CloakSDK note-based operations, progress callbacks, and safe note storage.
+<Accordion title="Scaffold a complete app integration">
+Build a production-ready Cloak integration layer for this app:
+- wallet adapter wiring
+- deposit/send/withdraw/swap handlers
+- compliance history fetch + cache + CSV export
+- typed status/progress state
+
+Return full file patches and the exact validation commands.
 </Accordion>
 
-<Accordion title="UTXO + relay">
-Implement an end-to-end UTXO flow with `transact` and `swapUtxo`, including `/status/:id` polling and retry for stale roots.
+<Accordion title="Implement transaction handlers">
+Implement transaction handlers using current SDK APIs with:
+- bigint-safe parsing
+- retry policy for stale roots
+- clear error categories for UI
+- no secret leakage in logs
 </Accordion>
 
-<Accordion title="v1 to v2 migration">
-Refactor this code from note-only transfers to UTXO transaction helpers while keeping API compatibility at the UI layer.
+<Accordion title="Ship-ready refactor pass">
+Audit my existing code and refactor it to current Cloak runtime behavior.
+
+Constraints:
+- keep existing UX behavior unless broken
+- minimize API surface changes in UI components
+- include a migration note per changed module
 </Accordion>
 </AccordionGroup>
 
@@ -71,4 +94,4 @@ Refactor this code from note-only transfers to UTXO transaction helpers while ke
 
 - [Quickstart](/sdk/quickstart)
 - [UTXO Transactions](/sdk/utxo-transactions)
-- [Migration v1 → v2](/sdk/migration-v1-v2)
+- [Wallet Integration](/sdk/wallet-integration)

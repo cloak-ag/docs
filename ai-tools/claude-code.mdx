@@ -1,10 +1,12 @@
 ---
 title: "Claude Code setup"
-description: "Context templates for Cloak v2 integrations"
+description: "Claude Code templates to build SDK-powered Cloak apps quickly"
 icon: "message-bot"
 ---
 
-Use a concise project context so Claude Code targets the right API surface.
+This page gives you a copy-paste setup so Claude Code can generate production-ready app code with `@cloak.ag/sdk`.
+
+Focus: help teams ship wallet-connected apps fast, with the current UTXO + chain-note architecture.
 
 ## `CLAUDE.md` template
 
@@ -12,64 +14,113 @@ Create `CLAUDE.md` in your project:
 
 <Accordion title="View CLAUDE.md template">
 
-# Cloak SDK v2 Context
+# Cloak SDK App Context (Current)
 
 We integrate `@cloak.ag/sdk`.
 
-## Main patterns
+## Runtime model
 
-- Note API (`CloakSDK`): `deposit`, `withdraw`, `send`, `swap`
-- UTXO API: `transact`, `transfer`, `partialWithdraw`, `fullWithdraw`, `swapUtxo`, `swapWithChange`
+- Main integration surface is UTXO helpers:
+  - `transact`
+  - `partialWithdraw`
+  - `fullWithdraw`
+  - `swapWithChange`
+- Build for bigint amounts and explicit wallet adapter wiring.
 
 ## Security
 
-- Never log full notes/UTXO secrets.
-- Use `onNoteGenerated` to persist notes before deposit continues.
+- Never log private key material, UTXO secrets, or raw viewing keys.
+- Keep wallet signatures in memory only when possible.
+- Treat local encrypted storage as required for user state.
 
 ## Program IDs
 
-- Mainnet: `c1oak6tetxYnNfvXKFkpn1d98FxtK7B68vBQLYQpWKp`
-- Development build: `3EvH6XYQir7D2RyzCdP7QFmJFfSPfdeoB8VnpLdEF4Kr`
+- Program ID: `c1oak6tetxYnNfvXKFkpn1d98FxtK7B68vBQLYQpWKp`
 
-Set `programId` explicitly for development deployments.
+Set `programId` explicitly in app config.
 
-## Fee constants
+## Fee model
 
-- Fixed `5_000_000`
-- Variable `amount * 3 / 1000`
-- Min deposit `10_000_000`
+- Fixed fee: `5_000_000` lamports
+- Variable fee: `amount * 3 / 1000`
+- Fees apply to withdrawals/swaps on-chain.
 
-## Error model
+## Required UX behavior
 
-Use `CloakError`, `ShieldPoolErrors`, `isRootNotFoundError`, `parseError`.
+- Require viewing-key registration before protocol actions.
+- For history, load cached compliance first, then rescan on demand.
+- Show progress for proof generation and scanning.
 
 ## Docs to follow
 
 - `/sdk/quickstart`
 - `/sdk/utxo-transactions`
-- `/sdk/migration-v1-v2`
+- `/sdk/wallet-integration`
 - `/sdk/api-reference`
 - `/services/relay-api`
+- `/architecture/viewing-keys-compliance`
+- `/operations/local-dev-runbook`
 
 </Accordion>
 
-## Useful prompts
+## Prompt Pack
+
+Use these prompts directly in Claude Code.
 
 <AccordionGroup>
-<Accordion title="Build note-based flow">
-Implement a production-safe note-based deposit/withdraw flow using wallet-adapter and CloakSDK with secure note persistence and error categorization.
+<Accordion title="1) Bootstrap app integration">
+Build a React + wallet-adapter integration for `@cloak.ag/sdk` with these constraints:
+- UTXO-first flow (`transact`, `partialWithdraw`, `swapWithChange`)
+- bigint-safe amount handling
+- progress callbacks for proof/scanning
+- typed error mapping for stale root and relay/network errors
+- no secret logging
+
+Return:
+1) files to create/update,
+2) full code,
+3) run commands.
 </Accordion>
 
-<Accordion title="Build UTXO flow">
-Create a UTXO transaction module using `transact`, `partialWithdraw`, and `swapWithChange` with relay status polling and retry logic.
+<Accordion title="2) Add deposit/send/withdraw/swap feature set">
+Implement production-ready handlers for deposit, private send, partial/full withdraw, and swap using current SDK APIs.
+
+Requirements:
+- Enforce viewing-key registration before actions
+- Keep local encrypted cache for compliance history
+- Reuse Merkle tree output where applicable
+- Add user-facing loading states and retries
+
+Also add minimal unit tests for amount math and state transitions.
 </Accordion>
 
-<Accordion title="Migrate existing code">
-Migrate this v1 note-only integration to v2 by preserving note deposit UX and moving transfer/swap logic to UTXO helpers.
+<Accordion title="3) Build history + compliance UX">
+Implement a Privacy History page that:
+- loads encrypted cached report first
+- offers explicit `clear cache + rescan`
+- uses SDK scanner-derived fee/net fields
+- renders transaction table + summary + CSV export
+
+Keep UX smooth: avoid immediate modal popups on first paint when cache may exist.
+</Accordion>
+
+<Accordion title="4) Fix and verify workflow">
+Given my current code, identify all SDK integration mismatches and patch them.
+
+Then run:
+- Type checks
+- Lint
+- one end-to-end happy path command
+
+Return only:
+- changed files
+- why each change was needed
+- verification output summary.
 </Accordion>
 </AccordionGroup>
 
 ## Related docs
 
 - [UTXO Transactions](/sdk/utxo-transactions)
-- [Migration v1 → v2](/sdk/migration-v1-v2)
+- [Wallet Integration](/sdk/wallet-integration)
+- [Relay API](/services/relay-api)
