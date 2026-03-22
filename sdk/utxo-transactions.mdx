@@ -206,9 +206,9 @@ When deposits require Range/Switchboard validation, include:
 - `riskOracleQueue`
 - `riskQuoteUrl` (or `getRiskQuoteInstruction`)
 
-Relay `GET /risk-quote` is not implemented (`501`), so provide your own quote backend or direct instruction callback.
+Relay serves `GET /range-quote`; you can use that route or provide your own quote backend/direct instruction callback.
 
-If deposit account list is too large for legacy transactions, use V0 + `addressLookupTableAccounts`.
+If deposit account list is large, use v0 transactions with `addressLookupTableAccounts`.
 
 ## Operational notes
 
@@ -228,5 +228,5 @@ If deposit account list is too large for legacy transactions, use V0 + `addressL
 ## Next
 
 - Protocol behavior: [Shield Pool Program](/protocol/shield-pool)
-- Relay routes and payloads: [Relay API](/services/relay-api)
+- Runtime lifecycle: [Transaction Flows](/platform/transaction-flows)
 - Full SDK exports: [API Reference](/sdk/api-reference)

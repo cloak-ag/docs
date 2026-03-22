@@ -12,7 +12,7 @@ This quickstart uses the current UTXO API (`transact` + `partialWithdraw`).
 - A funded Solana keypair
 - Relay URL (hosted endpoint)
 - Solana RPC URL
-- Hosted circuit base URL: `https://www.cloak.ag/circuits`
+- Hosted circuit base URL: `https://cloak-circuits.s3.us-east-1.amazonaws.com/circuits/0.1.0`
 
 ## Install
 
@@ -52,7 +52,7 @@ const programId = new PublicKey(
   process.env.CLOAK_PROGRAM_ID || "c1oak6tetxYnNfvXKFkpn1d98FxtK7B68vBQLYQpWKp"
 );
 const relayUrl = process.env.CLOAK_RELAY_URL || "https://your-relay.example.com";
-setCircuitsPath(process.env.CIRCUITS_PATH || "https://www.cloak.ag/circuits");
+setCircuitsPath("https://cloak-circuits.s3.us-east-1.amazonaws.com/circuits/0.1.0");
 
 const owner = await generateUtxoKeypair();
 const depositAmount = BigInt(0.02 * LAMPORTS_PER_SOL); // 0.02 SOL
@@ -107,7 +107,7 @@ import { useWallet } from "@solana/wallet-adapter-react";
 const connection = new Connection(process.env.NEXT_PUBLIC_RPC_URL!, "confirmed");
 const programId = new PublicKey("c1oak6tetxYnNfvXKFkpn1d98FxtK7B68vBQLYQpWKp");
 const relayUrl = process.env.NEXT_PUBLIC_RELAY_URL!;
-setCircuitsPath("https://www.cloak.ag/circuits");
+setCircuitsPath("https://cloak-circuits.s3.us-east-1.amazonaws.com/circuits/0.1.0");
 
 export function useQuickstartFlow() {
   const { publicKey, signTransaction } = useWallet();
@@ -151,13 +151,12 @@ export function useQuickstartFlow() {
 ```
 </CodeGroup>
 
-Note: `https://www.cloak.ag/circuits` is a base path (directory listing is not enabled).
+Note: `https://cloak-circuits.s3.us-east-1.amazonaws.com/circuits/0.1.0` is a base path.
 
 SDK proof generation needs concrete files under that path, including:
 
-- `https://www.cloak.ag/circuits/withdraw_regular_js/withdraw_regular.wasm`
-- `https://www.cloak.ag/circuits/withdraw_regular_final.zkey`
-- `https://www.cloak.ag/circuits/withdraw_swap_js/withdraw_swap.wasm` (swap flows)
+- `https://cloak-circuits.s3.us-east-1.amazonaws.com/circuits/0.1.0/build/withdraw_regular_js/withdraw_regular.wasm`
+- `https://cloak-circuits.s3.us-east-1.amazonaws.com/circuits/0.1.0/build/withdraw_regular_final.zkey`
 
 Run it (keypair script):
 

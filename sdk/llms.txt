@@ -1,4 +1,4 @@
-# Cloak SDK - LLM Reference
+# SDK LLM Reference
 
 This file is for AI agents integrating the full `@cloak.ag/sdk` surface in external applications.
 
@@ -13,7 +13,7 @@ This file is for AI agents integrating the full `@cloak.ag/sdk` surface in exter
 Use these surfaces together:
 
 1. **UTXO transaction API** (primary runtime path)
-2. **Note API (`CloakSDK`)** (legacy-compatible flows)
+2. **Note API (`CloakSDK`)**
 3. **Chain-native scanner/compliance API**
 4. **Viewing-key and metadata encryption API**
 5. **Utility layers** (fees/errors/network/relay/wallet/proof)
@@ -150,13 +150,12 @@ Use these surfaces together:
 
 Use hosted circuit base URL:
 
-- `https://www.cloak.ag/circuits`
+- `https://cloak-circuits.s3.us-east-1.amazonaws.com/circuits/0.1.0`
 
 Example required assets:
 
-- `/withdraw_regular_js/withdraw_regular.wasm`
-- `/withdraw_regular_final.zkey`
-- `/withdraw_swap_js/withdraw_swap.wasm`
+- `/build/withdraw_regular_js/withdraw_regular.wasm`
+- `/build/withdraw_regular_final.zkey`
 
 ## AI generation guardrails
 

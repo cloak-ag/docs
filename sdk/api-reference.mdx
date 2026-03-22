@@ -115,7 +115,7 @@ buildMerkleTreeFromRelay(relayUrl)
 Notes:
 
 - UTXO transact/swap flows submit 256-byte proofs and 264-byte public inputs.
-- `RelayService.submitSwap` currently uses legacy `/withdraw` route, while UTXO swap helpers use `/transact_swap`.
+- `RelayService.submitSwap` and `submitWithdraw` use `/withdraw`; UTXO helpers use `/transact` and `/transact_swap`.
 
 ## Fee constants
 
@@ -155,4 +155,4 @@ CLOAK_PROGRAM_ID   // mainnet program constant
 
 - [Protocol Architecture](/protocol/architecture)
 - [Shield Pool Program](/protocol/shield-pool)
-- [Relay API](/services/relay-api)
+- [Transaction Flows](/platform/transaction-flows)
