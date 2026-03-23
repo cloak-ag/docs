@@ -1,0 +1,40 @@
+---
+title: "Circuits Package"
+description: "How transaction circuits are built and consumed across SDK and programs"
+icon: "file-code"
+---
+
+`packages/` contains the zk circuit toolchain used by Cloak.
+
+## Canonical transaction circuit
+
+- File: `packages/circuits/transaction.circom`
+- Template: `Transaction(32, 2, 2)`
+- Public signals: `root`, `publicAmount`, `extDataHash`, `mintAddress`, `inputNullifier`, `outputCommitment`, `chainNoteHash`
+
+This is the circuit shape consumed by both SDK and on-chain verifier logic.
+
+## Build pipeline
+
+`packages/justfile` orchestrates:
+
+- circom compile
+- Groth16 setup/beacon
+- verification key export
+- artifact copy for SDK/web consumers
+- vkey conversion for on-chain binary include
+
+## Important scripts
+
+- `packages/scripts/convert-vkey.ts`: transforms JSON vkey into verifier binary layout
+- `packages/scripts/publish-circuits-s3.mjs`: publishes artifacts and manifest to S3
+
+## Consumer surfaces
+
+- SDK proof generation reads circuit artifacts for witness/proof generation
+- Program build includes converted verifier key binary
+- Tests and integration fixtures depend on artifact consistency
+
+## Operational note
+
+Keep artifact paths and copy steps synchronized across `packages`, `sdk`, and `programs`; mismatched paths are a common source of runtime proof-loading failures.

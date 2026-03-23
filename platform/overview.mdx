@@ -1,0 +1,61 @@
+---
+title: "Platform Overview"
+description: "How Cloak fits together across SDK, programs, circuits, and bots"
+icon: "compass"
+---
+
+Cloak is a privacy stack on Solana built around a shielded UTXO model and zero-knowledge proofs.
+
+It has four public surfaces:
+
+- SDK (`@cloak.ag/sdk`) for proof generation, tx building, and scanning
+- Shield Pool program for on-chain verification and state transitions
+- Circuit package for Groth16 artifact generation and verifier-key export
+- Mixer bots for operational liquidity and anonymity-set activity
+
+## Use cases
+
+## Private Treasury Flows
+
+Run deposits, transfers, withdrawals, and swaps with shielded state transitions while keeping verifiable protocol guarantees on-chain.
+
+Designed for: treasury teams, privacy-focused wallets, protocol operators
+
+## Compliance-Aware Privacy Apps
+
+Build products that keep user transaction details private by default, while still supporting controlled compliance export paths via registered viewing keys.
+
+Designed for: regulated apps, custody workflows, institutional operators
+
+## What Cloak optimizes for
+
+- Privacy-preserving transfers and withdrawals with deterministic verification
+- Cross-surface consistency across SDK, program, and circuit layers
+- Operational reliability through retries, queueing, and root/index recovery
+- Compliance-friendly history scanning via viewing keys and chain-note envelopes
+
+## Capabilities
+
+- **Shielded UTXO Runtime**: 2-in/2-out proof-constrained transactions with nullifier-based spend protection.
+- **Chain-Native Compliance**: encrypted chain notes, viewing-key registration, and export/decrypt endpoints.
+- **Operational Tooling**: circuits build/publish pipeline and mixer automation for live operations.
+
+## Integration starting points
+
+<CardGroup cols={2}>
+<Card title="Build with SDK" icon="code" href="/sdk/introduction">
+Use TypeScript APIs for deposit, transfer, withdraw, swap, and scanning.
+</Card>
+<Card title="Understand Runtime Flows" icon="diagram-project" href="/platform/transaction-flows">
+Follow end-to-end behavior from client request to on-chain finalization.
+</Card>
+<Card title="Review Program Rules" icon="microchip" href="/protocol/shield-pool">
+See instruction-level constraints, account model, and fee enforcement.
+</Card>
+<Card title="Operational Limits" icon="gauge" href="/operations/fees-and-limits">
+See protocol fees, payload limits, and key runtime constraints.
+</Card>
+<Card title="Security Model" icon="shield-check" href="/operations/security">
+Review trust boundaries, key handling, and failure containment.
+</Card>
+</CardGroup>

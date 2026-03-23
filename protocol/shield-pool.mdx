@@ -12,6 +12,11 @@ icon: "microchip"
 
 - `0`: `Transact` (deposit, withdraw, shielded transfer)
 - `1`: `TransactSwap` (swap flow entrypoint)
+- `2`: `Initialize` (mint-scoped pool bootstrap)
+- `3`: `PrepareSwapSol`
+- `4`: `ExecuteSwap`
+- `5`: `CloseSwapState`
+- `6`: `CollectTreasury`
 
 SDK consumers typically interact through `Transact` and `TransactSwap`.
 
@@ -47,7 +52,13 @@ The program enforces sufficient withdrawal amount so `net > 0`.
 
 - Tree height: `32`
 - Root history size: `100`
-- Nullifiers prevent double spends
+- Nullifier PDA seed model: `["nullifier", pool_pubkey, nullifier_hash]`
+
+Mint-scoped PDAs:
+
+- Pool: `["pool", mint]`
+- Treasury: `["treasury", mint]`
+- Merkle tree: `["merkle_tree", mint]`
 
 ## Execution model
 
@@ -67,7 +78,7 @@ The program enforces sufficient withdrawal amount so `net > 0`.
 
 - Runs the same proof/nullifier/commitment checks as `Transact`.
 - Requires negative `publicAmount` (swap is a withdrawal path).
-- Queues the follow-up swap settlement path handled by the relay service.
+- Creates `SwapState` for follow-up settlement path handled by relay worker flow.
 
 ## Circuit assumptions the program relies on
 

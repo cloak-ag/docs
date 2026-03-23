@@ -1,0 +1,39 @@
+---
+title: "Platform Components"
+description: "Responsibilities and boundaries of each Cloak subsystem"
+icon: "cubes-stacked"
+---
+
+## SDK (`sdk/`)
+
+- Primary integration interface for apps and wallets
+- Exposes UTXO-first flows (`transact`, `partialWithdraw`, `swapWithChange`)
+- Handles proof generation inputs, Merkle proof sourcing, retry semantics, and error mapping
+- Includes chain-native scanner and compliance export helpers
+
+## Programs (`programs/`)
+
+- `shield-pool` is the runtime verifier/state-machine program
+- Mint-scoped pools with PDAs such as `["pool", mint]`, `["treasury", mint]`, `["merkle_tree", mint]`
+- Enforces proof validity, root membership, nullifier uniqueness, and transfer invariants
+- Supports direct transact and two-phase swap state flow
+
+## Packages (`packages/`)
+
+- Circuit workspace for building Groth16 artifacts
+- Canonical transaction circuit is 2-in/2-out with 9 public signals
+- Tooling exports verifier keys for both SDK/clients and on-chain verifier use
+
+## Bots (`cloak-bots/`)
+
+- `cloak-mixer` automates deposit/withdraw cycles against program + relay
+- Uses local SQLite state for indexed deposits and recoverability
+- Supports run/recover/rebalance/setup/status operational commands
+
+## Recommended read order
+
+1. [Platform Overview](/platform/overview)
+2. [Transaction Flows](/platform/transaction-flows)
+3. [Shield Pool Program](/protocol/shield-pool)
+4. [Circuits Package](/packages/circuits)
+5. [Cloak Mixer Bot](/bots/cloak-mixer)

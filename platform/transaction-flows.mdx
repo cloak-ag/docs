@@ -1,0 +1,54 @@
+---
+title: "Transaction Flows"
+description: "Deposit, withdraw, transfer, and swap lifecycles across all runtime layers"
+icon: "shuffle"
+---
+
+## Canonical data shape
+
+Both `Transact` and `TransactSwap` use:
+
+- `proof_bytes`: 256-byte Groth16 proof
+- `public_inputs`: 264-byte packed blob
+
+Public input layout:
+
+- `root[32]`
+- `publicAmount[8]` (signed LE)
+- `extDataHash[32]`
+- `mintAddress[32]`
+- `nullifiers[64]`
+- `commitments[64]`
+- `chainNoteHash[32]`
+
+## Deposit flow (`publicAmount > 0`)
+
+1. SDK creates output UTXOs and generates proof inputs.
+2. SDK resolves Merkle data (relay cache first, chain fallback).
+3. Transaction is submitted (direct signer path for deposit variants).
+4. Program verifies proof and appends commitments to the tree.
+5. Relay/SDK resolve commitment index and persist local proof context.
+
+## Withdraw/transfer flow (`/transact`)
+
+1. SDK builds 2-in/2-out witness and computes nullifiers.
+2. SDK optionally ensures viewing-key registration.
+3. SDK posts proof + public inputs to relay `/transact`.
+4. Relay validates sizes/shape and submits on-chain transaction.
+5. Program rejects reused nullifiers and enforces amount/fee constraints.
+6. Client polls `/status/:id` until completed or failed.
+
+## Swap flow (`/transact_swap`)
+
+1. SDK generates proof for withdraw-like step with swap params.
+2. Relay submits `TransactSwap` (Tx1) to open `SwapState`.
+3. Worker executes swap settlement path (Tx2), validates output min amount.
+4. Status includes `swap_phase`, signatures, and error context.
+5. Timeout/close paths can reclaim state if settlement cannot complete.
+
+## Reliability behaviors
+
+- Stale root retries: SDK regenerates proofs when root history moved
+- Queue recovery: relay resets stuck jobs and requeues retryable failures
+- Commitment sync repair: relay can backfill sparse windows and rebuild cursors
+- Recovery operations: bots can withdraw indexed historical deposits

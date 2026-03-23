@@ -1,6 +1,6 @@
 ---
 title: "Protocol Architecture"
-description: "Current end-to-end data flow across apps, SDK, relay, and shield pool"
+description: "Current end-to-end data flow across app, SDK, relay, and shield-pool runtime"
 icon: "diagram-project"
 ---
 
@@ -46,22 +46,21 @@ Shield Pool maintains:
 
 - Merkle tree (`MERKLE_TREE_HEIGHT = 32`)
 - Root history ring (`ROOT_HISTORY_SIZE = 100`)
-- Nullifier PDAs (`["nullifier", nullifier_hash]`) for spent checks
-- Pool PDA (`["pool"]`) and Treasury PDA (`["treasury"]`)
+- Nullifier PDAs (`["nullifier", pool_pubkey, nullifier_hash]`) for spent checks
+- Mint-scoped Pool/Treasury PDAs (`["pool", mint]`, `["treasury", mint]`)
 - SwapState PDA (`["swap_state", pool_pubkey, nullifier]`) for two-phase swaps
 
 ## Relay responsibilities
 
-- Accept submit requests (`/transact`, `/transact_swap`, legacy `/withdraw`)
+- Accept submit requests (`/transact`, `/transact_swap`, `/withdraw`)
 - Validate payload size/shape and queue status tracking (`/status/:id`)
 - Provide chain-index data (`/commitments`, `/merkle-root`)
 - Verify and store viewing keys (`/viewing-key/register`)
-
-`GET /risk-quote` intentionally returns `501` in relay; deposits that require risk oracle quotes must use an external quote service or `getRiskQuoteInstruction` in SDK options.
+- Serve risk quote endpoint (`/range-quote`)
 
 ## Viewing keys and history scanning
 
-- Viewing-key registration is required for normal SDK app flows before transact/deposit/withdraw/swap.
+- Viewing-key registration is enforced by default for SDK transaction paths.
 - User signs a fixed sign-in message; relay verifies signature and stores the 32-byte viewing key with an identifier hash.
 - Scanner path is chain-native: SDK reads program transactions from RPC, decrypts compact chain notes with `nk`, verifies `chainNoteHash` integrity, and computes running balance/fees.
 - History UIs commonly use encrypted local cache and support explicit `Clear cache & rescan`.

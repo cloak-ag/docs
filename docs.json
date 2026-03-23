@@ -16,42 +16,53 @@
           {
             "group": "Getting Started",
             "pages": [
+              "platform/overview",
               "sdk/introduction",
               "sdk/quickstart"
             ]
           },
           {
-            "group": "Core Concepts",
+            "group": "Platform",
             "pages": [
-              "sdk/core-concepts",
-              "sdk/utxo-transactions"
-            ]
-          },
-          {
-            "group": "Integration",
-            "pages": [
-              "sdk/wallet-integration",
-              "sdk/error-handling"
-            ]
-          },
-          {
-            "group": "Protocol",
-            "pages": [
-              "protocol/architecture",
-              "protocol/shield-pool",
+              "platform/components",
+              "platform/transaction-flows",
               "architecture/viewing-keys-compliance"
             ]
           },
           {
-            "group": "Relay Service",
+            "group": "SDK",
             "pages": [
-              "services/relay-api"
+              "sdk/core-concepts",
+              "sdk/utxo-transactions",
+              "sdk/wallet-integration",
+              "sdk/error-handling",
+              "sdk/api-reference"
             ]
           },
           {
-            "group": "API Reference",
+            "group": "Programs",
             "pages": [
-              "sdk/api-reference"
+              "protocol/architecture",
+              "protocol/shield-pool"
+            ]
+          },
+          {
+            "group": "Packages",
+            "pages": [
+              "packages/circuits"
+            ]
+          },
+          {
+            "group": "Bots",
+            "pages": [
+              "bots/cloak-mixer"
+            ]
+          },
+          {
+            "group": "Operations",
+            "pages": [
+              "operations/fees-and-limits",
+              "operations/security"
             ]
           }
         ]
@@ -127,7 +138,7 @@
   "redirects": [
     {
       "source": "/",
-      "destination": "/sdk/introduction"
+      "destination": "/platform/overview"
     },
     {
       "source": "/quickstart",

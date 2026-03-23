@@ -1,6 +1,6 @@
-# Cloak Documentation
+# Documentation
 
-This folder contains the Mintlify docs site for Cloak SDK, protocol, and relay APIs.
+This folder contains the Mintlify docs site for Cloak platform, SDK, programs, services, circuits, and bots.
 
 ## Local development
 
@@ -21,10 +21,12 @@ mint dev
 ## Structure
 
 - `sdk/` SDK guides and API references
+- `platform/` architecture components and transaction flows
 - `protocol/` on-chain architecture and Shield Pool docs
 - `architecture/` viewing-key and compliance model docs
 - `services/` relay API docs
-- `operations/` local runbooks and operational troubleshooting
+- `packages/` circuit pipeline docs
+- `bots/` operational bot docs
 - `ai-tools/` IDE/assistant setup pages
 
 ## Source of truth
@@ -36,7 +38,8 @@ When updating docs, prioritize these sources:
 - Program behavior: `programs/shield-pool/src/*`
 - Relay routes/payloads: `services/relay/src/main.rs`, `services/relay/src/api/*`
 - Relay sync behavior: `services/relay/src/commitment_sync.rs`
-- Web privacy/cache behavior: `web/hooks/*`, `web/lib/compliance-cache.ts`
+- Circuits/build flow: `packages/circuits/*`, `packages/justfile`, `packages/scripts/*`
+- Bot runtime behavior: `cloak-bots/cloak-mixer/src/*`
 
 ## Notes
 

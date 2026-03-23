@@ -1,0 +1,43 @@
+---
+title: "Security"
+description: "Trust boundaries and security controls implemented in Cloak runtime surfaces"
+icon: "shield-check"
+---
+
+## Trust boundaries
+
+- **Program**: verifies proofs, enforces nullifier uniqueness, validates roots, and applies transfer invariants.
+- **Relay**: validates API payloads, controls job execution/retries, and stores registered viewing keys.
+- **Client SDK**: derives keys, builds witness/proof inputs, and enforces registration paths by default.
+
+## Key controls
+
+- Viewing-key registration uses one-time nonce challenge + Ed25519 signature.
+- Optional encrypted-at-rest storage for relay viewing keys (keyring-backed config).
+- Identifier canonicalization prevents mismatched key mapping.
+
+## On-chain protections
+
+- Root membership checks against ring-buffered root history.
+- Nullifier PDA checks prevent double spend.
+- Mint-scoped PDA checks for pool/treasury/merkle isolation.
+- Swap state timeout + close paths for stuck settlement handling.
+
+## Relay protections
+
+- Strict proof/public-input size validation.
+- Bounded encrypted note payload counts and total bytes.
+- Queue claim/retry/reset controls for stuck jobs.
+- Circuit breaker integration to reduce cascading failure during RPC incidents.
+
+## Compliance and privacy posture
+
+- Chain-note scanner flow is chain-native; relay endpoints are for controlled export/decrypt.
+- Registered viewing keys enable compliance export for authorized admin paths.
+- Client apps should never log raw keys, signatures, or decrypted note payloads.
+
+## Recommended operational practice
+
+- Keep RPC and relay infra isolated by environment.
+- Rotate admin credentials and encryption keys under change control.
+- Monitor swap timeout/close frequency and root-staleness retries.
