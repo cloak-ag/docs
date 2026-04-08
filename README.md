@@ -16,7 +16,7 @@ npm i -g mint
 mint dev
 ```
 
-3. Open `http://localhost:3000`.
+3. Open the preview URL printed by `mint dev`.
 
 ## Structure
 
