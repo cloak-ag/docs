@@ -6,14 +6,22 @@ icon: "gauge"
 
 ## Protocol fees
 
-- Fixed fee: `5_000_000` lamports
+- Fixed fee floor: `0.005 SOL`
 - Variable fee: `amount * 3 / 1000` (0.3%)
 - Minimum deposit: `10_000_000` lamports
 
-Withdraw and swap math:
+SOL withdraw and swap math:
 
 - `gross = abs(publicAmount)`
-- `fee = fixed + variable`
+- `fee = 5_000_000 + floor(gross * 3 / 1000)`
+- `net = gross - fee`
+
+SPL withdraw math:
+
+- `gross = abs(publicAmount)` in token base units
+- `fixed_token = ceil(0.005 SOL converted via token/SOL Q64.64 quote)`
+- `variable_token = floor(gross * 3 / 1000)`
+- `fee = fixed_token + variable_token`
 - `net = gross - fee`
 
 ## Proof and payload sizes

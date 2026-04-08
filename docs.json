@@ -18,7 +18,8 @@
             "pages": [
               "platform/overview",
               "sdk/introduction",
-              "sdk/quickstart"
+              "sdk/quickstart",
+              "sdk/kit-integration"
             ]
           },
           {

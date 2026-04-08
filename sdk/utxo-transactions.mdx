@@ -40,10 +40,21 @@ Under the hood, SDK builds proof + `264`-byte public inputs and submits to relay
 
 ## Fees
 
-- `gross = abs(externalAmount)` when withdrawing/swapping
-- `fee = 5_000_000 + gross * 3 / 1000`
-- `net = gross - fee`
-- deposits have no protocol fee but still must satisfy min deposit (`10_000_000` lamports)
+- SOL withdraw/swap:
+  - `gross = abs(externalAmount)`
+  - `fee = 5_000_000 + floor(gross * 3 / 1000)`
+  - `net = gross - fee`
+- SPL withdraw:
+  - `fixed_token = ceil(0.005 SOL converted using token/SOL Q64.64 quote)`
+  - `variable_token = floor(gross * 3 / 1000)`
+  - `fee = fixed_token + variable_token`
+  - `net = gross - fee`
+- Deposits have no protocol fee but still must satisfy min deposit (`10_000_000` lamports)
+
+SDK helpers you can call directly:
+
+- SOL: `calculateSolFeeLamports`, `calculateSolNetAmountLamports`
+- SPL: `calculateSplFeeTokenAmount`, `calculateSplNetAmountToken`
 
 ## Create UTXOs
 

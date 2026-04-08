@@ -1,0 +1,97 @@
+---
+title: "Solana Kit integration"
+description: "Use Cloak SDK from apps that standardize on @solana/kit"
+icon: "plug"
+---
+
+If your app stack is built around `@solana/kit`, you can still use Cloak SDK today.
+
+Current state:
+
+- Use Kit for RPC reads, subscriptions, and signer architecture.
+- Use a thin `@solana/web3.js` bridge for Cloak transaction calls (`transact`, `partialWithdraw`, `swapWithChange`, etc.).
+
+## Install
+
+```bash
+npm install @cloak.ag/sdk @solana/web3.js @solana/kit
+```
+
+## Minimal bridge pattern
+
+```typescript
+import {
+  createUtxo,
+  createZeroUtxo,
+  generateUtxoKeypair,
+  partialWithdraw,
+  transact,
+} from "@cloak.ag/sdk";
+import { address, createSolanaRpc } from "@solana/kit";
+import { Connection, Keypair, PublicKey } from "@solana/web3.js";
+
+const rpcUrl = process.env.SOLANA_RPC_URL!;
+const relayUrl = process.env.CLOAK_RELAY_URL!;
+const programId = new PublicKey(process.env.CLOAK_PROGRAM_ID!);
+
+// Kit client for read paths.
+const kitRpc = createSolanaRpc(rpcUrl);
+
+// web3 bridge for Cloak transaction paths.
+const connection = new Connection(rpcUrl, "confirmed");
+const signer = Keypair.fromSecretKey(/* Uint8Array secret key */);
+
+const { value: before } = await kitRpc.getBalance(address(signer.publicKey.toBase58())).send();
+
+const owner = await generateUtxoKeypair();
+const output = await createUtxo(20_000_000n, owner);
+
+const deposit = await transact(
+  {
+    inputUtxos: [await createZeroUtxo()],
+    outputUtxos: [output],
+    externalAmount: 20_000_000n,
+    depositor: signer.publicKey,
+  },
+  {
+    connection,
+    programId,
+    relayUrl,
+    depositorKeypair: signer,
+  }
+);
+
+await partialWithdraw(deposit.outputUtxos, Keypair.generate().publicKey, 5_000_000n, {
+  connection,
+  programId,
+  relayUrl,
+  depositorKeypair: signer,
+  cachedMerkleTree: deposit.merkleTree,
+});
+
+const { value: after } = await kitRpc.getBalance(address(signer.publicKey.toBase58())).send();
+console.log(before.toString(), after.toString());
+```
+
+## Fees in Kit-based apps
+
+Fee helpers are pure TypeScript/`bigint`, so they work the same regardless of RPC client choice:
+
+```typescript
+import {
+  calculateSolFeeLamports,
+  calculateSplFeeTokenAmount,
+  tokenPerSolBaseUnitsToQ64,
+} from "@cloak.ag/sdk";
+
+const solFee = calculateSolFeeLamports(1_000_000_000n);
+
+// Example: 160 USDC per SOL in base units (6 decimals)
+const usdcPriceQ64 = tokenPerSolBaseUnitsToQ64(160_000_000n);
+const usdcFee = calculateSplFeeTokenAmount(82_000_000n, usdcPriceQ64);
+```
+
+## Maintained example scripts
+
+- `sdk/examples/quickstart-kit.ts`
+- `sdk/examples/fee-helpers.ts`

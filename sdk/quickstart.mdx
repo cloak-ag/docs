@@ -6,6 +6,11 @@ icon: "rocket"
 
 This quickstart uses the current UTXO API (`transact` + `partialWithdraw`).
 
+Maintained scripts in the SDK repo:
+
+- `sdk/examples/quickstart-kit.ts` (Kit + web3 bridge)
+- `sdk/examples/fee-helpers.ts` (SOL/SPL fee previews)
+
 ## Prerequisites
 
 - Node.js 18+
@@ -16,16 +21,27 @@ This quickstart uses the current UTXO API (`transact` + `partialWithdraw`).
 
 ## Install
 
-```bash
+<CodeGroup>
+```bash web3.js stack
 mkdir cloak-demo && cd cloak-demo
 npm init -y
 npm install @cloak.ag/sdk @solana/web3.js tsx
 ```
 
+```bash Solana Kit stack
+mkdir cloak-demo && cd cloak-demo
+npm init -y
+npm install @cloak.ag/sdk @solana/web3.js @solana/kit tsx
+```
+</CodeGroup>
+
+For Kit-based apps, use the same Cloak calls with a thin web3 bridge for transaction submission.
+See: [Solana Kit Integration](/sdk/kit-integration)
+
 ## Example script
 
 <CodeGroup>
-```typescript Keypair bytes
+```typescript web3.js keypair
 import {
   createUtxo,
   createZeroUtxo,
@@ -149,6 +165,43 @@ export function useQuickstartFlow() {
   }, [publicKey, signTransaction]);
 }
 ```
+
+```typescript Solana Kit + web3 bridge
+import { createSolanaRpc, address } from "@solana/kit";
+import { Connection, Keypair, PublicKey } from "@solana/web3.js";
+import { createUtxo, createZeroUtxo, generateUtxoKeypair, transact } from "@cloak.ag/sdk";
+
+const rpcUrl = process.env.SOLANA_RPC_URL!;
+const relayUrl = process.env.CLOAK_RELAY_URL!;
+const signer = Keypair.fromSecretKey(/* Uint8Array secret key */);
+
+const kitRpc = createSolanaRpc(rpcUrl);
+const connection = new Connection(rpcUrl, "confirmed");
+const programId = new PublicKey("c1oak6tetxYnNfvXKFkpn1d98FxtK7B68vBQLYQpWKp");
+
+const owner = await generateUtxoKeypair();
+const output = await createUtxo(20_000_000n, owner);
+
+await transact(
+  {
+    inputUtxos: [await createZeroUtxo()],
+    outputUtxos: [output],
+    externalAmount: 20_000_000n,
+    depositor: signer.publicKey,
+  },
+  {
+    connection,
+    programId,
+    relayUrl,
+    depositorKeypair: signer,
+  }
+);
+
+const { value: signerBalance } = await kitRpc
+  .getBalance(address(signer.publicKey.toBase58()))
+  .send();
+console.log(signerBalance.toString());
+```
 </CodeGroup>
 
 Note: `https://cloak-circuits.s3.us-east-1.amazonaws.com/circuits/0.1.0` is a base path.
@@ -209,5 +262,6 @@ This returns chain-native totals (deposits, withdrawals, fees, final balance).
 ## Next steps
 
 - Use bigint UTXO APIs: [UTXO Transactions](/sdk/utxo-transactions)
+- Kit app bridge pattern: [Solana Kit Integration](/sdk/kit-integration)
 - Understand data flow: [Protocol Architecture](/protocol/architecture)
 - See all exports: [API Reference](/sdk/api-reference)

@@ -125,9 +125,21 @@ VARIABLE_FEE_NUMERATOR  // 3
 VARIABLE_FEE_DENOMINATOR// 1000
 MIN_DEPOSIT_LAMPORTS    // 10_000_000
 VARIABLE_FEE_RATE       // 0.003
+Q64_64_ONE              // 2^64
 
 calculateFee(amount: number)
 calculateFeeBigint(amount: bigint)
+calculateSolFeeLamports(gross: bigint)
+calculateSolNetAmountLamports(gross: bigint)
+
+tokenPerSolBaseUnitsToQ64(price: bigint)
+q64ToTokenPerSolBaseUnits(priceQ64: bigint)
+calculateSplFixedFeeTokenAmount(priceQ64: bigint)
+calculateSplFeeTokenAmount(grossTokenBaseUnits: bigint, priceQ64: bigint)
+calculateSplNetAmountToken(grossTokenBaseUnits: bigint, priceQ64: bigint)
+
+isWithdrawAmountSufficient(amount: bigint)
+isSplWithdrawAmountSufficient(grossTokenBaseUnits: bigint, priceQ64: bigint)
 getDistributableAmount(amount: number)
 ```
 

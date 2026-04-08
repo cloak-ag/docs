@@ -36,14 +36,22 @@ This matches the transaction circuit constraints and relay validation.
 
 ## Fees and amount semantics
 
-- `FIXED_FEE_LAMPORTS = 5_000_000` (0.005 SOL)
+- `FIXED_FEE_LAMPORTS = 5_000_000` (0.005 SOL floor)
 - Variable fee: `amount * 3 / 1000` (0.3%)
 - `MIN_DEPOSIT_LAMPORTS = 10_000_000` (0.01 SOL)
 
-Withdrawal and swap math:
+SOL withdrawal and swap math:
 
 - `gross = abs(publicAmount)`
 - `fee = 5_000_000 + gross * 3 / 1000`
+- `net = gross - fee`
+
+SPL withdrawal math:
+
+- `gross = abs(publicAmount)` in token base units
+- `fixed_token = ceil(0.005 SOL converted to token units via fee quote)`
+- `variable_token = floor(gross * 3 / 1000)`
+- `fee = fixed_token + variable_token`
 - `net = gross - fee`
 
 The program enforces sufficient withdrawal amount so `net > 0`.

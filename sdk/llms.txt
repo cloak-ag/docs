@@ -17,6 +17,7 @@ Use these surfaces together:
 3. **Chain-native scanner/compliance API**
 4. **Viewing-key and metadata encryption API**
 5. **Utility layers** (fees/errors/network/relay/wallet/proof)
+6. **Optional Solana Kit bridge** (`@solana/kit` for reads + web3 bridge for transact paths)
 
 ## Full SDK surface by capability
 
@@ -126,7 +127,12 @@ Use these surfaces together:
 
 ### L) Supporting utility modules
 
-- Fees: `calculateFee`, `calculateFeeBigint`, `getDistributableAmount`, constants
+- Fees:
+  - SOL: `calculateFee`, `calculateFeeBigint`, `calculateSolFeeLamports`, `calculateSolNetAmountLamports`
+  - SPL: `calculateSplFixedFeeTokenAmount`, `calculateSplFeeTokenAmount`, `calculateSplNetAmountToken`
+  - Quote conversion: `tokenPerSolBaseUnitsToQ64`, `q64ToTokenPerSolBaseUnits`
+  - Checks: `isWithdrawAmountSufficient`, `isSplWithdrawAmountSufficient`
+  - Legacy helper: `getDistributableAmount`
 - Errors: `ShieldPoolErrors`, `parseError`, `RootNotFoundError`, `isRootNotFoundError`, etc.
 - Network: `detectNetworkFromRpcUrl`, `getRpcUrlForNetwork`, explorer URL helpers
 - Logging: `createLogger`, `setDebugMode`, `formatSol`
@@ -143,7 +149,9 @@ Use these surfaces together:
   - `= 0`: shield transfer
 - Public inputs are 264 bytes for transact/swap proof payloads.
 - Keep amounts as `bigint` in UTXO flows.
-- Fees (on-chain): `fixed 5_000_000 + amount*3/1000` for withdrawal/swap path.
+- Fees (on-chain):
+  - SOL withdraw/swap: `5_000_000 + floor(gross*3/1000)`
+  - SPL withdraw: `ceil(0.005 SOL converted via token/SOL Q64.64) + floor(gross*3/1000)`
 - Viewing-key registration is required in normal app flows before protocol actions.
 
 ## Hosted circuits

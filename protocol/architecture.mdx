@@ -32,9 +32,10 @@ Cloak is a UTXO privacy system on Solana with five active runtime surfaces:
 
 ## Fee model (gross, fee, net)
 
-- Fixed fee: `5_000_000` lamports
+- Fixed fee floor: `0.005 SOL`
 - Variable fee: `gross * 3 / 1000`
-- Total fee: `fixed + variable`
+- SOL total fee: `5_000_000 + floor(gross * 3 / 1000)`
+- SPL total fee: `ceil(0.005 SOL converted by token/SOL Q64.64 quote) + floor(gross * 3 / 1000)`
 - Net recipient amount: `gross - fee`
 - Minimum deposit: `10_000_000` lamports
 

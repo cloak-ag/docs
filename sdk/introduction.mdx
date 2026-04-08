@@ -1,6 +1,6 @@
 ---
 title: "Getting started with Cloak SDK"
-description: "Private transactions on Solana with note-based and UTXO-based APIs"
+description: "Private transactions on Solana with note-based and UTXO-based APIs, for web3.js or Solana Kit apps"
 icon: "shield-halved"
 ---
 
@@ -27,27 +27,51 @@ Use the UTXO model directly.
 <Card title="API Reference" icon="rectangle-terminal" href="/sdk/api-reference">
 Current exports and signatures from `@cloak.ag/sdk`.
 </Card>
+
+<Card title="Solana Kit Integration" icon="plug" href="/sdk/kit-integration">
+Use Cloak from Kit-based app stacks with a minimal bridge.
+</Card>
 </CardGroup>
 
 ## Installation
 
 <CodeGroup>
-```bash npm
+```bash web3.js (npm)
 npm install @cloak.ag/sdk @solana/web3.js
 ```
 
-```bash yarn
+```bash Solana Kit app (npm)
+npm install @cloak.ag/sdk @solana/web3.js @solana/kit
+```
+
+```bash web3.js (yarn)
 yarn add @cloak.ag/sdk @solana/web3.js
 ```
 
-```bash pnpm
+```bash Solana Kit app (yarn)
+yarn add @cloak.ag/sdk @solana/web3.js @solana/kit
+```
+
+```bash web3.js (pnpm)
 pnpm add @cloak.ag/sdk @solana/web3.js
 ```
 
-```bash bun
+```bash Solana Kit app (pnpm)
+pnpm add @cloak.ag/sdk @solana/web3.js @solana/kit
+```
+
+```bash web3.js (bun)
 bun add @cloak.ag/sdk @solana/web3.js
 ```
+
+```bash Solana Kit app (bun)
+bun add @cloak.ag/sdk @solana/web3.js @solana/kit
+```
 </CodeGroup>
+
+Why both packages for Kit apps? Cloak's transaction APIs currently accept `@solana/web3.js` `Connection`/`PublicKey` types. You can still use Kit for RPC reads and signer architecture in your app, then pass a thin web3.js bridge to Cloak transaction calls.
+
+See: [Solana Kit Integration](/sdk/kit-integration)
 
 For swap flows, install SPL token utilities too:
 
@@ -58,9 +82,9 @@ npm install @solana/spl-token
 ## Minimal note-based example
 
 <CodeGroup>
-```typescript Keypair bytes
+```typescript web3.js (direct)
 import { CloakSDK } from "@cloak.ag/sdk";
-import { Connection, Keypair } from "@solana/web3.js";
+import { Connection, Keypair, PublicKey } from "@solana/web3.js";
 
 const connection = new Connection("https://api.mainnet-beta.solana.com", "confirmed");
 const keypair = Keypair.fromSecretKey(/* Uint8Array secret key */);
@@ -79,6 +103,47 @@ const sent = await sdk.send(connection, deposit.note, [
 ]);
 
 console.log("Send tx:", sent.signature);
+```
+
+```typescript Solana Kit + web3.js bridge
+import { createSolanaRpc, address } from "@solana/kit";
+import { createUtxo, createZeroUtxo, generateUtxoKeypair, transact } from "@cloak.ag/sdk";
+import { Connection, Keypair, PublicKey } from "@solana/web3.js";
+
+const RPC_URL = "https://api.mainnet-beta.solana.com";
+const RELAY_URL = "https://your-relay.example.com";
+
+// Kit client for read paths.
+const kitRpc = createSolanaRpc(RPC_URL);
+
+// Cloak transaction calls currently use web3.js connection/signing types.
+const connection = new Connection(RPC_URL, "confirmed");
+const signer = Keypair.fromSecretKey(/* Uint8Array secret key */);
+const programId = new PublicKey("c1oak6tetxYnNfvXKFkpn1d98FxtK7B68vBQLYQpWKp");
+
+const { value: beforeLamports } = await kitRpc
+  .getBalance(address(signer.publicKey.toBase58()))
+  .send();
+
+const owner = await generateUtxoKeypair();
+const output = await createUtxo(20_000_000n, owner);
+
+await transact(
+  {
+    inputUtxos: [await createZeroUtxo()],
+    outputUtxos: [output],
+    externalAmount: 20_000_000n,
+    depositor: signer.publicKey,
+  },
+  {
+    connection,
+    programId,
+    relayUrl: RELAY_URL,
+    depositorKeypair: signer,
+  }
+);
+
+console.log("Signer balance before:", beforeLamports.toString());
 ```
 
 ```typescript Wallet adapter
@@ -119,9 +184,15 @@ Current deployment program ID (use for mainnet and current devnet/surfpool envir
 
 Shared protocol constants:
 
-- Fixed: `5_000_000` lamports (0.005 SOL)
-- Variable: `amount * 3 / 1000` (0.3%)
+- SOL withdrawal fee: `0.005 SOL + floor(gross * 0.3%)`
+- SPL withdrawal fee: `ceil(0.005 SOL converted to token units) + floor(gross * 0.3%)`
 - Minimum deposit: `10_000_000` lamports (0.01 SOL)
+
+SDK exports user-facing helpers for both paths:
+
+- SOL: `calculateSolFeeLamports`, `calculateSolNetAmountLamports`
+- SPL: `calculateSplFeeTokenAmount`, `calculateSplNetAmountToken`, `calculateSplFixedFeeTokenAmount`
+- Q64.64 quote helpers: `tokenPerSolBaseUnitsToQ64`, `q64ToTokenPerSolBaseUnits`
 
 ## Architecture links
 
