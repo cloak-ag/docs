@@ -57,12 +57,6 @@ For SOL withdrawals/swaps:
 - `fee` = fixed + variable
 - `net` = `gross - fee`
 
-For SPL withdrawals:
-
-- `gross` = absolute public withdrawal amount (token base units)
-- `fee` = `ceil(0.005 SOL converted to token units from Q64.64 quote) + floor(gross * 3 / 1000)`
-- `net` = `gross - fee`
-
 ## Proof data shapes
 
 - UTXO transact and swap requests use `264`-byte public inputs:

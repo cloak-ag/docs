@@ -6,7 +6,7 @@ icon: "microchip"
 
 ## Program identifier
 
-- `c1oak6tetxYnNfvXKFkpn1d98FxtK7B68vBQLYQpWKp`
+- `zh1eLd6rSphLejbFfJEneUwzHRfMKxgzrgkfwA6qRkW`
 
 ## Instruction surface
 
@@ -44,14 +44,6 @@ SOL withdrawal and swap math:
 
 - `gross = abs(publicAmount)`
 - `fee = 5_000_000 + gross * 3 / 1000`
-- `net = gross - fee`
-
-SPL withdrawal math:
-
-- `gross = abs(publicAmount)` in token base units
-- `fixed_token = ceil(0.005 SOL converted to token units via fee quote)`
-- `variable_token = floor(gross * 3 / 1000)`
-- `fee = fixed_token + variable_token`
 - `net = gross - fee`
 
 The program enforces sufficient withdrawal amount so `net > 0`.

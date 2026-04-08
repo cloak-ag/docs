@@ -16,14 +16,6 @@ SOL withdraw and swap math:
 - `fee = 5_000_000 + floor(gross * 3 / 1000)`
 - `net = gross - fee`
 
-SPL withdraw math:
-
-- `gross = abs(publicAmount)` in token base units
-- `fixed_token = ceil(0.005 SOL converted via token/SOL Q64.64 quote)`
-- `variable_token = floor(gross * 3 / 1000)`
-- `fee = fixed_token + variable_token`
-- `net = gross - fee`
-
 ## Proof and payload sizes
 
 - Groth16 proof payload: `256` bytes

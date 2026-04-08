@@ -1,0 +1,79 @@
+---
+title: "Example workflows"
+description: "Send, swap, payroll, and history examples for the current SDK runtime"
+icon: "code-branch"
+---
+
+This page tracks the maintained scripts in `sdk/examples` for the current SDK runtime.
+
+Run commands from the `sdk/` repo root.
+
+Default program constant exported by SDK:
+
+- `zh1eLd6rSphLejbFfJEneUwzHRfMKxgzrgkfwA6qRkW`
+
+## Base environment
+
+```bash
+export SOLANA_RPC_URL="http://127.0.0.1:8899"
+export CLOAK_RELAY_URL="http://127.0.0.1:5500"
+export CLOAK_PROGRAM_ID="zh1eLd6rSphLejbFfJEneUwzHRfMKxgzrgkfwA6qRkW"
+```
+
+If you use hosted infra, replace RPC + relay URLs with your endpoints.
+
+## 1) Send (private one-shot payment)
+
+Script: `sdk/examples/fast-send.ts`
+
+```bash
+yarn example:send
+```
+
+What it does:
+
+- funds a temporary sender wallet
+- deposits SOL into shielded state
+- withdraws full amount privately to recipient
+
+## 2) Swap (shielded SOL -> token)
+
+Script: `sdk/examples/swap.ts`
+
+```bash
+OUTPUT_TOKEN_MINT="EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v" yarn example:swap
+```
+
+Optional:
+
+- `SLIPPAGE_BPS` (default `1500`)
+
+## 3) Payroll (multi-recipient private payouts)
+
+Script: `sdk/examples/payroll.ts`
+
+```bash
+CLOAK_PAYROLL_AMOUNTS="0.25,0.40,0.35" yarn example:payroll
+```
+
+Optional:
+
+- `CLOAK_PAYROLL_BUFFER_SOL` (default `0.20`)
+
+## 4) History (scanner/compliance pass)
+
+Script: `sdk/examples/history-scan.ts`
+
+```bash
+yarn example:history
+```
+
+This runs mixed flows and then verifies scanner/compliance output.
+
+## Kit-based app example
+
+If your app is built around `@solana/kit`, use:
+
+- `sdk/examples/quickstart-kit.ts`
+
+Related guide: [Solana Kit Integration](/sdk/kit-integration)

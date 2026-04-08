@@ -73,25 +73,12 @@ const { value: after } = await kitRpc.getBalance(address(signer.publicKey.toBase
 console.log(before.toString(), after.toString());
 ```
 
-## Fees in Kit-based apps
-
-Fee helpers are pure TypeScript/`bigint`, so they work the same regardless of RPC client choice:
-
-```typescript
-import {
-  calculateSolFeeLamports,
-  calculateSplFeeTokenAmount,
-  tokenPerSolBaseUnitsToQ64,
-} from "@cloak.ag/sdk";
-
-const solFee = calculateSolFeeLamports(1_000_000_000n);
-
-// Example: 160 USDC per SOL in base units (6 decimals)
-const usdcPriceQ64 = tokenPerSolBaseUnitsToQ64(160_000_000n);
-const usdcFee = calculateSplFeeTokenAmount(82_000_000n, usdcPriceQ64);
-```
-
 ## Maintained example scripts
 
 - `sdk/examples/quickstart-kit.ts`
-- `sdk/examples/fee-helpers.ts`
+- `sdk/examples/fast-send.ts`
+- `sdk/examples/swap.ts`
+- `sdk/examples/payroll.ts`
+- `sdk/examples/history-scan.ts`
+
+Related guide: [Example Workflows](/sdk/examples)

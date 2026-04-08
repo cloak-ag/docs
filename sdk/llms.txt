@@ -5,7 +5,7 @@ This file is for AI agents integrating the full `@cloak.ag/sdk` surface in exter
 ## Package
 
 - Name: `@cloak.ag/sdk`
-- Mainnet program constant: `c1oak6tetxYnNfvXKFkpn1d98FxtK7B68vBQLYQpWKp`
+- Mainnet/default program constant: `zh1eLd6rSphLejbFfJEneUwzHRfMKxgzrgkfwA6qRkW`
 - Node: `>=18`
 
 ## Integration model
@@ -149,9 +149,7 @@ Use these surfaces together:
   - `= 0`: shield transfer
 - Public inputs are 264 bytes for transact/swap proof payloads.
 - Keep amounts as `bigint` in UTXO flows.
-- Fees (on-chain):
-  - SOL withdraw/swap: `5_000_000 + floor(gross*3/1000)`
-  - SPL withdraw: `ceil(0.005 SOL converted via token/SOL Q64.64) + floor(gross*3/1000)`
+- Fees (on-chain): fixed + variable fee model (`0.005 SOL` floor + `0.3%`) on withdrawal/swap paths.
 - Viewing-key registration is required in normal app flows before protocol actions.
 
 ## Hosted circuits

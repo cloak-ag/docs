@@ -34,8 +34,7 @@ Cloak is a UTXO privacy system on Solana with five active runtime surfaces:
 
 - Fixed fee floor: `0.005 SOL`
 - Variable fee: `gross * 3 / 1000`
-- SOL total fee: `5_000_000 + floor(gross * 3 / 1000)`
-- SPL total fee: `ceil(0.005 SOL converted by token/SOL Q64.64 quote) + floor(gross * 3 / 1000)`
+- Total fee model: fixed + variable
 - Net recipient amount: `gross - fee`
 - Minimum deposit: `10_000_000` lamports
 
@@ -70,6 +69,6 @@ Shield Pool maintains:
 
 Current deployment program ID:
 
-- `c1oak6tetxYnNfvXKFkpn1d98FxtK7B68vBQLYQpWKp` (default)
+- `zh1eLd6rSphLejbFfJEneUwzHRfMKxgzrgkfwA6qRkW` (default)
 
 If your app targets a deployment with a different address, pass that `programId` explicitly to your SDK client.

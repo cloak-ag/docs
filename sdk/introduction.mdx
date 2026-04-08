@@ -1,201 +1,83 @@
 ---
 title: "Getting started with Cloak SDK"
-description: "Private transactions on Solana with note-based and UTXO-based APIs, for web3.js or Solana Kit apps"
+description: "Current SDK runtime guide with web3.js and Solana Kit integration options"
 icon: "shield-halved"
 ---
 
-Cloak SDK exposes two interfaces, with UTXO as the primary integration path:
+Use this section as the canonical starting point for `@cloak.ag/sdk` integrations.
 
-- **Note API** via `CloakSDK` (`deposit`, `withdraw`, `send`, `swap`)
-- **UTXO API** via top-level functions (`transact`, `transfer`, `swapUtxo`, ...)
+Current runtime defaults:
 
-Most production integrations use the UTXO API (`/transact`, `/transact_swap`).
+- SDK package in this repo: `@cloak.ag/sdk@0.1.0`
+- Default program constant: `zh1eLd6rSphLejbFfJEneUwzHRfMKxgzrgkfwA6qRkW`
+- Hosted circuit base: `https://cloak-circuits.s3.us-east-1.amazonaws.com/circuits/0.1.0`
 
-<CardGroup cols={2}>
-<Card title="Platform Overview" icon="compass" href="/platform/overview">
-Understand all runtime components before integrating.
-</Card>
-
-<Card title="Quickstart" icon="rocket" href="/sdk/quickstart">
-Run a complete deposit and private withdrawal flow.
-</Card>
-
-<Card title="UTXO Transactions" icon="vault" href="/sdk/utxo-transactions">
-Use the UTXO model directly.
-</Card>
-
-<Card title="API Reference" icon="rectangle-terminal" href="/sdk/api-reference">
-Current exports and signatures from `@cloak.ag/sdk`.
-</Card>
-
-<Card title="Solana Kit Integration" icon="plug" href="/sdk/kit-integration">
-Use Cloak from Kit-based app stacks with a minimal bridge.
-</Card>
-</CardGroup>
-
-## Installation
+## Install
 
 <CodeGroup>
-```bash web3.js (npm)
+```bash @solana/web3.js
 npm install @cloak.ag/sdk @solana/web3.js
 ```
 
-```bash Solana Kit app (npm)
+```bash @solana/kit
 npm install @cloak.ag/sdk @solana/web3.js @solana/kit
 ```
-
-```bash web3.js (yarn)
-yarn add @cloak.ag/sdk @solana/web3.js
-```
-
-```bash Solana Kit app (yarn)
-yarn add @cloak.ag/sdk @solana/web3.js @solana/kit
-```
-
-```bash web3.js (pnpm)
-pnpm add @cloak.ag/sdk @solana/web3.js
-```
-
-```bash Solana Kit app (pnpm)
-pnpm add @cloak.ag/sdk @solana/web3.js @solana/kit
-```
-
-```bash web3.js (bun)
-bun add @cloak.ag/sdk @solana/web3.js
-```
-
-```bash Solana Kit app (bun)
-bun add @cloak.ag/sdk @solana/web3.js @solana/kit
-```
 </CodeGroup>
 
-Why both packages for Kit apps? Cloak's transaction APIs currently accept `@solana/web3.js` `Connection`/`PublicKey` types. You can still use Kit for RPC reads and signer architecture in your app, then pass a thin web3.js bridge to Cloak transaction calls.
+Why both for Kit apps? The current transaction path in Cloak SDK consumes `@solana/web3.js` connection/signing types, while Kit can still be your primary RPC/signer architecture at app level.
 
-See: [Solana Kit Integration](/sdk/kit-integration)
-
-For swap flows, install SPL token utilities too:
-
-```bash
-npm install @solana/spl-token
-```
-
-## Minimal note-based example
+## Minimal setup snippets
 
 <CodeGroup>
-```typescript web3.js (direct)
-import { CloakSDK } from "@cloak.ag/sdk";
-import { Connection, Keypair, PublicKey } from "@solana/web3.js";
+```typescript web3.js app
+import { CLOAK_PROGRAM_ID, setCircuitsPath } from "@cloak.ag/sdk";
+import { Connection } from "@solana/web3.js";
 
-const connection = new Connection("https://api.mainnet-beta.solana.com", "confirmed");
-const keypair = Keypair.fromSecretKey(/* Uint8Array secret key */);
+const connection = new Connection(process.env.SOLANA_RPC_URL!, "confirmed");
+setCircuitsPath("https://cloak-circuits.s3.us-east-1.amazonaws.com/circuits/0.1.0");
 
-const sdk = new CloakSDK({
-  keypairBytes: keypair.secretKey,
-  network: "mainnet",
-  programId: new PublicKey("c1oak6tetxYnNfvXKFkpn1d98FxtK7B68vBQLYQpWKp"),
-});
-
-const deposit = await sdk.deposit(connection, 100_000_000);
-const recipient = Keypair.generate().publicKey;
-
-const sent = await sdk.send(connection, deposit.note, [
-  { recipient, amount: 30_000_000 },
-]);
-
-console.log("Send tx:", sent.signature);
+console.log("Program:", CLOAK_PROGRAM_ID.toBase58());
 ```
 
-```typescript Solana Kit + web3.js bridge
-import { createSolanaRpc, address } from "@solana/kit";
-import { createUtxo, createZeroUtxo, generateUtxoKeypair, transact } from "@cloak.ag/sdk";
-import { Connection, Keypair, PublicKey } from "@solana/web3.js";
+```typescript Solana Kit app
+import { CLOAK_PROGRAM_ID } from "@cloak.ag/sdk";
+import { createSolanaRpc } from "@solana/kit";
+import { Connection } from "@solana/web3.js";
 
-const RPC_URL = "https://api.mainnet-beta.solana.com";
-const RELAY_URL = "https://your-relay.example.com";
+const rpcUrl = process.env.SOLANA_RPC_URL!;
+const kitRpc = createSolanaRpc(rpcUrl);
+const connectionBridge = new Connection(rpcUrl, "confirmed");
 
-// Kit client for read paths.
-const kitRpc = createSolanaRpc(RPC_URL);
-
-// Cloak transaction calls currently use web3.js connection/signing types.
-const connection = new Connection(RPC_URL, "confirmed");
-const signer = Keypair.fromSecretKey(/* Uint8Array secret key */);
-const programId = new PublicKey("c1oak6tetxYnNfvXKFkpn1d98FxtK7B68vBQLYQpWKp");
-
-const { value: beforeLamports } = await kitRpc
-  .getBalance(address(signer.publicKey.toBase58()))
-  .send();
-
-const owner = await generateUtxoKeypair();
-const output = await createUtxo(20_000_000n, owner);
-
-await transact(
-  {
-    inputUtxos: [await createZeroUtxo()],
-    outputUtxos: [output],
-    externalAmount: 20_000_000n,
-    depositor: signer.publicKey,
-  },
-  {
-    connection,
-    programId,
-    relayUrl: RELAY_URL,
-    depositorKeypair: signer,
-  }
-);
-
-console.log("Signer balance before:", beforeLamports.toString());
-```
-
-```typescript Wallet adapter
-import { useMemo } from "react";
-import { CloakSDK } from "@cloak.ag/sdk";
-import { useWallet } from "@solana/wallet-adapter-react";
-import { PublicKey, Connection, Keypair } from "@solana/web3.js";
-
-export function useCloakNoteClient() {
-  const { publicKey, signTransaction, sendTransaction } = useWallet();
-
-  return useMemo(() => {
-    if (!publicKey || !signTransaction || !sendTransaction) return null;
-
-    return new CloakSDK({
-      wallet: { publicKey, signTransaction, sendTransaction },
-      network: "mainnet",
-      programId: new PublicKey("c1oak6tetxYnNfvXKFkpn1d98FxtK7B68vBQLYQpWKp"),
-    });
-  }, [publicKey, signTransaction, sendTransaction]);
-}
-
-async function exampleFlow(sdk: CloakSDK, connection: Connection) {
-  const deposit = await sdk.deposit(connection, 100_000_000);
-  const recipient = Keypair.generate().publicKey;
-  await sdk.send(connection, deposit.note, [{ recipient, amount: 30_000_000 }]);
-}
+console.log("Program:", CLOAK_PROGRAM_ID.toBase58());
+console.log("Kit + web3 bridge ready", !!kitRpc, !!connectionBridge);
 ```
 </CodeGroup>
 
-## Network and program IDs
+## Example-first path
 
-Current deployment program ID (use for mainnet and current devnet/surfpool environments):
+Run the maintained workflows:
 
-- `c1oak6tetxYnNfvXKFkpn1d98FxtK7B68vBQLYQpWKp`
+- Send: `yarn example:send`
+- Swap: `yarn example:swap`
+- Payroll: `yarn example:payroll`
+- History scan: `yarn example:history`
 
-## Core protocol fees
+Detailed guide: [Example Workflows](/sdk/examples)
 
-Shared protocol constants:
+<CardGroup cols={2}>
+<Card title="Quickstart" icon="rocket" href="/sdk/quickstart">
+Run your first end-to-end private send flow.
+</Card>
 
-- SOL withdrawal fee: `0.005 SOL + floor(gross * 0.3%)`
-- SPL withdrawal fee: `ceil(0.005 SOL converted to token units) + floor(gross * 0.3%)`
-- Minimum deposit: `10_000_000` lamports (0.01 SOL)
+<Card title="Example Workflows" icon="code-branch" href="/sdk/examples">
+Use maintained scripts for send, swap, payroll, and history.
+</Card>
 
-SDK exports user-facing helpers for both paths:
+<Card title="Solana Kit Integration" icon="plug" href="/sdk/kit-integration">
+Use Cloak from Kit-based stacks with a minimal bridge.
+</Card>
 
-- SOL: `calculateSolFeeLamports`, `calculateSolNetAmountLamports`
-- SPL: `calculateSplFeeTokenAmount`, `calculateSplNetAmountToken`, `calculateSplFixedFeeTokenAmount`
-- Q64.64 quote helpers: `tokenPerSolBaseUnitsToQ64`, `q64ToTokenPerSolBaseUnits`
-
-## Architecture links
-
-- System overview: [Protocol Architecture](/protocol/architecture)
-- Program-level details: [Shield Pool Program](/protocol/shield-pool)
-- Viewing-key model: [Viewing Keys and Compliance](/architecture/viewing-keys-compliance)
+<Card title="API Reference" icon="rectangle-terminal" href="/sdk/api-reference">
+Full exported SDK surface and helper modules.
+</Card>
+</CardGroup>
