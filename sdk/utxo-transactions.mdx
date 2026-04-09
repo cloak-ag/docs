@@ -86,7 +86,6 @@ const result = await transact(
   {
     connection,
     programId,
-    relayUrl: process.env.CLOAK_RELAY_URL,
     depositorKeypair,
   }
 );
@@ -113,7 +112,6 @@ const result = await transact(
   {
     connection,
     programId,
-    relayUrl: process.env.NEXT_PUBLIC_RELAY_URL,
     signTransaction: signTransaction!,
     depositorPublicKey: publicKey!,
     walletPublicKey: publicKey!,
@@ -167,7 +165,6 @@ await swapWithChange(
   {
     connection,
     programId,
-    relayUrl: process.env.CLOAK_RELAY_URL,
   },
   recipientWallet
 );

@@ -18,8 +18,8 @@ import {
   createZeroUtxo,
   fullWithdraw,
   generateUtxoKeypair,
+  getNkFromUtxoPrivateKey,
   partialWithdraw,
-  setCircuitsPath,
   swapWithChange,
   transact,
   scanTransactions,
@@ -32,17 +32,16 @@ const USDC_MINT = new PublicKey("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
 const USDT_MINT = new PublicKey("Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB");
 
 const connection = new Connection("https://api.mainnet-beta.solana.com", "confirmed");
-const relayUrl = "https://your-mainnet-relay.example.com";
 const signer = Keypair.fromSecretKey(/* Uint8Array secret key */);
-
-setCircuitsPath("https://cloak-circuits.s3.us-east-1.amazonaws.com/circuits/0.1.0");
+const scanKeypair = await generateUtxoKeypair();
+const viewingKeyNk = getNkFromUtxoPrivateKey(scanKeypair.privateKey);
 
 const baseOptions = {
   connection,
   programId: CLOAK_PROGRAM_ID,
-  relayUrl,
   depositorKeypair: signer,
   walletPublicKey: signer.publicKey,
+  chainNoteViewingKeyNk: viewingKeyNk,
 };
 ```
 
@@ -165,9 +164,7 @@ for (const payment of payroll) {
 ## History + compliance scan
 
 ```typescript
-const viewingKeyNk = Uint8Array.from(
-  Buffer.from(process.env.CLOAK_VIEWING_KEY_NK_HEX!, "hex"),
-);
+// Reuse the same `viewingKeyNk` configured in your transaction options.
 
 const scan = await scanTransactions({
   connection,

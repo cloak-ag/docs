@@ -10,7 +10,8 @@ Current runtime defaults:
 
 - SDK package in this repo: `@cloak.ag/sdk@0.1.0`
 - Default program constant: `zh1eLd6rSphLejbFfJEneUwzHRfMKxgzrgkfwA6qRkW`
-- Hosted circuit base: `https://cloak-circuits.s3.us-east-1.amazonaws.com/circuits/0.1.0`
+- Relay URL (SDK default): `https://api.cloak.ag`
+- Circuit base (SDK default): `https://cloak-circuits.s3.us-east-1.amazonaws.com/circuits/0.1.0`
 
 ## Install
 
@@ -30,11 +31,10 @@ Why both for Kit apps? The current transaction path in Cloak SDK consumes `@sola
 
 <CodeGroup>
 ```typescript web3.js app
-import { CLOAK_PROGRAM_ID, setCircuitsPath } from "@cloak.ag/sdk";
+import { CLOAK_PROGRAM_ID } from "@cloak.ag/sdk";
 import { Connection } from "@solana/web3.js";
 
 const connection = new Connection(process.env.SOLANA_RPC_URL!, "confirmed");
-setCircuitsPath("https://cloak-circuits.s3.us-east-1.amazonaws.com/circuits/0.1.0");
 
 console.log("Program:", CLOAK_PROGRAM_ID.toBase58());
 ```

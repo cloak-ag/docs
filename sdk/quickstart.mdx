@@ -21,16 +21,12 @@ import {
   fullWithdraw,
   generateUtxoKeypair,
   partialWithdraw,
-  setCircuitsPath,
   transact,
 } from "@cloak.ag/sdk";
 import { Connection, Keypair } from "@solana/web3.js";
 
 const connection = new Connection("https://api.mainnet-beta.solana.com", "confirmed");
-const relayUrl = "https://your-mainnet-relay.example.com";
 const signer = Keypair.fromSecretKey(/* Uint8Array secret key */);
-
-setCircuitsPath("https://cloak-circuits.s3.us-east-1.amazonaws.com/circuits/0.1.0");
 
 const amount = 1_000_000_000n; // 1 SOL
 const owner = await generateUtxoKeypair();
@@ -46,7 +42,6 @@ const deposited = await transact(
   {
     connection,
     programId: CLOAK_PROGRAM_ID,
-    relayUrl,
     depositorKeypair: signer,
     walletPublicKey: signer.publicKey,
   },
@@ -58,7 +53,6 @@ const recipient = Keypair.generate().publicKey;
 await fullWithdraw(deposited.outputUtxos, recipient, {
   connection,
   programId: CLOAK_PROGRAM_ID,
-  relayUrl,
   depositorKeypair: signer,
   walletPublicKey: signer.publicKey,
   cachedMerkleTree: deposited.merkleTree,
@@ -68,7 +62,6 @@ await fullWithdraw(deposited.outputUtxos, recipient, {
 // await partialWithdraw(deposited.outputUtxos, recipient, 200_000_000n, {
 //   connection,
 //   programId: CLOAK_PROGRAM_ID,
-//   relayUrl,
 //   depositorKeypair: signer,
 //   walletPublicKey: signer.publicKey,
 //   cachedMerkleTree: deposited.merkleTree,
