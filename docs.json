@@ -55,15 +55,8 @@
             ]
           },
           {
-            "group": "Bots",
-            "pages": [
-              "bots/cloak-mixer"
-            ]
-          },
-          {
             "group": "Operations",
             "pages": [
-              "operations/fees-and-limits",
               "operations/security"
             ]
           }

@@ -10,7 +10,7 @@ The active runtime path is UTXO transactions through:
 
 - `transact` for deposit/withdraw/transfer
 - `swapWithChange` / `swapUtxo` for swap flows
-- Relay endpoints `/transact` and `/transact_swap`
+- Relay-managed submit and status lifecycle
 
 Note-model and UTXO-model methods are both part of v1, with UTXO-first integrations recommended for most apps.
 
@@ -66,10 +66,7 @@ For SOL withdrawals/swaps:
 ## Viewing key registration
 
 - SDK flows enforce viewing-key registration by default before protocol transactions.
-- Registration uses `POST /viewing-key/register` with:
-  - wallet pubkey
-  - 32-byte viewing key (`nk`)
-  - signature over fixed sign-in message
+- Registration is a signed wallet challenge bound to a 32-byte viewing key (`nk`).
 - Registration is cached in-process to avoid repeat calls.
 
 ## Chain-native scanner and cache model

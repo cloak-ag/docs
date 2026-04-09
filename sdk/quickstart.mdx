@@ -1,59 +1,78 @@
 ---
 title: "Quickstart"
-description: "Run a complete private send flow with the current SDK runtime"
+description: "Minimal mainnet setup with SOL send plus full and partial withdrawals"
 icon: "rocket"
 ---
 
-This quickstart runs the maintained send workflow script and validates your environment.
+Use this page when you want the smallest possible end-to-end Cloak integration.
 
-## 1) Install
+This snippet covers:
 
-<CodeGroup>
-```bash web3.js app
-npm install @cloak.ag/sdk @solana/web3.js
+- shielded SOL deposit
+- full withdrawal (send)
+- partial withdrawal (keep change private)
+
+```typescript
+import {
+  CLOAK_PROGRAM_ID,
+  NATIVE_SOL_MINT,
+  createUtxo,
+  createZeroUtxo,
+  fullWithdraw,
+  generateUtxoKeypair,
+  partialWithdraw,
+  setCircuitsPath,
+  transact,
+} from "@cloak.ag/sdk";
+import { Connection, Keypair } from "@solana/web3.js";
+
+const connection = new Connection("https://api.mainnet-beta.solana.com", "confirmed");
+const relayUrl = "https://your-mainnet-relay.example.com";
+const signer = Keypair.fromSecretKey(/* Uint8Array secret key */);
+
+setCircuitsPath("https://cloak-circuits.s3.us-east-1.amazonaws.com/circuits/0.1.0");
+
+const amount = 1_000_000_000n; // 1 SOL
+const owner = await generateUtxoKeypair();
+const depositOutput = await createUtxo(amount, owner, NATIVE_SOL_MINT);
+
+const deposited = await transact(
+  {
+    inputUtxos: [await createZeroUtxo(NATIVE_SOL_MINT)],
+    outputUtxos: [depositOutput],
+    externalAmount: amount,
+    depositor: signer.publicKey,
+  },
+  {
+    connection,
+    programId: CLOAK_PROGRAM_ID,
+    relayUrl,
+    depositorKeypair: signer,
+    walletPublicKey: signer.publicKey,
+  },
+);
+
+const recipient = Keypair.generate().publicKey;
+
+// Full withdrawal: sends all spendable value externally.
+await fullWithdraw(deposited.outputUtxos, recipient, {
+  connection,
+  programId: CLOAK_PROGRAM_ID,
+  relayUrl,
+  depositorKeypair: signer,
+  walletPublicKey: signer.publicKey,
+  cachedMerkleTree: deposited.merkleTree,
+});
+
+// OR partial withdrawal: withdraw a portion, keep private change in shielded state.
+// await partialWithdraw(deposited.outputUtxos, recipient, 200_000_000n, {
+//   connection,
+//   programId: CLOAK_PROGRAM_ID,
+//   relayUrl,
+//   depositorKeypair: signer,
+//   walletPublicKey: signer.publicKey,
+//   cachedMerkleTree: deposited.merkleTree,
+// });
 ```
 
-```bash Solana Kit app
-npm install @cloak.ag/sdk @solana/web3.js @solana/kit
-```
-</CodeGroup>
-
-## 2) Configure runtime
-
-```bash
-export SOLANA_RPC_URL="https://api.mainnet-beta.solana.com"
-export CLOAK_RELAY_URL="https://your-mainnet-relay.example.com"
-export CLOAK_PROGRAM_ID="zh1eLd6rSphLejbFfJEneUwzHRfMKxgzrgkfwA6qRkW"
-```
-
-## 3) Run private send example
-
-From `sdk/` repo root:
-
-```bash
-yarn example:send
-```
-
-Script used: `sdk/examples/fast-send.ts`
-
-Expected behavior:
-
-- funds a temporary sender wallet
-- creates a shielded deposit
-- withdraws privately to recipient wallet
-- prints funding/deposit/withdraw signatures
-
-## 4) Run dry-run sanity checks (optional)
-
-```bash
-yarn test:examples
-```
-
-This validates example wiring without submitting live flows.
-
-## Next steps
-
-- Swap workflow: [Example Workflows](/sdk/examples)
-- Kit bridge details: [Solana Kit Integration](/sdk/kit-integration)
-- App integration patterns: [Wallet Integration](/sdk/wallet-integration)
-- Exported SDK surface: [API Reference](/sdk/api-reference)
+Next: [Code Examples](/sdk/examples)

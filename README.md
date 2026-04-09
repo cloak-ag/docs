@@ -26,7 +26,6 @@ mint dev
 - `architecture/` viewing-key and compliance model docs
 - `services/` relay API docs
 - `packages/` circuit pipeline docs
-- `bots/` operational bot docs
 - `ai-tools/` IDE/assistant setup pages
 
 ## Source of truth
@@ -39,7 +38,6 @@ When updating docs, prioritize these sources:
 - Relay routes/payloads: `services/relay/src/main.rs`, `services/relay/src/api/*`
 - Relay sync behavior: `services/relay/src/commitment_sync.rs`
 - Circuits/build flow: `packages/circuits/*`, `packages/justfile`, `packages/scripts/*`
-- Bot runtime behavior: `cloak-bots/cloak-mixer/src/*`
 
 ## Notes
 

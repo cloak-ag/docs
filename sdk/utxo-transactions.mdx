@@ -36,7 +36,7 @@ interface TransactParams {
 - `< 0`: public withdrawal from the pool
 - `0`: fully shielded transfer
 
-Under the hood, SDK builds proof + `264`-byte public inputs and submits to relay `/transact`.
+Under the hood, SDK builds proof + `264`-byte public inputs and submits through relay transaction orchestration.
 
 ## Fees
 
@@ -150,9 +150,9 @@ await fullWithdraw(inputUtxos, recipientWallet, walletOptions);
 ```
 </CodeGroup>
 
-`partialWithdraw`/`fullWithdraw` use `/transact` with negative `externalAmount`.
+`partialWithdraw`/`fullWithdraw` use negative `externalAmount` semantics.
 
-## Swap example (`/transact_swap`)
+## Swap example
 
 <CodeGroup>
 ```typescript Keypair bytes
@@ -194,13 +194,13 @@ await swapWithChange(
 ```
 </CodeGroup>
 
-`swapWithChange` sends `TransactSwap` payload (`proof + 264-byte public inputs + swap params`) to relay `/transact_swap`.
+`swapWithChange` sends `TransactSwap` payload (`proof + 264-byte public inputs + swap params`) through relay swap orchestration.
 
 ## Viewing-key registration requirements
 
 - Default behavior enforces viewing-key registration before protocol txs.
 - `TransactOptions.enforceViewingKeyRegistration` defaults to `true`.
-- Registration signs fixed sign-in message and posts to `/viewing-key/register`.
+- Registration signs fixed sign-in message and submits through relay compliance registration.
 
 If viewing key is missing, history and decrypt flows cannot resolve your transaction data.
 
@@ -211,7 +211,7 @@ When deposits require Range/Switchboard validation, include:
 - `riskOracleQueue`
 - `riskQuoteUrl` (or `getRiskQuoteInstruction`)
 
-Relay serves `GET /range-quote`; you can use that route or provide your own quote backend/direct instruction callback.
+Relay can serve risk quotes; you can also provide your own quote backend/direct instruction callback.
 
 If deposit account list is large, use v0 transactions with `addressLookupTableAccounts`.
 
@@ -219,7 +219,7 @@ If deposit account list is large, use v0 transactions with `addressLookupTableAc
 
 - Amounts use `bigint` in the UTXO API.
 - Proof retries are built in for stale roots (`0x1001`).
-- Relay-backed Merkle reconstruction (`/commitments`) is preferred for older indices.
+- Relay-backed Merkle reconstruction is preferred for older indices.
 - Optional `cachedMerkleTree` helps sequential txs avoid extra rebuild/fetch.
 - Optional `useUniqueNullifiers` helps repeated development runs avoid nullifier collisions.
 

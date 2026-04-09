@@ -1,63 +1,37 @@
 ---
 title: "Viewing Keys and Compliance"
-description: "v1 registration, trust model, chain-native scanning, and client cache behavior"
+description: "Client-side key model, registration lifecycle, and chain-native history behavior"
 icon: "key"
 ---
 
 ## v1 model
 
-- Users derive viewing material client-side (`nk` used for chain-note decrypt).
-- Transactions include compact encrypted chain notes; scanner decrypts directly from chain data.
-- Relay stores registered viewing keys for compliance export/decrypt endpoints.
-- App history can use encrypted local cache and be force-refreshed.
+- Users derive viewing material client-side (`nk`) and keep private keys local.
+- Transactions include compact encrypted chain notes.
+- History scanning decrypts chain data with `nk` and verifies integrity from public inputs.
+- Apps can cache encrypted history snapshots and trigger explicit rescan when needed.
 
-## Registration flow
+## Registration lifecycle
 
-1. Wallet signs fixed Cloak sign-in message.
-2. Client calls `POST /viewing-key/register` with:
-   - `user_pubkey`
-   - `viewing_key` (32-byte hex)
-   - `signature` (base64 ed25519)
-   - optional `identifier`
-3. Relay verifies signature and stores key by identifier.
-
-Identifier behavior:
-
-- If omitted, relay computes `sha256(user_pubkey || viewing_key_hex)`.
-- Relay validates provided identifier if supplied.
+1. Wallet signs a fixed Cloak sign-in challenge.
+2. Client submits signed viewing-key registration through the relay-managed compliance channel.
+3. Relay verifies signature ownership and binds the viewing key to the wallet identity.
 
 ## Enforcement and UX behavior
 
-- SDK default behavior enforces viewing-key registration before transact/swap flows.
-- Apps can reuse wallet sign-in signatures to reduce extra prompts.
-- If registration is missing, history/decrypt flow surfaces `viewing key not found` and prompts user to transact/register first.
+- SDK transaction flows enforce viewing-key registration by default.
+- Apps can reuse wallet sign-in sessions to avoid repeated prompts.
+- If registration is missing, history/compliance views should prompt users to register and retry.
 
 ## Chain-native scanner behavior
 
-- `scanTransactions` reads program transactions from RPC.
-- Extracts compact chain notes from instruction payloads.
-- Decrypts with viewing key `nk`.
-- Verifies `chainNoteHash` against public inputs for integrity.
-- Produces per-transaction:
-  - gross amount
-  - fee
-  - net amount
-  - running balance
-
-## Compliance caching in apps
-
-- Reports are cached under `cloak_compliance_<wallet>`.
-- Cache is encrypted using key material derived from wallet sign-message output.
-- Privacy history pages should expose explicit `Clear cache & rescan` for stale/incomplete views.
+- `scanTransactions` reads Cloak program transactions from RPC.
+- Scanner extracts compact chain-note envelopes from transaction data.
+- Decrypts using `nk` and verifies `chainNoteHash` integrity.
+- Produces per-transaction `gross`, `fee`, `net`, and running balance.
 
 ## Trust model
 
-- Relay can decrypt compliance data for keys it stores.
-- Users should treat relay as a trusted compliance service for those export endpoints.
-- Chain-native scanner itself does not require relay decryption for transaction discovery.
-
-## Operational tips
-
-- Keep sign-in message string exactly aligned across your client app and relay verification.
-- After key rotation or wallet changes, clear local cache and re-register.
-- For support/debugging, never log raw viewing keys or full decrypted notes.
+- Relay compliance services can only process history for keys users have registered.
+- Scanner-based discovery remains chain-native and does not require relay decryption.
+- Clients should never log raw viewing keys or full decrypted note payloads.

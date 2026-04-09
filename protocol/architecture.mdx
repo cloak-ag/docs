@@ -8,7 +8,7 @@ Cloak is a UTXO privacy system on Solana with five active runtime surfaces:
 
 - Your app's wallet UX, encrypted local cache, and scan/export flows
 - SDK proof generation, transaction coordination, and chain-note scan/decrypt
-- Relay API for submit/status/viewing-key registration and chain indexing
+- Relay service for transaction orchestration, status tracking, and chain indexing
 - Shield Pool on-chain proof verifier + state machine
 - Circuit layer constraints (2-in/2-out transaction circuit)
 
@@ -52,11 +52,11 @@ Shield Pool maintains:
 
 ## Relay responsibilities
 
-- Accept submit requests (`/transact`, `/transact_swap`, `/withdraw`)
-- Validate payload size/shape and queue status tracking (`/status/:id`)
-- Provide chain-index data (`/commitments`, `/merkle-root`)
-- Verify and store viewing keys (`/viewing-key/register`)
-- Serve risk quote endpoint (`/range-quote`)
+- Accept and validate transaction submissions from SDK clients
+- Track lifecycle states for asynchronous and multi-phase flows
+- Provide indexed commitment/root data for proof construction
+- Verify and store viewing-key registrations for compliance workflows
+- Enforce policy checks (risk/compliance) before signing sensitive actions
 
 ## Viewing keys and history scanning
 
