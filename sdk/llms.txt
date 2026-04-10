@@ -1,172 +1,1077 @@
 # SDK LLM Reference
 
-This file is for AI agents integrating the full `@cloak.dev/sdk` surface in external applications.
+This file is for AI coding agents integrating the full `@cloak.dev/sdk` surface in external applications.
+It is intentionally dense, code-first, and grounded in real exports. Every signature and recipe below maps to
+a function or class that actually exists in `@cloak.dev/sdk`.
 
-## Package
+Use this file as your primary SDK briefing and only fall back to the friendlier `.mdx` guides for conceptual context:
+
+- `/sdk/quickstart`
+- `/sdk/core-concepts`
+- `/sdk/utxo-transactions`
+- `/sdk/wallet-integration`
+- `/sdk/api-reference`
+- `/sdk/error-handling`
+- `/sdk/kit-integration`
+
+---
+
+## 1. Package
 
 - Name: `@cloak.dev/sdk`
-- Mainnet/default program constant: `zh1eLd6rSphLejbFfJEneUwzHRfMKxgzrgkfwA6qRkW`
-- Node: `>=18`
+- Version: `0.1.x`
+- Runtime: Node `>=18` and modern browsers. ESM and CJS both shipped (`dist/index.js`, `dist/index.cjs`).
+- Types: `dist/index.d.ts`
+- Program ID (default, mainnet + devnet alias): `zh1eLd6rSphLejbFfJEneUwzHRfMKxgzrgkfwA6qRkW`
+- Default relay URL: `https://api.cloak.ag`
+- Default circuits base URL: `https://cloak-circuits.s3.us-east-1.amazonaws.com/circuits/0.1.0`
+- Hashing: BN254 Poseidon (via `@lightprotocol/hasher.rs`) + BLAKE3.
+- Proof system: Groth16 via `snarkjs`.
+- Native companion types: `@solana/web3.js` for `Connection`, `Keypair`, `Transaction`, `PublicKey`. `@solana/kit` is supported for reads (see §4d).
 
-## Integration model
+Install:
 
-Use these surfaces together:
+```bash
+npm install @cloak.ag/sdk @solana/web3.js
+# Optional:
+npm install @solana/spl-token @solana/kit
+```
 
-1. **UTXO transaction API** (primary runtime path)
-2. **Note API (`CloakSDK`)**
-3. **Chain-native scanner/compliance API**
-4. **Viewing-key and metadata encryption API**
-5. **Utility layers** (fees/errors/network/relay/wallet/proof)
-6. **Optional Solana Kit bridge** (`@solana/kit` for reads + web3 bridge for transact paths)
+---
 
-## Full SDK surface by capability
+## 2. Runtime contract (invariants an agent MUST preserve)
 
-### A) Main client
+1. UTXO external amount semantics:
+   - `externalAmount > 0n` -> **deposit** (SDK submits the transaction directly, signed by the user).
+   - `externalAmount < 0n` -> **withdraw / swap** (SDK submits via relay; user does not sign on-chain).
+   - `externalAmount === 0n` -> **shield-to-shield transfer** (goes through relay).
+2. Every UTXO transaction has exactly 2 inputs and 2 outputs. The SDK pads for you using `createZeroUtxo()`.
+3. UTXO balance identity the circuit enforces:
+   `inputSum + externalAmount === outputSum`.
+4. Amounts in UTXO flows are ALWAYS `bigint`. Never cast to `number` inside transaction logic.
+5. Public inputs for the transact/withdraw-swap proofs are 264-byte payloads; do not hand-pack them.
+6. On-chain fee model (enforced by the program):
+   - SOL: `fixed 0.005 SOL` + `0.3 %` variable fee. See `calculateSolFeeBreakdown`.
+   - SPL: `fixed_fee_token = FIXED_FEE_LAMPORTS * (tokenPerSolPrice)` converted via the Q64.64 quote, plus `0.3 %` variable fee. See `calculateSplFeeBreakdown`.
+   - Fees only apply on withdrawal/swap paths. Deposits pay zero protocol fee.
+7. Viewing-key registration is required before scanner/compliance flows can decrypt chain notes; for pure deposit/withdraw flows you can pass `enforceViewingKeyRegistration: false` to `TransactOptions`.
+8. Merkle root freshness: treat `RootNotFound` / stale-root errors as retryable. Use `preflightCheck` / `waitForRoot` before proving when possible.
+9. Never log secrets: spend keys, viewing keys (`nk`), UTXO private keys, blindings, signed messages, note payloads.
+10. Hosted circuits must be loaded with `setCircuitsPath()` (or via the default URL) before any `transact` / `fullWithdraw` / `swapWithChange` call.
 
-- `CloakSDK`
+---
 
-### B) Note API (`CloakSDK` methods)
+## 3. Core defaults, constants, and types
 
-- `deposit`
-- `withdraw`
-- `send`
-- `swap`
-- `privateTransfer`
-- `getTransactionStatus`
-- note/key helpers exposed through note manager utilities
+```ts
+import {
+  CLOAK_PROGRAM_ID,           // PublicKey, mainnet + devnet
+  NATIVE_SOL_MINT,            // PublicKey, So111...112
+  DEFAULT_CIRCUITS_URL,       // S3 base URL, pinned
+  MERKLE_TREE_HEIGHT,         // 32
+  FIXED_FEE_LAMPORTS,         // 5_000_000n
+  MIN_DEPOSIT_LAMPORTS,       // 10_000_000n
+  VARIABLE_FEE_NUMERATOR,     // 3n
+  VARIABLE_FEE_DENOMINATOR,   // 1000n
+  Q64_64_ONE,                 // 1n << 64n
+  LAMPORTS_PER_SOL,           // 1_000_000_000n
+  SIGN_IN_MESSAGE,            // wallet-based viewing-key derivation message
+  VERSION,                    // SDK version string
+} from "@cloak.ag/sdk";
+```
 
-### C) UTXO primitives
+Core note/transaction types (from `core/types`):
 
-- `generateUtxoKeypair`
-- `deriveUtxoKeypairFromSpendKey`
-- `createUtxo`
-- `createZeroUtxo`
-- `computeUtxoCommitment`
-- `computeUtxoNullifier`
-- `computeSignature`
-- `serializeUtxo` / `deserializeUtxo`
-- `sumUtxoAmounts` / `selectUtxos`
-- `NATIVE_SOL_MINT`
+```ts
+type Network = "localnet" | "devnet" | "mainnet" | "testnet";
 
-### D) UTXO transaction API
+interface WalletAdapter {
+  publicKey: PublicKey | null;
+  signTransaction?<T extends Transaction>(tx: T): Promise<T>;
+  signAllTransactions?<T extends Transaction>(txs: T[]): Promise<T[]>;
+  sendTransaction?(tx: Transaction, connection: Connection, options?: SendOptions): Promise<string>;
+}
 
-- `transact`
-- `transfer`
-- `partialWithdraw`
-- `fullWithdraw`
-- `swapUtxo`
-- `swapWithChange`
-- `computeExtDataHash`
-- `computeChainNoteHash`
-- `fetchRiskQuoteInstruction`
-- `setCircuitsPath` / `getCircuitsPath`
+class CloakError extends Error {
+  category: "network" | "indexer" | "prover" | "relay" | "validation" | "wallet" | "environment" | "service";
+  retryable: boolean;
+  originalError?: Error;
+}
+```
 
-### E) Chain-note encryption API
+---
 
-- `encodeCompactChainNote` / `decodeCompactChainNote`
-- `encryptCompactChainNote` / `decryptCompactChainNote`
-- `chainNoteToBase64` / `chainNoteFromBase64`
+## 4. Initialization patterns
 
-### F) Scanner/compliance API
+### 4a. Node.js with a Keypair (server / script)
 
-- `scanTransactions`
-- `toComplianceReport`
-- `formatComplianceCsv`
-- Types: `ScanOptions`, `ScanResult`, `ComplianceReport`, `ScannedTransaction`
+```ts
+import { CloakSDK } from "@cloak.ag/sdk";
+import { Keypair } from "@solana/web3.js";
+import { readFileSync } from "fs";
 
-### G) Viewing keys + compliance keys
+const signer = Keypair.fromSecretKey(
+  Uint8Array.from(JSON.parse(readFileSync(process.env.KEYPAIR_PATH!, "utf8"))),
+);
 
-- `deriveViewingKeyFromSpendKey`
-- `deriveViewingKeyFromNk`
-- `deriveViewingKeyFromUtxoPrivateKey`
-- `deriveDiversifier`
-- `deriveDiversifiedViewingKey`
-- `getNkFromUtxoPrivateKey`
-- `expandSpendKey`
-- `generateViewingKeyPair`
-- `registerViewingKey`
-- `SIGN_IN_MESSAGE`
+const sdk = new CloakSDK({
+  keypairBytes: signer.secretKey,
+  network: "mainnet",
+  relayUrl: "https://api.cloak.ag",
+  debug: true,
+});
+```
 
-### H) Metadata encryption
+### 4b. Browser with `@solana/wallet-adapter`
 
-- `encryptTransactionMetadata`
-- `encryptTransactionMetadataBundle`
-- `decryptTransactionMetadata`
-- `decryptComplianceMetadataWithMasterKey`
+```ts
+import { CloakSDK, LocalStorageAdapter } from "@cloak.ag/sdk";
+import { useWallet } from "@solana/wallet-adapter-react";
 
-### I) Relay + on-chain proof helpers
+const wallet = useWallet();
+const sdk = new CloakSDK({
+  wallet,
+  network: "mainnet",
+  storage: new LocalStorageAdapter(),
+  relayUrl: "https://api.cloak.ag",
+});
+```
 
-- `RelayService`
-- `fetchCommitments`
-- `buildMerkleTreeFromRelay`
-- `buildMerkleTreeFromChain`
-- `waitForRoot`
-- `validateRoot`
-- `preflightCheck`
-- `computeProofFromChain`
-- `computeProofForLatestDeposit`
-- `readMerkleTreeState`
+### 4c. UTXO transaction API without `CloakSDK` (lower-level, recommended for new integrations)
 
-### J) Proof/circuit utilities
+```ts
+import {
+  transact,
+  partialWithdraw,
+  fullWithdraw,
+  swapWithChange,
+  setCircuitsPath,
+  CLOAK_PROGRAM_ID,
+} from "@cloak.ag/sdk";
+import { Connection, PublicKey } from "@solana/web3.js";
 
-- `generateWithdrawRegularProof`
-- `generateWithdrawSwapProof`
-- `verifyCircuitIntegrity`
-- `verifyAllCircuits`
-- `areCircuitsAvailable`
-- `getDefaultCircuitsPath`
-- `DEFAULT_CIRCUITS_URL`
+setCircuitsPath("https://cloak-circuits.s3.us-east-1.amazonaws.com/circuits/0.1.0");
 
-### K) Wallet integration helpers
+const connection = new Connection(process.env.SOLANA_RPC_URL!, "confirmed");
+const programId = CLOAK_PROGRAM_ID; // or: new PublicKey(process.env.CLOAK_PROGRAM_ID!)
+```
 
-- `validateWalletConnected`
-- `getPublicKey`
-- `sendTransaction`
-- `signTransaction`
-- `keypairToAdapter`
+### 4d. Kit-flavored reads alongside SDK
 
-### L) Supporting utility modules
+```ts
+import { createSolanaRpc, address } from "@solana/kit";
+import { Connection } from "@solana/web3.js";
 
-- Fees:
-  - SOL: `calculateFee`, `calculateFeeBigint`, `calculateSolFeeLamports`, `calculateSolNetAmountLamports`
-  - SPL: `calculateSplFixedFeeTokenAmount`, `calculateSplFeeTokenAmount`, `calculateSplNetAmountToken`
-  - Quote conversion: `tokenPerSolBaseUnitsToQ64`, `q64ToTokenPerSolBaseUnits`
-  - Checks: `isWithdrawAmountSufficient`, `isSplWithdrawAmountSufficient`
-  - Legacy helper: `getDistributableAmount`
-- Errors: `ShieldPoolErrors`, `parseError`, `RootNotFoundError`, `isRootNotFoundError`, etc.
-- Network: `detectNetworkFromRpcUrl`, `getRpcUrlForNetwork`, explorer URL helpers
-- Logging: `createLogger`, `setDebugMode`, `formatSol`
-- Storage adapters: `MemoryStorageAdapter`, `LocalStorageAdapter`
-- Merkle tree: `MerkleTree`, `buildMerkleTree`
-- PDA helpers: `getShieldPoolPDAs`, `getNullifierPDA`, `getSwapStatePDA`
-- Pending operations persistence helpers
+const kitRpc = createSolanaRpc(process.env.SOLANA_RPC_URL!);
+const connection = new Connection(process.env.SOLANA_RPC_URL!, "confirmed");
 
-## Runtime semantics you must preserve
+// Reads via Kit:
+const balance = await kitRpc.getBalance(address(signer.publicKey.toBase58())).send();
+// Writes via SDK (still uses web3.js Connection):
+```
 
-- UTXO external amount:
-  - `> 0`: deposit
-  - `< 0`: withdraw/swap path
-  - `= 0`: shield transfer
-- Public inputs are 264 bytes for transact/swap proof payloads.
-- Keep amounts as `bigint` in UTXO flows.
-- Fees (on-chain): fixed + variable fee model (`0.005 SOL` floor + `0.3%`) on withdrawal/swap paths.
-- Viewing-key registration is required in normal app flows before protocol actions.
+For an end-to-end Kit-flavored integration shape, combine the read/write split in this section with the transaction recipes in section 6.
 
-## Hosted circuits
+---
 
-Use hosted circuit base URL:
+## 5. Full capability map
 
-- `https://cloak-circuits.s3.us-east-1.amazonaws.com/circuits/0.1.0`
+Group exports by responsibility. Every symbol below is a real named export of `@cloak.ag/sdk`.
 
-Example required assets:
+### 5.1 Main client (legacy note-based API)
 
-- `/build/withdraw_regular_js/withdraw_regular.wasm`
-- `/build/withdraw_regular_final.zkey`
+- `CloakSDK` — class
+- `CLOAK_PROGRAM_ID` — `PublicKey`
+- `VERSION` — string
 
-## AI generation guardrails
+`CloakSDK` high-signal methods:
 
-- Never log secrets (note payloads, private keys, viewing keys, signatures).
-- Prefer scanner-based user history (`scanTransactions`) over relay compliance endpoints.
-- Implement cache-first history UX + explicit rescan controls.
-- Handle stale-root and transient RPC errors with retry/backoff.
-- Keep code strongly typed with explicit SDK option objects.
+```ts
+class CloakSDK {
+  constructor(config: {
+    keypairBytes?: Uint8Array;
+    wallet?: WalletAdapter;
+    network?: Network;
+    cloakKeys?: CloakKeyPair;
+    storage?: StorageAdapter;
+    programId?: PublicKey;
+    relayUrl?: string;
+    debug?: boolean;
+  });
+
+  getPublicKey(): PublicKey;
+  isWalletMode(): boolean;
+
+  // Legacy (v1 note) flows — still supported; prefer UTXO API for new work.
+  deposit(connection: Connection, amountOrNote: number | CloakNote, options?: DepositOptions): Promise<DepositResult>;
+  privateTransfer(connection: Connection, note: CloakNote, recipients: MaxLengthArray<Transfer, 5>, options?: TransferOptions): Promise<TransferResult>;
+  withdraw(connection: Connection, note: CloakNote, recipient: PublicKey, options?: WithdrawOptions): Promise<TransferResult>;
+  send(connection: Connection, note: CloakNote, recipients: MaxLengthArray<Transfer, 5>, options?: TransferOptions): Promise<TransferResult>;
+  swap(connection: Connection, note: CloakNote, recipient: PublicKey, options: SwapOptions): Promise<SwapResult>;
+
+  generateNote(amountLamports: number, useWalletKeys?: boolean): Promise<CloakNote>;
+  parseNote(jsonString: string): CloakNote;
+  exportNote(note: CloakNote, pretty?: boolean): string;
+  isWithdrawable(note: CloakNote): boolean;
+
+  getMerkleProof(connection: Connection, leafIndex: number): Promise<MerkleProof>;
+  getCurrentRoot(connection: Connection): Promise<string>;
+  getTransactionStatus(requestId: string): Promise<TxStatus>;
+
+  loadNotes(): Promise<CloakNote[]>;
+  saveNote(note: CloakNote): Promise<void>;
+  findNote(commitment: string): Promise<CloakNote | undefined>;
+
+  importWalletKeys(keysJson: string): Promise<void>;
+  exportWalletKeys(): string;
+  getConfig(): CloakConfig;
+}
+```
+
+### 5.2 UTXO primitives (primary data model)
+
+```ts
+interface UtxoKeypair {
+  privateKey: bigint;   // ~252-bit field element
+  publicKey: bigint;    // Poseidon(privateKey, 0)
+}
+
+interface Utxo {
+  amount: bigint;
+  keypair: UtxoKeypair;
+  blinding: bigint;
+  mintAddress: PublicKey;       // NATIVE_SOL_MINT for SOL
+  index?: number;               // leaf index after insertion
+  commitment?: bigint;          // Poseidon(amount, pubkey, blinding, mintField)
+  nullifier?: bigint;           // computed at spend time
+  siblingCommitment?: bigint;   // other output from the same tx
+}
+
+// Exports:
+const NATIVE_SOL_MINT: PublicKey;
+
+function randomFieldElement(): bigint;
+function generateUtxoKeypair(): Promise<UtxoKeypair>;
+function deriveUtxoKeypairFromSpendKey(skSpend: Uint8Array): Promise<UtxoKeypair>;
+function derivePublicKey(privateKey: bigint): Promise<bigint>;
+
+function createUtxo(amount: bigint, keypair: UtxoKeypair, mint?: PublicKey): Promise<Utxo>;
+function createZeroUtxo(mint?: PublicKey, salt?: bigint): Promise<Utxo>;
+
+function pubkeyToFieldElement(pubkey: PublicKey): bigint;
+function computeUtxoCommitment(utxo: Utxo): Promise<bigint>;
+function computeSignature(privateKey: bigint, commitment: bigint, pathIndex: bigint): Promise<bigint>;
+function computeUtxoNullifier(utxo: Utxo): Promise<bigint>;
+
+function serializeUtxo(utxo: Utxo): Uint8Array;   // 128 bytes, little-endian
+function deserializeUtxo(bytes: Uint8Array): Promise<Utxo>;
+
+function bigintToHex(value: bigint): string;
+function utxoHexToBigint(hex: string): bigint;
+function utxoBigintToBytes32(value: bigint): Uint8Array;
+
+function sumUtxoAmounts(utxos: Utxo[]): bigint;
+function selectUtxos(available: Utxo[], targetAmount: bigint): Utxo[] | null;
+function utxoEquals(a: Utxo, b: Utxo): Promise<boolean>;
+```
+
+### 5.3 UTXO transaction API (primary runtime path)
+
+```ts
+function transact(params: TransactParams, options: TransactOptions): Promise<TransactResult>;
+function transfer(inputUtxos: Utxo[], recipientPubkey: bigint, amount: bigint, options: TransactOptions): Promise<TransactResult>;
+function partialWithdraw(inputUtxos: Utxo[], recipient: PublicKey, withdrawAmount: bigint, options: TransactOptions): Promise<TransactResult>;
+function fullWithdraw(inputUtxos: Utxo[], recipient: PublicKey, options: TransactOptions): Promise<TransactResult>;
+function swapUtxo(params: UtxoSwapParams, options: TransactOptions): Promise<UtxoSwapResult>;
+function swapWithChange(
+  inputUtxos: Utxo[],
+  swapAmount: bigint,
+  outputMint: PublicKey,
+  recipientAta: PublicKey,
+  minOutputAmount: bigint,
+  options: TransactOptions,
+  recipientWallet?: PublicKey,
+): Promise<UtxoSwapResult>;
+
+function computeExtDataHash(recipient: PublicKey | null, relayerFee: bigint, relayer: PublicKey | null): Promise<bigint>;
+function computeChainNoteHash(publicAmount: bigint, extDataHash: bigint, noteTimestamp: bigint, noteCommitment: bigint): Promise<bigint>;
+
+function setCircuitsPath(next: string): void;
+function getCircuitsPath(): string;
+
+function fetchRiskQuoteInstruction(
+  riskQuoteUrl: string,
+  wallet: PublicKey,
+  options?: { recipient?: PublicKey; amount?: bigint; token?: PublicKey },
+): Promise<TransactionInstruction>;
+
+const DEFAULT_TRANSACTION_CIRCUITS_URL: string;
+```
+
+Key `TransactOptions` fields (most used):
+
+```ts
+interface TransactOptions {
+  connection: Connection;
+  programId: PublicKey;
+  relayUrl?: string;                      // default env or https://api.cloak.ag
+
+  // Signing (choose one):
+  depositorKeypair?: Keypair;             // server / script mode
+  signTransaction?: WalletAdapter["signTransaction"];
+  signMessage?: (msg: Uint8Array) => Promise<Uint8Array>;
+  walletPublicKey?: PublicKey;
+  depositorPublicKey?: PublicKey;
+
+  // UX / observability:
+  onProgress?: (status: string) => void;
+  onProofProgress?: (percent: number) => void;
+
+  // Retry + reliability:
+  maxRootRetries?: number;
+  retryDelayMs?: number;
+
+  // Compliance / chain notes:
+  chainNoteViewingKeyNk?: string | Uint8Array;
+  getChainNoteViewingKeyNk?: () => Promise<Uint8Array>;
+  metadataBundle?: EncryptedMetadataBundle;
+  encryptedNotes?: string[];
+  enforceViewingKeyRegistration?: boolean;
+
+  // Performance:
+  cachedMerkleTree?: MerkleTree;
+  useChainForMerkle?: boolean;
+  useChainRootForProof?: boolean;
+  useUniqueNullifiers?: boolean;
+
+  // ALTs:
+  altAddresses?: string[];
+  addressLookupTableAccounts?: AddressLookupTableAccount[];
+
+  // Swap-specific:
+  swapDexes?: string[];
+  swapExcludeDexes?: string[];
+  swapRouteRetryAttempts?: number;
+  swapMaxRetries?: number;
+  swapSlippageBps?: number;
+  swapStatusMaxAttempts?: number;
+  swapStatusDelayMs?: number;
+
+  // Risk oracle:
+  riskOracleQueue?: PublicKey;
+  riskQuoteUrl?: string;
+  getRiskQuoteInstruction?: (ctx: { wallet: PublicKey; recipient?: PublicKey; amount?: bigint }) => Promise<TransactionInstruction>;
+  rangeApiKey?: string;
+}
+```
+
+### 5.4 Chain-note encryption
+
+```ts
+interface CompactChainNote { /* ... */ }
+type ChainNoteTxType = "deposit" | "withdraw" | "transfer" | "swap" | "unknown";
+
+function encodeCompactChainNote(note: CompactChainNote): Uint8Array;
+function decodeCompactChainNote(bytes: Uint8Array): CompactChainNote;
+function encryptCompactChainNote(note: CompactChainNote, viewingKeyPublic: Uint8Array): string;     // base64
+function decryptCompactChainNote(envelope: string, viewingKeyPrivate: Uint8Array): CompactChainNote;
+function chainNoteToBase64(note: CompactChainNote): string;
+function chainNoteFromBase64(s: string): CompactChainNote;
+```
+
+### 5.5 Scanner / compliance
+
+```ts
+interface ScanOptions {
+  connection: Connection;
+  programId: PublicKey;
+  viewingKeyNk: Uint8Array;
+  limit?: number;
+  afterTimestamp?: number;
+  beforeTimestamp?: number;
+  untilSignature?: string;
+  onProgress?: (processed: number, total: number) => void;
+  batchSize?: number;
+  onStatus?: (status: string) => void;
+  debug?: boolean;
+  walletPublicKey?: string;
+}
+
+interface ScannedTransaction {
+  txType: ChainNoteTxType;
+  amount: bigint;
+  fee: bigint;
+  netAmount: bigint;
+  timestamp: bigint;       // ms
+  recipient: string;       // base58
+  commitment: string;      // hex
+  signature: string;
+  runningBalance: bigint;
+  mint: string;
+  decimals: number;
+  symbol: string;
+  outputMint?: string;     // swaps
+  outputSymbol?: string;
+}
+
+interface ScanSummary {
+  totalDeposits: bigint;
+  totalWithdrawals: bigint;
+  totalFees: bigint;
+  netChange: bigint;
+  transactionCount: number;
+  finalBalance: bigint;
+}
+
+interface ScanResult {
+  transactions: ScannedTransaction[];
+  summary: ScanSummary;
+  lastSignature?: string;
+  rpcCallsMade: number;
+}
+
+// ComplianceReport is the JSON-safe version of ScanResult.
+function scanTransactions(opts: ScanOptions): Promise<ScanResult>;
+function toComplianceReport(result: ScanResult): ComplianceReport;
+function formatComplianceCsv(report: ComplianceReport): string;
+```
+
+### 5.6 Viewing keys + compliance keys
+
+```ts
+interface ViewingKeyPair { privateKey: Uint8Array; publicKey: Uint8Array; }
+interface ExpandedSpendKey { ask: Uint8Array; nsk: Uint8Array; ovk: Uint8Array; }
+
+function expandSpendKey(skSpend: Uint8Array): ExpandedSpendKey;
+function deriveViewingKeyFromNk(nk: Uint8Array): ViewingKeyPair;
+function deriveViewingKeyFromSpendKey(skSpend: Uint8Array): ViewingKeyPair;
+function deriveViewingKeyFromUtxoPrivateKey(utxoPrivateKey: bigint): ViewingKeyPair;
+function getNkFromUtxoPrivateKey(utxoPrivateKey: bigint): Uint8Array;
+
+function deriveDiversifier(nk: Uint8Array, commitmentHex: string, outputIndex: number): Uint8Array; // 11 bytes
+function deriveDiversifiedViewingKey(nk: Uint8Array, diversifier: Uint8Array): ViewingKeyPair;
+
+function generateViewingKeyPair(): ViewingKeyPair;
+function registerViewingKey(
+  relayUrl: string,
+  userPubkey: PublicKey,
+  nk: Uint8Array,
+  signMessage: (msg: Uint8Array) => Promise<Uint8Array>,
+): Promise<void>;
+
+const SIGN_IN_MESSAGE: string;
+```
+
+### 5.7 Metadata encryption
+
+```ts
+function encryptTransactionMetadata(
+  metadata: TransactionMetadata,
+  userViewKeyPublic: Uint8Array,
+  complianceKeyPublic: Uint8Array,
+  context?: { userPubkey?: PublicKey | string },
+): Promise<EncryptedMetadataBundle>;
+
+function encryptTransactionMetadataBundle(
+  metadata: TransactionMetadata,
+  viewingKeyPrivate: Uint8Array,
+  userPubkey: PublicKey,
+): Promise<{
+  encrypted_user: string;
+  encrypted_compliance: string;
+  user_pubkey: string;
+  commitment: string;
+  timestamp: number;
+  tx_type?: ComplianceTxType;
+}>;
+
+function decryptTransactionMetadata(encrypted: string, viewKeySecret: Uint8Array): Promise<TransactionMetadata>;
+
+function decryptComplianceMetadataWithMasterKey(
+  encrypted: string,
+  masterCompliancePrivateKey: Uint8Array,
+  masterCompliancePublicKey: Uint8Array,
+  userPublicKey: PublicKey,
+): Promise<TransactionMetadata>;
+```
+
+### 5.8 Relay + merkle + on-chain proof helpers
+
+```ts
+class RelayService {
+  constructor(baseUrl: string);
+  submitWithdraw(params: SubmitWithdrawParams, onStatus?: (s: string) => void, onRequestId?: (id: string) => void): Promise<string>;
+  submitSwap(params: SubmitSwapParams, onStatus?: (s: string) => void, onRequestId?: (id: string) => void): Promise<string>;
+  getStatus(requestId: string): Promise<TxStatus>;
+  registerViewingKey(userPubkey: string, viewingKey: string, signMessage: (msg: Uint8Array) => Promise<Uint8Array>): Promise<boolean>;
+}
+
+function fetchCommitments(relayUrl: string, options?: {
+  mint?: PublicKey;
+  timeoutMs?: number;
+  maxRetries?: number;
+  sync?: boolean;
+  repair?: boolean;
+  requireTarget?: boolean;
+  requireCanonical?: boolean;
+  fromIndex?: number;
+  limit?: number;
+  waitForIndex?: number;
+}): Promise<CommitmentEntry[]>;
+
+function buildMerkleTreeFromRelay(relayUrl: string, options?: {
+  mint?: PublicKey;
+  sync?: boolean;
+  repair?: boolean;
+  requireTarget?: boolean;
+  requireCanonical?: boolean;
+  timeoutMs?: number;
+  maxRetries?: number;
+  waitForIndex?: number;
+}): Promise<MerkleTree>;
+
+function buildMerkleTreeFromChain(
+  connection: Connection,
+  programId: PublicKey,
+  merkleTree: PublicKey,
+  onProgress?: (m: string) => void,
+): Promise<MerkleTree>;
+
+function validateRoot(relayUrl: string, rootHex: string): Promise<{ valid: boolean; currentRoot?: string; message: string; isRecent: boolean; }>;
+function waitForRoot(relayUrl: string, rootHex: string, timeoutMs?: number, pollIntervalMs?: number): Promise<{ success: boolean; currentRoot?: string; waitedMs: number; }>;
+function preflightCheck(relayUrl: string, rootHex: string): Promise<{
+  shouldProceed: boolean;
+  action: "proceed" | "refresh_proofs" | "rebuild_tree" | "wait";
+  message: string;
+  estimatedWaitMs?: number;
+}>;
+
+function readMerkleTreeState(
+  connection: Connection,
+  merkleTreePDA: PublicKey,
+  forceConfirmed?: boolean,
+  relayUrl?: string,
+  skipRelayRoot?: boolean,
+  mint?: PublicKey,
+): Promise<{ nextIndex: number; root: string; subtrees: string[] }>;
+
+function computeProofFromChain(connection: Connection, merkleTreePDA: PublicKey, leafIndex: number, forceConfirmed?: boolean): Promise<OnchainMerkleProof>;
+function computeProofForLatestDeposit(connection: Connection, merkleTreePDA: PublicKey): Promise<OnchainMerkleProof & { leafIndex: number }>;
+```
+
+### 5.9 Proof / circuit utilities
+
+```ts
+function generateWithdrawRegularProof(inputs: WithdrawRegularInputs, circuitsPath: string): Promise<ProofResult>;
+function generateWithdrawSwapProof(inputs: WithdrawSwapInputs, circuitsPath: string): Promise<ProofResult>;
+
+function verifyCircuitIntegrity(circuitsPath: string, circuit: "withdraw_regular" | "withdraw_swap"): Promise<CircuitVerificationResult>;
+function verifyAllCircuits(circuitsPath: string): Promise<CircuitVerificationResult[]>;
+
+function areCircuitsAvailable(circuitsPath: string): Promise<boolean>;
+function getDefaultCircuitsPath(): Promise<string>;
+
+const DEFAULT_CIRCUITS_URL: "https://cloak-circuits.s3.us-east-1.amazonaws.com/circuits/0.1.0";
+const EXPECTED_CIRCUIT_HASHES: {
+  withdraw_regular_wasm: string;
+  withdraw_regular_zkey: string;
+  withdraw_swap_wasm: string;
+  withdraw_swap_zkey: string;
+};
+```
+
+### 5.10 Wallet helpers
+
+```ts
+function validateWalletConnected(wallet: WalletAdapter | Keypair): void;
+function getPublicKey(wallet: WalletAdapter | Keypair): PublicKey;
+function sendTransaction(
+  tx: Transaction,
+  wallet: WalletAdapter | Keypair,
+  connection: Connection,
+  options?: SendOptions,
+): Promise<string>;
+function signTransaction<T extends Transaction>(tx: T, wallet: WalletAdapter | Keypair): Promise<T>;
+function keypairToAdapter(keypair: Keypair): WalletAdapter;
+```
+
+### 5.11 Fees
+
+```ts
+// SOL:
+function calculateSolFeeBreakdown(grossAmountLamports: bigint): SolFeeBreakdown;
+function calculateSolFeeLamports(grossAmountLamports: bigint): bigint;
+function calculateSolNetAmountLamports(grossAmountLamports: bigint): bigint;
+function isWithdrawAmountSufficient(amountLamports: bigint): boolean;
+
+// SPL (Q64.64 priced):
+function tokenPerSolBaseUnitsToQ64(priceTokenPerSolBaseUnits: bigint): bigint;
+function q64ToTokenPerSolBaseUnits(priceTokenPerSolQ64: bigint): bigint;
+
+function calculateSplFixedFeeTokenAmount(priceTokenPerSolQ64: bigint): bigint;
+function calculateSplFeeBreakdown(grossAmountToken: bigint, priceTokenPerSolQ64: bigint): SplFeeBreakdown;
+function calculateSplFeeTokenAmount(grossAmountToken: bigint, priceTokenPerSolQ64: bigint): bigint;
+function calculateSplNetAmountToken(grossAmountToken: bigint, priceTokenPerSolQ64: bigint): bigint;
+function isSplWithdrawAmountSufficient(grossAmountToken: bigint, priceTokenPerSolQ64: bigint): boolean;
+
+// Legacy helpers:
+function calculateFee(amountLamports: number): number;
+function calculateFeeBigint(amountLamports: bigint): bigint;
+function getDistributableAmount(amountLamports: number): number;
+function formatAmount(lamports: number, decimals?: number): string;
+function parseAmount(sol: string): number;
+```
+
+### 5.12 Errors
+
+```ts
+class RootNotFoundError extends Error {}
+function isRootNotFoundError(error: unknown): boolean;
+
+const ShieldPoolErrors: Record<number, string>; // maps 0x1000+ program error codes to human strings
+function parseError(error: unknown): UserFriendlyError;
+function parseTransactionError(error: any): string;
+function formatErrorForLogging(error: unknown): string;
+function parseRelayErrorResponse(text: string): { ... };
+```
+
+### 5.13 Network + logging + storage + PDAs
+
+```ts
+function detectNetworkFromRpcUrl(rpcUrl?: string): Network;
+function getRpcUrlForNetwork(network: Network): string;
+function isValidRpcUrl(url: string): boolean;
+function getExplorerUrl(signature: string, network?: Network, cluster?: string): string;
+function getAddressExplorerUrl(address: string, network?: Network, cluster?: string): string;
+
+function createLogger(module: string): Logger;
+function setDebugMode(enabled: boolean): void;
+function formatSol(lamports: number | bigint): string;
+const sdkLogger: Logger;
+
+class MemoryStorageAdapter implements StorageAdapter {}
+class LocalStorageAdapter implements StorageAdapter {
+  constructor(notesKey?: string, keysKey?: string); // defaults: "cloak_notes", "cloak_wallet_keys"
+}
+
+function getShieldPoolPDAs(programId?: PublicKey, mint?: PublicKey): {
+  pool: PublicKey; merkleTree: PublicKey; vaultAuthority: PublicKey; treasury: PublicKey;
+};
+function getNullifierPDA(poolPubkey: PublicKey, nullifier: Uint8Array | Buffer, programId?: PublicKey): [PublicKey, number];
+function getSwapStatePDA(poolPubkey: PublicKey, nullifier: Uint8Array | Buffer, programId?: PublicKey): [PublicKey, number];
+```
+
+### 5.14 Pending operations persistence (browser-only)
+
+```ts
+function savePendingDeposit(p: PendingDeposit): void;
+function loadPendingDeposits(): PendingDeposit[];
+function updatePendingDeposit(commitment: string, updates: Partial<PendingDeposit>): void;
+function removePendingDeposit(commitment: string): void;
+function clearPendingDeposits(): void;
+
+function savePendingWithdrawal(w: PendingWithdrawal): void;
+function loadPendingWithdrawals(): PendingWithdrawal[];
+function updatePendingWithdrawal(requestId: string, updates: Partial<PendingWithdrawal>): void;
+function removePendingWithdrawal(requestId: string): void;
+function clearPendingWithdrawals(): void;
+
+function hasPendingOperations(): boolean;
+function getPendingOperationsSummary(): { deposits: number; withdrawals: number };
+function cleanupStalePendingOperations(maxAgeMs?: number): void;
+```
+
+---
+
+## 6. Copy-paste recipes (public API only)
+
+All recipes assume you have already run:
+
+```ts
+import { setCircuitsPath } from "@cloak.ag/sdk";
+setCircuitsPath("https://cloak-circuits.s3.us-east-1.amazonaws.com/circuits/0.1.0");
+```
+
+and created:
+
+```ts
+const connection = new Connection(process.env.SOLANA_RPC_URL!, "confirmed");
+const programId  = CLOAK_PROGRAM_ID;
+const relayUrl   = process.env.CLOAK_RELAY_URL || "https://api.cloak.ag";
+```
+
+### 6.1 Deposit into a fresh UTXO (SOL)
+
+```ts
+import {
+  generateUtxoKeypair, createUtxo, createZeroUtxo,
+  getNkFromUtxoPrivateKey, transact, NATIVE_SOL_MINT,
+} from "@cloak.ag/sdk";
+
+const amount = 1_000_000_000n; // 1 SOL
+
+const utxoKeypair = await generateUtxoKeypair();
+const depositUtxo = await createUtxo(amount, utxoKeypair, NATIVE_SOL_MINT);
+const padding     = await createZeroUtxo();
+const nk          = getNkFromUtxoPrivateKey(utxoKeypair.privateKey);
+
+const depositResult = await transact(
+  {
+    inputUtxos:   [padding],
+    outputUtxos:  [depositUtxo],
+    externalAmount: amount,           // > 0 => deposit
+    depositor:    sender.publicKey,
+  },
+  {
+    connection,
+    programId,
+    relayUrl,
+    depositorKeypair: sender,
+    chainNoteViewingKeyNk: nk,
+    onProgress: (s) => console.log("deposit:", s),
+    onProofProgress: (p) => console.log("proof", p),
+  },
+);
+
+console.log("tx", depositResult.signature);
+console.log("leaf_index", depositResult.outputUtxos[0].index);
+```
+
+### 6.2 Full withdraw (spend the entire shielded balance)
+
+```ts
+import { fullWithdraw } from "@cloak.ag/sdk";
+
+const withdrawResult = await fullWithdraw(
+  [depositResult.outputUtxos[0]],
+  recipient.publicKey,
+  {
+    connection,
+    programId,
+    relayUrl,
+    depositorKeypair: sender,          // still needs to sign the viewing-key challenge
+    walletPublicKey: sender.publicKey,
+    chainNoteViewingKeyNk: nk,
+    cachedMerkleTree: depositResult.merkleTree,
+    onProgress: (s) => console.log("withdraw:", s),
+  },
+);
+console.log("withdraw sig", withdrawResult.signature);
+```
+
+### 6.3 Partial withdraw (keep a shielded change UTXO)
+
+```ts
+import { partialWithdraw } from "@cloak.ag/sdk";
+
+const withdrawAmount = 500_000_000n; // 0.5 SOL
+
+const result = await partialWithdraw(
+  [depositResult.outputUtxos[0]],
+  recipient.publicKey,
+  withdrawAmount,
+  {
+    connection,
+    programId,
+    relayUrl,
+    depositorKeypair: sender,
+    cachedMerkleTree: depositResult.merkleTree,
+  },
+);
+// result.outputUtxos[0] is the new shielded change UTXO (remainder).
+```
+
+### 6.4 Shield-to-shield transfer (publicAmount = 0)
+
+```ts
+import { transact, createUtxo } from "@cloak.ag/sdk";
+
+const transferAmount = 1_000_000_000n;
+const changeAmount   = senderShieldedUtxo.amount - transferAmount;
+
+const recipientOutput = await createUtxo(transferAmount, recipientUtxoKeypair, NATIVE_SOL_MINT);
+const changeOutput    = await createUtxo(changeAmount,   senderUtxoKeypair,    NATIVE_SOL_MINT);
+
+const result = await transact(
+  {
+    inputUtxos:  [senderShieldedUtxo],
+    outputUtxos: [recipientOutput, changeOutput],
+    externalAmount: 0n,    // shield-to-shield
+  },
+  {
+    connection, programId, relayUrl,
+    depositorKeypair: sender,
+    walletPublicKey: sender.publicKey,
+    chainNoteViewingKeyNk: senderNk,
+    cachedMerkleTree: senderCachedTree,
+  },
+);
+```
+
+### 6.5 Fast send (deposit + full withdraw in one user action)
+
+```ts
+import { transact, fullWithdraw, createUtxo, createZeroUtxo, generateUtxoKeypair, getNkFromUtxoPrivateKey } from "@cloak.ag/sdk";
+
+const amount = 1_000_000_000n;
+const kp = await generateUtxoKeypair();
+const utxo = await createUtxo(amount, kp, NATIVE_SOL_MINT);
+const nk = getNkFromUtxoPrivateKey(kp.privateKey);
+
+const dep = await transact(
+  { inputUtxos: [await createZeroUtxo()], outputUtxos: [utxo], externalAmount: amount, depositor: sender.publicKey },
+  { connection, programId, relayUrl, depositorKeypair: sender, chainNoteViewingKeyNk: nk },
+);
+
+const wd = await fullWithdraw([dep.outputUtxos[0]], recipient.publicKey, {
+  connection, programId, relayUrl,
+  depositorKeypair: sender,
+  walletPublicKey: sender.publicKey,
+  chainNoteViewingKeyNk: nk,
+  cachedMerkleTree: dep.merkleTree,
+});
+```
+
+### 6.6 Swap SOL -> SPL (with shielded change)
+
+```ts
+import { swapWithChange, createUtxo, NATIVE_SOL_MINT } from "@cloak.ag/sdk";
+import { getAssociatedTokenAddress } from "@solana/spl-token";
+import { createJupiterApiClient } from "@jup-ag/api";
+
+const swapAmount = 250_000_000n;                       // 0.25 SOL
+const outputMint = new PublicKey("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"); // USDC
+const recipientAta = await getAssociatedTokenAddress(outputMint, sender.publicKey);
+
+// Quote (Jupiter) -> pick minOut:
+const jup = createJupiterApiClient();
+const quote = await jup.quoteGet({
+  inputMint: "So11111111111111111111111111111111111111112",
+  outputMint: outputMint.toBase58(),
+  amount: Number(swapAmount),
+  slippageBps: 1500,
+});
+const minOut = BigInt(quote.otherAmountThreshold);
+
+const swapResult = await swapWithChange(
+  depositResult.outputUtxos,   // inputs (must sum to >= swapAmount)
+  swapAmount,
+  outputMint,
+  recipientAta,
+  minOut,
+  {
+    connection, programId, relayUrl,
+    depositorKeypair: sender,
+    walletPublicKey: sender.publicKey,
+    cachedMerkleTree: depositResult.merkleTree,
+    swapSlippageBps: 1500,
+    swapStatusMaxAttempts: 60,
+    swapStatusDelayMs: 2000,
+  },
+  sender.publicKey,            // so relay can create ATA if missing
+);
+
+console.log("swap sig", swapResult.signature);
+console.log("swapStatePda", swapResult.swapStatePda);
+```
+
+### 6.7 Compliance history scan + CSV export
+
+```ts
+import {
+  scanTransactions, toComplianceReport, formatComplianceCsv,
+  getNkFromUtxoPrivateKey,
+} from "@cloak.ag/sdk";
+
+const nk = getNkFromUtxoPrivateKey(utxoKeypair.privateKey);
+
+const scan = await scanTransactions({
+  connection,
+  programId,
+  viewingKeyNk: nk,
+  batchSize: 50,
+  walletPublicKey: sender.publicKey.toBase58(),
+  onStatus: (s) => console.log("scan:", s),
+  onProgress: (done, total) => console.log(`scan progress ${done}/${total}`),
+});
+
+console.log("summary", scan.summary);
+const report = toComplianceReport(scan);
+const csv = formatComplianceCsv(report);
+await fs.promises.writeFile("cloak-history.csv", csv, "utf8");
+```
+
+Incremental re-scan (only fetch new transactions since the last run):
+
+```ts
+const delta = await scanTransactions({
+  connection,
+  programId,
+  viewingKeyNk: nk,
+  untilSignature: scan.lastSignature, // resume cursor
+});
+```
+
+### 6.8 Register a viewing key with the relay (wallet-based)
+
+```ts
+import { registerViewingKey, getNkFromUtxoPrivateKey } from "@cloak.ag/sdk";
+
+await registerViewingKey(
+  relayUrl,
+  sender.publicKey,
+  getNkFromUtxoPrivateKey(utxoKeypair.privateKey),
+  async (msg) => await wallet.signMessage!(msg),       // browser wallet adapter
+);
+```
+
+Server-side (no wallet adapter): sign the same challenge bytes with your Keypair using `nacl.sign.detached(msg, keypair.secretKey)`.
+
+### 6.9 Fee math (SOL + SPL)
+
+```ts
+import {
+  calculateSolFeeBreakdown, calculateSolFeeLamports, calculateSolNetAmountLamports,
+  calculateSplFeeBreakdown, calculateSplFeeTokenAmount, calculateSplNetAmountToken,
+  calculateSplFixedFeeTokenAmount, tokenPerSolBaseUnitsToQ64,
+} from "@cloak.ag/sdk";
+
+// SOL, 1.0 SOL gross
+const solGross = 1_000_000_000n;
+const solBreakdown = calculateSolFeeBreakdown(solGross);
+const solFee  = calculateSolFeeLamports(solGross);     // fixed + variable
+const solNet  = calculateSolNetAmountLamports(solGross);
+
+// USDC, 82.000000 USDC gross, price = 160 USDC / SOL (base units)
+const priceQ64 = tokenPerSolBaseUnitsToQ64(160_000_000n);
+const usdcGross = 82_000_000n;
+const splBreakdown = calculateSplFeeBreakdown(usdcGross, priceQ64);
+const splFixed = calculateSplFixedFeeTokenAmount(priceQ64);
+const splFee   = calculateSplFeeTokenAmount(usdcGross, priceQ64);
+const splNet   = calculateSplNetAmountToken(usdcGross, priceQ64);
+```
+
+### 6.10 Metadata encryption (dual envelope)
+
+```ts
+import {
+  encryptTransactionMetadata, decryptTransactionMetadata,
+  deriveViewingKeyFromUtxoPrivateKey,
+} from "@cloak.ag/sdk";
+
+const vk = deriveViewingKeyFromUtxoPrivateKey(utxoKeypair.privateKey);
+const compliancePublic = await fetchCompliancePublic(); // your own source of truth
+
+const bundle = await encryptTransactionMetadata(
+  { tx_type: "withdraw", commitment, amount: "1000000000", recipient: recipient.publicKey.toBase58(), timestamp: Date.now() },
+  vk.publicKey,
+  compliancePublic,
+  { userPubkey: sender.publicKey },
+);
+
+// Later, decrypt for the user:
+const decrypted = await decryptTransactionMetadata(bundle.encrypted_user, vk.privateKey);
+```
+
+### 6.11 Relay tree helpers + stale-root preflight
+
+```ts
+import { preflightCheck, waitForRoot, buildMerkleTreeFromRelay } from "@cloak.ag/sdk";
+
+const tree = await buildMerkleTreeFromRelay(relayUrl, { mint: NATIVE_SOL_MINT, sync: true, repair: true });
+const root = "0x" + tree.root().toString(16);
+
+const check = await preflightCheck(relayUrl, root);
+if (check.action === "wait") {
+  await waitForRoot(relayUrl, root, 30_000, 1_000);
+}
+```
+
+### 6.12 On-chain Merkle proof fallback (when relay is unavailable)
+
+```ts
+import { computeProofFromChain, getShieldPoolPDAs, NATIVE_SOL_MINT } from "@cloak.ag/sdk";
+
+const pdas = getShieldPoolPDAs(programId, NATIVE_SOL_MINT);
+const proof = await computeProofFromChain(connection, pdas.merkleTree, leafIndex, true);
+// proof: { pathElements, pathIndices, root }
+```
+
+Pass the resulting tree into `TransactOptions.cachedMerkleTree` or set `useChainForMerkle: true` to force on-chain reconstruction inside the transact path.
+
+### 6.13 Error handling + retry for stale roots
+
+```ts
+import { isRootNotFoundError, parseError } from "@cloak.ag/sdk";
+
+for (let attempt = 0; attempt < 3; attempt++) {
+  try {
+    await fullWithdraw(/* ... */);
+    break;
+  } catch (err) {
+    if (isRootNotFoundError(err)) {
+      const wait = 500 * 2 ** attempt;
+      await new Promise(r => setTimeout(r, wait));
+      continue;
+    }
+    const friendly = parseError(err);
+    console.error("withdraw failed:", friendly);
+    throw err;
+  }
+}
+```
+
+---
+
+## 7. Recipe index for common flows
+
+Use section 6 directly as your public, copy-paste integration source:
+
+- Deposit a fresh shielded UTXO: section 6.1.
+- Withdraw flows: sections 6.2 (full) and 6.3 (partial/change).
+- Private shield-to-shield transfer: section 6.4.
+- Fast-send user flow: section 6.5.
+- SOL -> SPL swap with shielded change: section 6.6.
+- Compliance scan and CSV export: section 6.7.
+- Viewing-key registration: section 6.8.
+- Fee modeling (SOL + SPL): section 6.9.
+- Metadata encryption: section 6.10.
+- Merkle reliability helpers and fallback proof path: sections 6.11 and 6.12.
+- Retry/error strategy for stale roots: section 6.13.
+
+---
+
+## 8. AI generation guardrails (hard rules)
+
+1. Never print/log secrets: spend keys (`skSpend`), viewing keys (`nk`, private bytes), UTXO `privateKey`, `blinding`, note payloads, raw `sign_message` outputs, `cloakKeys`, or relayer auth tokens.
+2. Never hand-pack Groth16 public inputs. Use `generateWithdrawRegularProof` / `generateWithdrawSwapProof` from the SDK.
+3. Never bypass `viewingKeyNk` when calling `scanTransactions` — it cannot return anything without it.
+4. Never change `externalAmount` semantics; treat deposit/withdraw/transfer as three distinct modes derived from that field.
+5. Never call `transact` with raw `number` amounts. Always `BigInt(...)` at API boundaries.
+6. Always `setCircuitsPath` before the first transaction call (default URL is fine).
+7. Prefer `scanTransactions` + `toComplianceReport` for user history UX. Do not re-invent compliance endpoints.
+8. For mutating paths in the browser, prefer the wallet adapter (`signTransaction` / `signMessage`). Reserve `depositorKeypair` for Node scripts.
+9. On `RootNotFoundError`, retry with `waitForRoot` or a `cachedMerkleTree`. Do not swallow it as a generic failure.
+10. Cache `TransactResult.merkleTree` across operations in the same user session to avoid redundant tree rebuilds.
+
+---
+
+## 9. Minimal LLM "contract"
+
+When generating Cloak integration code, produce a file-by-file plan that:
+
+1. Declares an explicit `TransactOptions` factory (single source of truth for `connection`, `programId`, `relayUrl`, signing).
+2. Exposes `deposit`, `transfer`, `partialWithdraw`, `fullWithdraw`, `swap`, and `scanHistory` primitives using the functions in §5.3, §5.2, §5.5.
+3. Persists UTXOs (at minimum: `serializeUtxo(...)`) + viewing key material via an explicit `StorageAdapter` boundary.
+4. Surfaces `onProgress` + `onProofProgress` into the UI layer.
+5. Maps relay/on-chain errors through `parseError` + `isRootNotFoundError` into a small typed error union.
+6. Includes a CSV export path using `formatComplianceCsv(toComplianceReport(scan))`.
+7. Never exports or logs raw secrets.
+8. Uses only the exact exported names listed in §5. If a name is not listed here, it is not part of the public SDK contract — treat it as unstable.
+
+---
+
+## 10. Version pinning note
+
+- The circuit hashes in `EXPECTED_CIRCUIT_HASHES` are the canonical integrity pins for `withdraw_regular` and `withdraw_swap`. When bumping `DEFAULT_CIRCUITS_URL`, always verify with `verifyAllCircuits(path)` before shipping.
+- The SDK currently targets program `zh1eLd6rSphLejbFfJEneUwzHRfMKxgzrgkfwA6qRkW`. Set `programId` explicitly in non-default deployments.
