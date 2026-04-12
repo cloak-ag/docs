@@ -34,7 +34,7 @@
   <text x="195" y="330" class="b" text-anchor="middle">uses SDK directly</text>
 
   <rect x="380" y="170" width="310" height="172" rx="16" fill="#eff6ff" stroke="#3b82f6" stroke-width="2"/>
-  <text x="535" y="206" class="h" text-anchor="middle">@cloak.ag/sdk</text>
+  <text x="535" y="206" class="h" text-anchor="middle">@cloak.dev/sdk</text>
   <text x="535" y="235" class="b" text-anchor="middle">UTXO proof generation (Groth16)</text>
   <text x="535" y="256" class="b" text-anchor="middle">Merkle proofs + root retry strategy</text>
   <text x="535" y="277" class="b" text-anchor="middle">Mandatory viewing-key registration</text>

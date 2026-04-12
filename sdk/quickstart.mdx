@@ -22,10 +22,13 @@ import {
   generateUtxoKeypair,
   partialWithdraw,
   transact,
-} from "@cloak.ag/sdk";
+} from "@cloak.dev/sdk";
 import { Connection, Keypair } from "@solana/web3.js";
 
-const connection = new Connection("https://api.mainnet-beta.solana.com", "confirmed");
+const connection = new Connection(
+  "https://api.mainnet-beta.solana.com",
+  "confirmed",
+);
 const signer = Keypair.fromSecretKey(/* Uint8Array secret key */);
 
 const amount = 1_000_000_000n; // 1 SOL

@@ -14,7 +14,7 @@ Current state:
 ## Install
 
 ```bash
-npm install @cloak.ag/sdk @solana/web3.js @solana/kit
+npm install @cloak.dev/sdk @solana/web3.js @solana/kit
 ```
 
 ## Minimal bridge pattern
@@ -26,7 +26,7 @@ import {
   generateUtxoKeypair,
   partialWithdraw,
   transact,
-} from "@cloak.ag/sdk";
+} from "@cloak.dev/sdk";
 import { address, createSolanaRpc } from "@solana/kit";
 import { Connection, Keypair, PublicKey } from "@solana/web3.js";
 
@@ -40,7 +40,9 @@ const kitRpc = createSolanaRpc(rpcUrl);
 const connection = new Connection(rpcUrl, "confirmed");
 const signer = Keypair.fromSecretKey(/* Uint8Array secret key */);
 
-const { value: before } = await kitRpc.getBalance(address(signer.publicKey.toBase58())).send();
+const { value: before } = await kitRpc
+  .getBalance(address(signer.publicKey.toBase58()))
+  .send();
 
 const owner = await generateUtxoKeypair();
 const output = await createUtxo(20_000_000n, owner);
@@ -56,17 +58,24 @@ const deposit = await transact(
     connection,
     programId,
     depositorKeypair: signer,
-  }
+  },
 );
 
-await partialWithdraw(deposit.outputUtxos, Keypair.generate().publicKey, 5_000_000n, {
-  connection,
-  programId,
-  depositorKeypair: signer,
-  cachedMerkleTree: deposit.merkleTree,
-});
+await partialWithdraw(
+  deposit.outputUtxos,
+  Keypair.generate().publicKey,
+  5_000_000n,
+  {
+    connection,
+    programId,
+    depositorKeypair: signer,
+    cachedMerkleTree: deposit.merkleTree,
+  },
+);
 
-const { value: after } = await kitRpc.getBalance(address(signer.publicKey.toBase58())).send();
+const { value: after } = await kitRpc
+  .getBalance(address(signer.publicKey.toBase58()))
+  .send();
 console.log(before.toString(), after.toString());
 ```
 

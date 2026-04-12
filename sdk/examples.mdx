@@ -24,14 +24,17 @@ import {
   transact,
   scanTransactions,
   toComplianceReport,
-} from "@cloak.ag/sdk";
+} from "@cloak.dev/sdk";
 import { getAssociatedTokenAddressSync } from "@solana/spl-token";
 import { Connection, Keypair, PublicKey } from "@solana/web3.js";
 
 const USDC_MINT = new PublicKey("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
 const USDT_MINT = new PublicKey("Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB");
 
-const connection = new Connection("https://api.mainnet-beta.solana.com", "confirmed");
+const connection = new Connection(
+  "https://api.mainnet-beta.solana.com",
+  "confirmed",
+);
 const signer = Keypair.fromSecretKey(/* Uint8Array secret key */);
 const scanKeypair = await generateUtxoKeypair();
 const viewingKeyNk = getNkFromUtxoPrivateKey(scanKeypair.privateKey);
@@ -68,10 +71,15 @@ async function sendSameMint(args: {
   );
 
   if (args.partialWithdrawAmount !== undefined) {
-    return partialWithdraw(deposited.outputUtxos, args.recipientWallet, args.partialWithdrawAmount, {
-      ...baseOptions,
-      cachedMerkleTree: deposited.merkleTree,
-    });
+    return partialWithdraw(
+      deposited.outputUtxos,
+      args.recipientWallet,
+      args.partialWithdrawAmount,
+      {
+        ...baseOptions,
+        cachedMerkleTree: deposited.merkleTree,
+      },
+    );
   }
 
   return fullWithdraw(deposited.outputUtxos, args.recipientWallet, {
@@ -127,7 +135,10 @@ const swapDeposit = await transact(
 );
 
 const recipientWallet = Keypair.generate().publicKey;
-const recipientUsdcAta = getAssociatedTokenAddressSync(USDC_MINT, recipientWallet);
+const recipientUsdcAta = getAssociatedTokenAddressSync(
+  USDC_MINT,
+  recipientWallet,
+);
 
 await swapWithChange(
   [swapDeposit.outputUtxos[0]],

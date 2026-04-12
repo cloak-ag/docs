@@ -6,7 +6,7 @@ icon: "triangle-exclamation"
 
 ## SDK error surfaces
 
-`@cloak.ag/sdk` exposes two main layers:
+`@cloak.dev/sdk` exposes two main layers:
 
 1. `CloakError` (runtime SDK operations)
 2. `parseError` / `parseTransactionError` (user-facing normalization)
@@ -14,7 +14,7 @@ icon: "triangle-exclamation"
 ## `CloakError`
 
 ```typescript
-import { CloakError } from "@cloak.ag/sdk";
+import { CloakError } from "@cloak.dev/sdk";
 
 // category values:
 // "network" | "indexer" | "prover" | "relay" | "validation" | "wallet" | "environment"
@@ -28,19 +28,20 @@ Use helpers for RootNotFound detection:
 
 <CodeGroup>
 ```typescript Keypair bytes
-import { isRootNotFoundError, RootNotFoundError } from "@cloak.ag/sdk";
+import { isRootNotFoundError, RootNotFoundError } from "@cloak.dev/sdk";
 
 try {
-  await sdk.withdraw(connection, note, recipient);
+await sdk.withdraw(connection, note, recipient);
 } catch (error) {
-  if (error instanceof RootNotFoundError || isRootNotFoundError(error)) {
-    // Refresh proof inputs and retry flow
-  }
+if (error instanceof RootNotFoundError || isRootNotFoundError(error)) {
+// Refresh proof inputs and retry flow
 }
-```
+}
+
+````
 
 ```typescript Wallet adapter
-import { isRootNotFoundError, RootNotFoundError } from "@cloak.ag/sdk";
+import { isRootNotFoundError, RootNotFoundError } from "@cloak.dev/sdk";
 
 try {
   await partialWithdraw(inputUtxos, recipient, 10_000_000n, {
@@ -55,7 +56,8 @@ try {
     // Rebuild with fresh commitments/root and retry
   }
 }
-```
+````
+
 </CodeGroup>
 
 SDK note and UTXO flows already include retry loops; this usually appears only after retries are exhausted.
@@ -65,7 +67,7 @@ SDK note and UTXO flows already include retry loops; this usually appears only a
 `ShieldPoolErrors` maps known custom program codes:
 
 ```typescript
-import { ShieldPoolErrors } from "@cloak.ag/sdk";
+import { ShieldPoolErrors } from "@cloak.dev/sdk";
 
 console.log(ShieldPoolErrors[0x1001]); // Root not found in the roots ring
 console.log(ShieldPoolErrors[0x1076]); // Proof verification failed
@@ -75,19 +77,20 @@ console.log(ShieldPoolErrors[0x1076]); // Proof verification failed
 
 <CodeGroup>
 ```typescript Keypair bytes
-import { parseError, type UserFriendlyError } from "@cloak.ag/sdk";
+import { parseError, type UserFriendlyError } from "@cloak.dev/sdk";
 
 try {
-  await sdk.swap(connection, note, recipient, swapOptions);
+await sdk.swap(connection, note, recipient, swapOptions);
 } catch (error) {
-  const parsed: UserFriendlyError = parseError(error);
-  // parsed.category: wallet | network | validation | service | transaction | unknown
-  // parsed.recoverable: boolean
+const parsed: UserFriendlyError = parseError(error);
+// parsed.category: wallet | network | validation | service | transaction | unknown
+// parsed.recoverable: boolean
 }
-```
+
+````
 
 ```typescript Wallet adapter
-import { parseError, type UserFriendlyError } from "@cloak.ag/sdk";
+import { parseError, type UserFriendlyError } from "@cloak.dev/sdk";
 
 try {
   await swapWithChange(inputUtxos, amountLamports, outputMint, recipientAta, minOutput, {
@@ -101,7 +104,8 @@ try {
   const parsed: UserFriendlyError = parseError(error);
   // parsed.category / parsed.recoverable
 }
-```
+````
+
 </CodeGroup>
 
 ## Practical retry strategy

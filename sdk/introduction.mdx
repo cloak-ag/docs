@@ -4,11 +4,11 @@ description: "Current SDK runtime guide with web3.js and Solana Kit integration 
 icon: "shield-halved"
 ---
 
-Use this section as the canonical starting point for `@cloak.ag/sdk` integrations.
+Use this section as the canonical starting point for `@cloak.dev/sdk` integrations.
 
 Current runtime defaults:
 
-- SDK package in this repo: `@cloak.ag/sdk@0.1.0`
+- SDK package in this repo: `@cloak.dev/sdk@0.1.0`
 - Default program constant: `zh1eLd6rSphLejbFfJEneUwzHRfMKxgzrgkfwA6qRkW`
 - Relay URL (SDK default): `https://api.cloak.ag`
 - Circuit base (SDK default): `https://cloak-circuits.s3.us-east-1.amazonaws.com/circuits/0.1.0`
@@ -17,12 +17,13 @@ Current runtime defaults:
 
 <CodeGroup>
 ```bash @solana/web3.js
-npm install @cloak.ag/sdk @solana/web3.js
+npm install @cloak.dev/sdk @solana/web3.js
 ```
 
 ```bash @solana/kit
-npm install @cloak.ag/sdk @solana/web3.js @solana/kit
+npm install @cloak.dev/sdk @solana/web3.js @solana/kit
 ```
+
 </CodeGroup>
 
 Why both for Kit apps? The current transaction path in Cloak SDK consumes `@solana/web3.js` connection/signing types, while Kit can still be your primary RPC/signer architecture at app level.
@@ -31,16 +32,17 @@ Why both for Kit apps? The current transaction path in Cloak SDK consumes `@sola
 
 <CodeGroup>
 ```typescript web3.js app
-import { CLOAK_PROGRAM_ID } from "@cloak.ag/sdk";
+import { CLOAK_PROGRAM_ID } from "@cloak.dev/sdk";
 import { Connection } from "@solana/web3.js";
 
 const connection = new Connection(process.env.SOLANA_RPC_URL!, "confirmed");
 
 console.log("Program:", CLOAK_PROGRAM_ID.toBase58());
-```
+
+````
 
 ```typescript Solana Kit app
-import { CLOAK_PROGRAM_ID } from "@cloak.ag/sdk";
+import { CLOAK_PROGRAM_ID } from "@cloak.dev/sdk";
 import { createSolanaRpc } from "@solana/kit";
 import { Connection } from "@solana/web3.js";
 
@@ -50,7 +52,8 @@ const connectionBridge = new Connection(rpcUrl, "confirmed");
 
 console.log("Program:", CLOAK_PROGRAM_ID.toBase58());
 console.log("Kit + web3 bridge ready", !!kitRpc, !!connectionBridge);
-```
+````
+
 </CodeGroup>
 
 ## Example-first path
@@ -67,11 +70,11 @@ Run your first end-to-end private send flow.
 </Card>
 
 <Card title="Code Examples" icon="code-branch" href="/sdk/examples">
-Copy concise code snippets for send, swap, payroll, and history.
+  Copy concise code snippets for send, swap, payroll, and history.
 </Card>
 
 <Card title="Solana Kit Integration" icon="plug" href="/sdk/kit-integration">
-Use Cloak from Kit-based stacks with a minimal bridge.
+  Use Cloak from Kit-based stacks with a minimal bridge.
 </Card>
 
 <Card title="API Reference" icon="rectangle-terminal" href="/sdk/api-reference">

@@ -13,8 +13,12 @@ Use this setup to keep Cursor focused on real SDK contracts and production-safe 
 Open the Cursor starter prompt.
 </Card>
 
-<Card title="Use in Claude Code" icon="message-bot" href="/ai-tools/claude-code#2-starter-prompt">
-Open the Claude starter prompt.
+<Card
+  title="Use in Claude Code"
+  icon="message-bot"
+  href="/ai-tools/claude-code#2-starter-prompt"
+>
+  Open the Claude starter prompt.
 </Card>
 
 <Card title="Use in Windsurf" icon="wind" href="/ai-tools/windsurf#2-starter-prompt">
@@ -30,7 +34,7 @@ Create `.cursor/rules.md`:
 
 # Cursor Rules for SDK
 
-This project integrates `@cloak.ag/sdk`.
+This project integrates `@cloak.dev/sdk`.
 
 ## Fixed integration constants
 
@@ -71,9 +75,10 @@ This project integrates `@cloak.ag/sdk`.
 
 <Accordion title="Copy starter prompt">
 
-Implement this feature with `@cloak.ag/sdk`.
+Implement this feature with `@cloak.dev/sdk`.
 
 First, output a matrix for these capability groups:
+
 - Note API
 - UTXO API
 - Scanner/compliance
@@ -84,6 +89,7 @@ First, output a matrix for these capability groups:
 For each group: `used` or `not used` + reason.
 
 Then:
+
 - produce file-by-file patches
 - keep bigint-safe logic
 - include wallet-adapter and keypair-bytes examples where applicable
@@ -99,7 +105,7 @@ Create hooks/services for deposit/send/withdraw/swap + compliance history + CSV 
 </Accordion>
 
 <Accordion title="Fix contract mismatches">
-Audit and patch all mismatches against current SDK API and runtime behavior.
+  Audit and patch all mismatches against current SDK API and runtime behavior.
 </Accordion>
 
 <Accordion title="Production hardening pass">

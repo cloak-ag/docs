@@ -1,10 +1,10 @@
 ---
 title: "API reference"
-description: "Current public API for @cloak.ag/sdk"
+description: "Current public API for @cloak.dev/sdk"
 icon: "code"
 ---
 
-This page tracks the current public exports of `@cloak.ag/sdk`.
+This page tracks the current public exports of `@cloak.dev/sdk`.
 
 ## Main client: `CloakSDK`
 
@@ -47,12 +47,12 @@ sdk.getTransactionStatus(requestId)
 Storage/key helpers on the class:
 
 ```typescript
-sdk.loadNotes()
-sdk.saveNote(note)
-sdk.findNote(commitment)
-sdk.importWalletKeys(keysJson)
-sdk.exportWalletKeys()
-sdk.getConfig()
+sdk.loadNotes();
+sdk.saveNote(note);
+sdk.findNote(commitment);
+sdk.importWalletKeys(keysJson);
+sdk.exportWalletKeys();
+sdk.getConfig();
 ```
 
 ## Note API types
@@ -146,12 +146,12 @@ getDistributableAmount(amount: number)
 ## Error utilities
 
 ```typescript
-CloakError
-ShieldPoolErrors
-RootNotFoundError
-isRootNotFoundError(error)
-parseError(error)
-parseTransactionError(error)
+CloakError;
+ShieldPoolErrors;
+RootNotFoundError;
+isRootNotFoundError(error);
+parseError(error);
+parseTransactionError(error);
 ```
 
 Detailed usage: [Error Handling](/sdk/error-handling)
@@ -159,8 +159,8 @@ Detailed usage: [Error Handling](/sdk/error-handling)
 ## Versioned exports
 
 ```typescript
-VERSION            // "1.0.0"
-CLOAK_PROGRAM_ID   // mainnet program constant
+VERSION; // "1.0.0"
+CLOAK_PROGRAM_ID; // mainnet program constant
 ```
 
 ## Protocol and service docs

@@ -13,8 +13,12 @@ Use this page as your copy/paste playbook for Claude Code.
 Open the Cursor starter prompt.
 </Card>
 
-<Card title="Use in Claude Code" icon="message-bot" href="/ai-tools/claude-code#2-starter-prompt">
-Open the Claude starter prompt.
+<Card
+  title="Use in Claude Code"
+  icon="message-bot"
+  href="/ai-tools/claude-code#2-starter-prompt"
+>
+  Open the Claude starter prompt.
 </Card>
 
 <Card title="Use in Windsurf" icon="wind" href="/ai-tools/windsurf#2-starter-prompt">
@@ -30,7 +34,7 @@ Create `CLAUDE.md` at your project root.
 
 # SDK Project Context
 
-We use `@cloak.ag/sdk`.
+We use `@cloak.dev/sdk`.
 
 ## Required runtime assumptions
 
@@ -70,25 +74,28 @@ Use this as your first message in Claude Code:
 
 <Accordion title="Copy starter prompt">
 
-Implement this feature using the full `@cloak.ag/sdk` model.
+Implement this feature using the full `@cloak.dev/sdk` model.
 
 Before coding:
-1) output a capability matrix with these rows:
+
+1. output a capability matrix with these rows:
    - Note API
    - UTXO API
    - Scanner/compliance
    - Viewing keys + metadata encryption
    - Relay/proof/Merkle helpers
    - Utility modules (fees/errors/network/wallet/storage)
-2) mark each row as `used` or `not used` and explain why.
+2. mark each row as `used` or `not used` and explain why.
 
 During implementation:
+
 - keep bigint-safe amount handling
 - include both keypair-bytes and wallet-adapter usage where relevant
 - add user-facing progress and error states
 - avoid secret leakage in logs
 
 After implementation:
+
 - run type checks and lint
 - provide changed files + rationale + verification summary
 
@@ -101,10 +108,12 @@ After implementation:
 Build a production-ready integration module covering deposit, send, withdraw, swap, compliance history, and CSV export.
 
 Return complete file patches and commands to run.
+
 </Accordion>
 
 <Accordion title="Patch my existing app">
-Audit current code for SDK contract mismatches, patch all issues, and keep UI behavior stable unless broken.
+  Audit current code for SDK contract mismatches, patch all issues, and keep UI
+  behavior stable unless broken.
 </Accordion>
 
 <Accordion title="History UX and scanner quality">

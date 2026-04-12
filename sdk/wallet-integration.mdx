@@ -7,7 +7,7 @@ icon: "wallet"
 ## Install
 
 ```bash
-npm install @cloak.ag/sdk @solana/web3.js @solana/wallet-adapter-react
+npm install @cloak.dev/sdk @solana/web3.js @solana/wallet-adapter-react
 ```
 
 If your app standardizes on `@solana/kit`, add it as well and use the bridge pattern in [Solana Kit Integration](/sdk/kit-integration).
@@ -26,7 +26,7 @@ npm install @solana/wallet-adapter-react-ui @solana/wallet-adapter-wallets
 
 ```typescript
 import { useMemo } from "react";
-import { CloakSDK } from "@cloak.ag/sdk";
+import { CloakSDK } from "@cloak.dev/sdk";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { PublicKey } from "@solana/web3.js";
 
@@ -54,10 +54,10 @@ const result = await transact(params, {
   connection,
   programId,
   relayUrl,
-  signTransaction,         // wallet adapter signer
-  depositorPublicKey,      // wallet public key
-  riskOracleQueue,         // if required by deployment
-  riskQuoteUrl,            // risk quote backend (if needed)
+  signTransaction, // wallet adapter signer
+  depositorPublicKey, // wallet public key
+  riskOracleQueue, // if required by deployment
+  riskQuoteUrl, // risk quote backend (if needed)
   addressLookupTableAccounts,
 });
 ```

@@ -1,10 +1,10 @@
 # SDK LLM Reference
 
-This file is for AI agents integrating the full `@cloak.ag/sdk` surface in external applications.
+This file is for AI agents integrating the full `@cloak.dev/sdk` surface in external applications.
 
 ## Package
 
-- Name: `@cloak.ag/sdk`
+- Name: `@cloak.dev/sdk`
 - Mainnet/default program constant: `zh1eLd6rSphLejbFfJEneUwzHRfMKxgzrgkfwA6qRkW`
 - Node: `>=18`
 

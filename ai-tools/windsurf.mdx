@@ -13,8 +13,12 @@ Use this as a practical Windsurf playbook for shipping SDK-powered privacy apps.
 Open the Cursor starter prompt.
 </Card>
 
-<Card title="Use in Claude Code" icon="message-bot" href="/ai-tools/claude-code#2-starter-prompt">
-Open the Claude starter prompt.
+<Card
+  title="Use in Claude Code"
+  icon="message-bot"
+  href="/ai-tools/claude-code#2-starter-prompt"
+>
+  Open the Claude starter prompt.
 </Card>
 
 <Card title="Use in Windsurf" icon="wind" href="/ai-tools/windsurf#2-starter-prompt">
@@ -30,7 +34,7 @@ Create `.windsurf/rules.md`:
 
 # Windsurf Rules for SDK
 
-We integrate `@cloak.ag/sdk`.
+We integrate `@cloak.dev/sdk`.
 
 ## Constants
 
@@ -71,11 +75,12 @@ We integrate `@cloak.ag/sdk`.
 
 <Accordion title="Copy starter prompt">
 
-Implement this feature using the complete `@cloak.ag/sdk` model.
+Implement this feature using the complete `@cloak.dev/sdk` model.
 
 Step 1: output a capability matrix (all 6 groups) with used/not-used + reason.
 
 Step 2: implement with:
+
 - bigint-safe logic
 - wallet-adapter-compatible flow
 - keypair-bytes fallback where relevant
@@ -94,7 +99,7 @@ Generate deposit/send/withdraw/swap handlers, history scanner integration, cache
 </Accordion>
 
 <Accordion title="Refactor existing codebase">
-Patch existing app code to current SDK contracts with minimal UI churn.
+  Patch existing app code to current SDK contracts with minimal UI churn.
 </Accordion>
 
 <Accordion title="Reliability and UX pass">

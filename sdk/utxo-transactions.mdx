@@ -15,12 +15,12 @@ The UTXO API is the current production path for SDK-based app integrations.
 - `swapUtxo(...)`
 - `swapWithChange(...)`
 
-All are exported from `@cloak.ag/sdk`.
+All are exported from `@cloak.dev/sdk`.
 
 ## Transaction semantics
 
 ```typescript
-import type { Utxo, TransactParams, TransactOptions } from "@cloak.ag/sdk";
+import type { Utxo, TransactParams, TransactOptions } from "@cloak.dev/sdk";
 
 interface TransactParams {
   inputUtxos: Utxo[];
@@ -57,7 +57,7 @@ import {
   createUtxo,
   generateUtxoKeypair,
   NATIVE_SOL_MINT,
-} from "@cloak.ag/sdk";
+} from "@cloak.dev/sdk";
 
 const keypair = await generateUtxoKeypair();
 const utxo = await createUtxo(100_000_000n, keypair, NATIVE_SOL_MINT);
@@ -67,7 +67,7 @@ const utxo = await createUtxo(100_000_000n, keypair, NATIVE_SOL_MINT);
 
 <CodeGroup>
 ```typescript Keypair bytes
-import { transact, createUtxo, generateUtxoKeypair } from "@cloak.ag/sdk";
+import { transact, createUtxo, generateUtxoKeypair } from "@cloak.dev/sdk";
 import { Connection, Keypair, PublicKey } from "@solana/web3.js";
 
 const connection = new Connection(process.env.SOLANA_RPC_URL!, "confirmed");
@@ -78,23 +78,24 @@ const owner = await generateUtxoKeypair();
 const output = await createUtxo(20_000_000n, owner); // 0.02 SOL
 
 const result = await transact(
-  {
-    inputUtxos: [],
-    outputUtxos: [output],
-    externalAmount: 20_000_000n,
-  },
-  {
-    connection,
-    programId,
-    depositorKeypair,
-  }
+{
+inputUtxos: [],
+outputUtxos: [output],
+externalAmount: 20_000_000n,
+},
+{
+connection,
+programId,
+depositorKeypair,
+}
 );
 
 console.log(result.signature, result.commitmentIndices);
-```
+
+````
 
 ```typescript Wallet adapter
-import { transact, createUtxo, createZeroUtxo, generateUtxoKeypair } from "@cloak.ag/sdk";
+import { transact, createUtxo, createZeroUtxo, generateUtxoKeypair } from "@cloak.dev/sdk";
 import { useWallet } from "@solana/wallet-adapter-react";
 
 const { publicKey, signTransaction } = useWallet();
@@ -117,22 +118,24 @@ const result = await transact(
     walletPublicKey: publicKey!,
   }
 );
-```
+````
+
 </CodeGroup>
 
 ## Withdraw and transfer helpers
 
 <CodeGroup>
 ```typescript Keypair bytes
-import { transfer, partialWithdraw, fullWithdraw } from "@cloak.ag/sdk";
+import { transfer, partialWithdraw, fullWithdraw } from "@cloak.dev/sdk";
 
 await transfer(inputUtxos, recipientUtxoPublicKey, 30_000_000n, options);
 await partialWithdraw(inputUtxos, recipientWallet, 10_000_000n, options);
 await fullWithdraw(inputUtxos, recipientWallet, options);
-```
+
+````
 
 ```typescript Wallet adapter
-import { transfer, partialWithdraw, fullWithdraw } from "@cloak.ag/sdk";
+import { transfer, partialWithdraw, fullWithdraw } from "@cloak.dev/sdk";
 
 const walletOptions = {
   connection,
@@ -145,7 +148,8 @@ const walletOptions = {
 await transfer(inputUtxos, recipientUtxoPublicKey, 30_000_000n, walletOptions);
 await partialWithdraw(inputUtxos, recipientWallet, 10_000_000n, walletOptions);
 await fullWithdraw(inputUtxos, recipientWallet, walletOptions);
-```
+````
+
 </CodeGroup>
 
 `partialWithdraw`/`fullWithdraw` use negative `externalAmount` semantics.
@@ -154,24 +158,25 @@ await fullWithdraw(inputUtxos, recipientWallet, walletOptions);
 
 <CodeGroup>
 ```typescript Keypair bytes
-import { swapWithChange } from "@cloak.ag/sdk";
+import { swapWithChange } from "@cloak.dev/sdk";
 
 await swapWithChange(
-  inputUtxos,
-  50_000_000n,            // swap amount (lamports)
-  outputMint,
-  recipientAta,
-  1_000_000n,             // min output
-  {
-    connection,
-    programId,
-  },
-  recipientWallet
+inputUtxos,
+50_000_000n, // swap amount (lamports)
+outputMint,
+recipientAta,
+1_000_000n, // min output
+{
+connection,
+programId,
+},
+recipientWallet
 );
-```
+
+````
 
 ```typescript Wallet adapter
-import { swapWithChange } from "@cloak.ag/sdk";
+import { swapWithChange } from "@cloak.dev/sdk";
 
 await swapWithChange(
   inputUtxos,
@@ -188,7 +193,8 @@ await swapWithChange(
   },
   publicKey!
 );
-```
+````
+
 </CodeGroup>
 
 `swapWithChange` sends `TransactSwap` payload (`proof + 264-byte public inputs + swap params`) through relay swap orchestration.
