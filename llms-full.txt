@@ -1,0 +1,221 @@
+# Cloak Documentation - LLM Full Export
+
+This file is a single-document context pack for AI coding agents.
+It complements:
+- `/llms.txt` (index)
+- `/sdk/llms.txt` (full SDK contract map)
+
+Use this file when an agent asks for "all docs in one place".
+
+---
+
+## 1) Product snapshot
+
+Cloak is a privacy-focused Solana stack with:
+- an app/client integration layer
+- `@cloak.ag/sdk` for transaction orchestration
+- on-chain shield-pool program logic
+- proof circuits and relay services
+
+Primary integration path is the SDK UTXO API.
+
+---
+
+## 2) AI read order
+
+1. `/llms.txt`
+2. `/llms-full.txt`
+3. `/sdk/llms.txt`
+4. `/sdk/quickstart`
+5. `/sdk/utxo-transactions`
+6. `/sdk/wallet-integration`
+
+---
+
+## 3) Route map with intent
+
+### Getting Started
+
+- `/platform/overview`
+  - Purpose: high-level architecture across SDK, programs, and circuits.
+- `/sdk/introduction`
+  - Purpose: current runtime setup options (web3.js and Solana Kit patterns).
+- `/sdk/quickstart`
+  - Purpose: smallest end-to-end example for deposit plus send/withdraw.
+- `/sdk/examples`
+  - Purpose: concise examples for send, swap, payroll-like flows, compliance history.
+- `/sdk/kit-integration`
+  - Purpose: integrate Cloak with codebases standardized on `@solana/kit`.
+
+### Platform
+
+- `/platform/components`
+  - Purpose: subsystem boundaries and responsibilities.
+- `/platform/transaction-flows`
+  - Purpose: lifecycle details for deposit, transfer, withdraw, swap.
+- `/architecture/viewing-keys-compliance`
+  - Purpose: viewing-key lifecycle, registration requirements, compliance history behavior.
+
+### SDK
+
+- `/sdk/core-concepts`
+  - Purpose: UTXO primitives, fee model, root freshness, operational defaults.
+- `/sdk/utxo-transactions`
+  - Purpose: production transaction APIs and runtime semantics.
+- `/sdk/wallet-integration`
+  - Purpose: wallet-adapter patterns and signing behavior.
+- `/sdk/error-handling`
+  - Purpose: error categories, retries, and troubleshooting guidance.
+- `/sdk/api-reference`
+  - Purpose: public SDK exports.
+- `/sdk/llms.txt`
+  - Purpose: exhaustive SDK contract and symbol map for AI tools.
+
+### Protocol / Runtime
+
+- `/protocol/architecture`
+  - Purpose: end-to-end data flow from client to chain.
+- `/protocol/shield-pool`
+  - Purpose: on-chain behavior that integrators must align with.
+- `/packages/circuits`
+  - Purpose: circuit build and consumption pipeline.
+- `/operations/security`
+  - Purpose: trust boundaries and security controls.
+
+### AI tools
+
+- `/ai-tools/ai-integration`
+  - Purpose: canonical llms files and one-shot prompts.
+- `/ai-tools/claude-code`
+  - Purpose: Claude Code prompt playbook.
+- `/ai-tools/cursor`
+  - Purpose: Cursor rules and prompts.
+- `/ai-tools/windsurf`
+  - Purpose: Windsurf rules and prompts.
+
+---
+
+## 4) High-signal runtime contracts
+
+These are intentionally repeated here because agents often miss them.
+
+1. Prefer UTXO APIs for new integrations.
+2. Keep all transaction amount math in `bigint`.
+3. `externalAmount` semantics in UTXO flows:
+   - `> 0n` = deposit
+   - `< 0n` = withdraw or swap
+   - `0n` = shield-to-shield transfer
+4. Treat stale-root and root-not-found issues as retryable.
+5. Never log secrets (private keys, viewing keys, signatures, raw note secrets).
+6. Viewing-key registration affects scanner/compliance readability.
+
+For full signature-level details, use `/sdk/llms.txt`.
+
+---
+
+## 5) One-shot implementation spec: simple SOL send flow
+
+This is the recommended minimal flow for AI-generated integrations.
+
+### Goal
+
+Send SOL privately through Cloak by:
+- depositing SOL into shielded state
+- then performing a full withdrawal to a public recipient wallet
+
+### Required API path
+
+- `transact(...)` for deposit
+- `fullWithdraw(...)` for send
+- optional `partialWithdraw(...)` for keep-change behavior
+
+### Reference snippet
+
+```typescript
+import {
+  CLOAK_PROGRAM_ID,
+  NATIVE_SOL_MINT,
+  createUtxo,
+  createZeroUtxo,
+  fullWithdraw,
+  generateUtxoKeypair,
+  transact,
+} from "@cloak.ag/sdk";
+import { Connection, Keypair } from "@solana/web3.js";
+
+const connection = new Connection("https://api.mainnet-beta.solana.com", "confirmed");
+const signer = Keypair.fromSecretKey(/* Uint8Array secret key */);
+
+const amount = 1_000_000_000n; // 1 SOL
+const owner = await generateUtxoKeypair();
+const output = await createUtxo(amount, owner, NATIVE_SOL_MINT);
+
+const deposited = await transact(
+  {
+    inputUtxos: [await createZeroUtxo(NATIVE_SOL_MINT)],
+    outputUtxos: [output],
+    externalAmount: amount,
+    depositor: signer.publicKey,
+  },
+  {
+    connection,
+    programId: CLOAK_PROGRAM_ID,
+    depositorKeypair: signer,
+    walletPublicKey: signer.publicKey,
+  },
+);
+
+const recipient = Keypair.generate().publicKey;
+
+await fullWithdraw(deposited.outputUtxos, recipient, {
+  connection,
+  programId: CLOAK_PROGRAM_ID,
+  depositorKeypair: signer,
+  walletPublicKey: signer.publicKey,
+  cachedMerkleTree: deposited.merkleTree,
+});
+```
+
+### Validation checklist for agents
+
+- uses UTXO API (not legacy note API)
+- uses `bigint` for transaction amounts
+- no secret logging
+- includes progress and user-facing error states
+- handles retryable root freshness failures
+
+---
+
+## 6) Recommended one-shot prompt template
+
+Copy this prompt into your coding assistant:
+
+"Implement a minimal Cloak SOL send integration with `@cloak.ag/sdk`.
+Before coding, read `/llms.txt`, `/llms-full.txt`, `/sdk/llms.txt`, `/sdk/quickstart`, and `/sdk/utxo-transactions`.
+Use UTXO APIs with bigint-safe logic and implement deposit plus full-withdraw send flow.
+Include keypair-bytes path and wallet-adapter path where relevant.
+Do not log secrets.
+Add progress + error UX.
+Treat stale-root errors as retryable.
+Return a capability matrix, file patches, commands run, and verification summary."
+
+---
+
+## 7) Sources of truth in this repository
+
+When docs and code differ, validate against implementation:
+- SDK exports: `sdk/src/index.ts`
+- SDK runtime: `sdk/src/core/*`, `sdk/src/utils/*`
+- Program behavior: `programs/shield-pool/src/*`
+- Relay routes/payloads: `services/relay/src/main.rs`, `services/relay/src/api/*`
+- Relay sync behavior: `services/relay/src/commitment_sync.rs`
+- Circuits/build flow: `packages/circuits/*`, `packages/justfile`, `packages/scripts/*`
+
+---
+
+## 8) Related files
+
+- `/llms.txt`
+- `/.well-known/llms.txt`
+- `/sdk/llms.txt`
+- `/ai-tools/ai-integration`

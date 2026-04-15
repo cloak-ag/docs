@@ -68,6 +68,7 @@
           {
             "group": "IDE Setup",
             "pages": [
+              "ai-tools/ai-integration",
               "ai-tools/cursor",
               "ai-tools/claude-code",
               "ai-tools/windsurf"
