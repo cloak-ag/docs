@@ -32,7 +32,7 @@ Use this file as your primary SDK briefing and only fall back to the friendlier 
 Install:
 
 ```bash
-npm install @cloak.ag/sdk @solana/web3.js
+npm install @cloak.dev/sdk @solana/web3.js
 # Optional:
 npm install @solana/spl-token @solana/kit
 ```
@@ -77,7 +77,7 @@ import {
   LAMPORTS_PER_SOL,           // 1_000_000_000n
   SIGN_IN_MESSAGE,            // wallet-based viewing-key derivation message
   VERSION,                    // SDK version string
-} from "@cloak.ag/sdk";
+} from "@cloak.dev/sdk";
 ```
 
 Core note/transaction types (from `core/types`):
@@ -106,7 +106,7 @@ class CloakError extends Error {
 ### 4a. Node.js with a Keypair (server / script)
 
 ```ts
-import { CloakSDK } from "@cloak.ag/sdk";
+import { CloakSDK } from "@cloak.dev/sdk";
 import { Keypair } from "@solana/web3.js";
 import { readFileSync } from "fs";
 
@@ -125,7 +125,7 @@ const sdk = new CloakSDK({
 ### 4b. Browser with `@solana/wallet-adapter`
 
 ```ts
-import { CloakSDK, LocalStorageAdapter } from "@cloak.ag/sdk";
+import { CloakSDK, LocalStorageAdapter } from "@cloak.dev/sdk";
 import { useWallet } from "@solana/wallet-adapter-react";
 
 const wallet = useWallet();
@@ -147,7 +147,7 @@ import {
   swapWithChange,
   setCircuitsPath,
   CLOAK_PROGRAM_ID,
-} from "@cloak.ag/sdk";
+} from "@cloak.dev/sdk";
 import { Connection, PublicKey } from "@solana/web3.js";
 
 setCircuitsPath("https://cloak-circuits.s3.us-east-1.amazonaws.com/circuits/0.1.0");
@@ -176,7 +176,7 @@ For an end-to-end Kit-flavored integration shape, combine the read/write split i
 
 ## 5. Full capability map
 
-Group exports by responsibility. Every symbol below is a real named export of `@cloak.ag/sdk`.
+Group exports by responsibility. Every symbol below is a real named export of `@cloak.dev/sdk`.
 
 ### 5.1 Main client (legacy note-based API)
 
@@ -688,7 +688,7 @@ function cleanupStalePendingOperations(maxAgeMs?: number): void;
 All recipes assume you have already run:
 
 ```ts
-import { setCircuitsPath } from "@cloak.ag/sdk";
+import { setCircuitsPath } from "@cloak.dev/sdk";
 setCircuitsPath("https://cloak-circuits.s3.us-east-1.amazonaws.com/circuits/0.1.0");
 ```
 
@@ -706,7 +706,7 @@ const relayUrl   = process.env.CLOAK_RELAY_URL || "https://api.cloak.ag";
 import {
   generateUtxoKeypair, createUtxo, createZeroUtxo,
   getNkFromUtxoPrivateKey, transact, NATIVE_SOL_MINT,
-} from "@cloak.ag/sdk";
+} from "@cloak.dev/sdk";
 
 const amount = 1_000_000_000n; // 1 SOL
 
@@ -740,7 +740,7 @@ console.log("leaf_index", depositResult.outputUtxos[0].index);
 ### 6.2 Full withdraw (spend the entire shielded balance)
 
 ```ts
-import { fullWithdraw } from "@cloak.ag/sdk";
+import { fullWithdraw } from "@cloak.dev/sdk";
 
 const withdrawResult = await fullWithdraw(
   [depositResult.outputUtxos[0]],
@@ -762,7 +762,7 @@ console.log("withdraw sig", withdrawResult.signature);
 ### 6.3 Partial withdraw (keep a shielded change UTXO)
 
 ```ts
-import { partialWithdraw } from "@cloak.ag/sdk";
+import { partialWithdraw } from "@cloak.dev/sdk";
 
 const withdrawAmount = 500_000_000n; // 0.5 SOL
 
@@ -784,7 +784,7 @@ const result = await partialWithdraw(
 ### 6.4 Shield-to-shield transfer (publicAmount = 0)
 
 ```ts
-import { transact, createUtxo } from "@cloak.ag/sdk";
+import { transact, createUtxo } from "@cloak.dev/sdk";
 
 const transferAmount = 1_000_000_000n;
 const changeAmount   = senderShieldedUtxo.amount - transferAmount;
@@ -811,7 +811,7 @@ const result = await transact(
 ### 6.5 Fast send (deposit + full withdraw in one user action)
 
 ```ts
-import { transact, fullWithdraw, createUtxo, createZeroUtxo, generateUtxoKeypair, getNkFromUtxoPrivateKey } from "@cloak.ag/sdk";
+import { transact, fullWithdraw, createUtxo, createZeroUtxo, generateUtxoKeypair, getNkFromUtxoPrivateKey } from "@cloak.dev/sdk";
 
 const amount = 1_000_000_000n;
 const kp = await generateUtxoKeypair();
@@ -835,7 +835,7 @@ const wd = await fullWithdraw([dep.outputUtxos[0]], recipient.publicKey, {
 ### 6.6 Swap SOL -> SPL (with shielded change)
 
 ```ts
-import { swapWithChange, createUtxo, NATIVE_SOL_MINT } from "@cloak.ag/sdk";
+import { swapWithChange, createUtxo, NATIVE_SOL_MINT } from "@cloak.dev/sdk";
 import { getAssociatedTokenAddress } from "@solana/spl-token";
 import { createJupiterApiClient } from "@jup-ag/api";
 
@@ -881,7 +881,7 @@ console.log("swapStatePda", swapResult.swapStatePda);
 import {
   scanTransactions, toComplianceReport, formatComplianceCsv,
   getNkFromUtxoPrivateKey,
-} from "@cloak.ag/sdk";
+} from "@cloak.dev/sdk";
 
 const nk = getNkFromUtxoPrivateKey(utxoKeypair.privateKey);
 
@@ -915,7 +915,7 @@ const delta = await scanTransactions({
 ### 6.8 Register a viewing key with the relay (wallet-based)
 
 ```ts
-import { registerViewingKey, getNkFromUtxoPrivateKey } from "@cloak.ag/sdk";
+import { registerViewingKey, getNkFromUtxoPrivateKey } from "@cloak.dev/sdk";
 
 await registerViewingKey(
   relayUrl,
@@ -934,7 +934,7 @@ import {
   calculateSolFeeBreakdown, calculateSolFeeLamports, calculateSolNetAmountLamports,
   calculateSplFeeBreakdown, calculateSplFeeTokenAmount, calculateSplNetAmountToken,
   calculateSplFixedFeeTokenAmount, tokenPerSolBaseUnitsToQ64,
-} from "@cloak.ag/sdk";
+} from "@cloak.dev/sdk";
 
 // SOL, 1.0 SOL gross
 const solGross = 1_000_000_000n;
@@ -957,7 +957,7 @@ const splNet   = calculateSplNetAmountToken(usdcGross, priceQ64);
 import {
   encryptTransactionMetadata, decryptTransactionMetadata,
   deriveViewingKeyFromUtxoPrivateKey,
-} from "@cloak.ag/sdk";
+} from "@cloak.dev/sdk";
 
 const vk = deriveViewingKeyFromUtxoPrivateKey(utxoKeypair.privateKey);
 const compliancePublic = await fetchCompliancePublic(); // your own source of truth
@@ -976,7 +976,7 @@ const decrypted = await decryptTransactionMetadata(bundle.encrypted_user, vk.pri
 ### 6.11 Relay tree helpers + stale-root preflight
 
 ```ts
-import { preflightCheck, waitForRoot, buildMerkleTreeFromRelay } from "@cloak.ag/sdk";
+import { preflightCheck, waitForRoot, buildMerkleTreeFromRelay } from "@cloak.dev/sdk";
 
 const tree = await buildMerkleTreeFromRelay(relayUrl, { mint: NATIVE_SOL_MINT, sync: true, repair: true });
 const root = "0x" + tree.root().toString(16);
@@ -990,7 +990,7 @@ if (check.action === "wait") {
 ### 6.12 On-chain Merkle proof fallback (when relay is unavailable)
 
 ```ts
-import { computeProofFromChain, getShieldPoolPDAs, NATIVE_SOL_MINT } from "@cloak.ag/sdk";
+import { computeProofFromChain, getShieldPoolPDAs, NATIVE_SOL_MINT } from "@cloak.dev/sdk";
 
 const pdas = getShieldPoolPDAs(programId, NATIVE_SOL_MINT);
 const proof = await computeProofFromChain(connection, pdas.merkleTree, leafIndex, true);
@@ -1002,7 +1002,7 @@ Pass the resulting tree into `TransactOptions.cachedMerkleTree` or set `useChain
 ### 6.13 Error handling + retry for stale roots
 
 ```ts
-import { isRootNotFoundError, parseError } from "@cloak.ag/sdk";
+import { isRootNotFoundError, parseError } from "@cloak.dev/sdk";
 
 for (let attempt = 0; attempt < 3; attempt++) {
   try {

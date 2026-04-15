@@ -13,7 +13,7 @@ Use this file when an agent asks for "all docs in one place".
 
 Cloak is a privacy-focused Solana stack with:
 - an app/client integration layer
-- `@cloak.ag/sdk` for transaction orchestration
+- `@cloak.dev/sdk` for transaction orchestration
 - on-chain shield-pool program logic
 - proof circuits and relay services
 
@@ -140,7 +140,7 @@ import {
   fullWithdraw,
   generateUtxoKeypair,
   transact,
-} from "@cloak.ag/sdk";
+} from "@cloak.dev/sdk";
 import { Connection, Keypair } from "@solana/web3.js";
 
 const connection = new Connection("https://api.mainnet-beta.solana.com", "confirmed");
@@ -190,7 +190,7 @@ await fullWithdraw(deposited.outputUtxos, recipient, {
 
 Copy this prompt into your coding assistant:
 
-"Implement a minimal Cloak SOL send integration with `@cloak.ag/sdk`.
+"Implement a minimal Cloak SOL send integration with `@cloak.dev/sdk`.
 Before coding, read `/llms.txt`, `/llms-full.txt`, `/sdk/llms.txt`, `/sdk/quickstart`, and `/sdk/utxo-transactions`.
 Use UTXO APIs with bigint-safe logic and implement deposit plus full-withdraw send flow.
 Include keypair-bytes path and wallet-adapter path where relevant.

@@ -6,7 +6,7 @@ This file is the canonical index for AI coding agents integrating with Cloak.
 
 - [AI integration](/ai-tools/ai-integration): Read order and one-shot prompt templates.
 - [LLM full export](/llms-full.txt): Single-file context pack for AI agents.
-- [SDK LLM reference](/sdk/llms.txt): Exhaustive `@cloak.ag/sdk` contract map and runtime invariants.
+- [SDK LLM reference](/sdk/llms.txt): Exhaustive `@cloak.dev/sdk` contract map and runtime invariants.
 - [Well-known alias](/.well-known/llms.txt): Compatibility path for tools that probe `.well-known`.
 
 ## Documentation
