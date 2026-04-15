@@ -23,8 +23,7 @@ Use this file as your primary SDK briefing and only fall back to the friendlier 
 - Runtime: Node `>=18` and modern browsers. ESM and CJS both shipped (`dist/index.js`, `dist/index.cjs`).
 - Types: `dist/index.d.ts`
 - Program ID (default, mainnet + devnet alias): `zh1eLd6rSphLejbFfJEneUwzHRfMKxgzrgkfwA6qRkW`
-- Default relay URL: `https://api.cloak.ag`
-- Default circuits base URL: `https://cloak-circuits.s3.us-east-1.amazonaws.com/circuits/0.1.0`
+- Relay and circuits defaults are built into the SDK for standard integrations.
 - Hashing: BN254 Poseidon (via `@lightprotocol/hasher.rs`) + BLAKE3.
 - Proof system: Groth16 via `snarkjs`.
 - Native companion types: `@solana/web3.js` for `Connection`, `Keypair`, `Transaction`, `PublicKey`. `@solana/kit` is supported for reads (see §4d).
@@ -57,7 +56,8 @@ npm install @solana/spl-token @solana/kit
 7. Viewing-key registration is required before scanner/compliance flows can decrypt chain notes; for pure deposit/withdraw flows you can pass `enforceViewingKeyRegistration: false` to `TransactOptions`.
 8. Merkle root freshness: treat `RootNotFound` / stale-root errors as retryable. Use `preflightCheck` / `waitForRoot` before proving when possible.
 9. Never log secrets: spend keys, viewing keys (`nk`), UTXO private keys, blindings, signed messages, note payloads.
-10. Hosted circuits must be loaded with `setCircuitsPath()` (or via the default URL) before any `transact` / `fullWithdraw` / `swapWithChange` call.
+10. Standard integrations should use SDK defaults for program, relay, and circuits. Only override for custom/operator deployments.
+11. In low-level UTXO calls, keep `programId` fixed to `CLOAK_PROGRAM_ID` in one place and do not expose it as user configuration.
 
 ---
 
@@ -117,7 +117,6 @@ const signer = Keypair.fromSecretKey(
 const sdk = new CloakSDK({
   keypairBytes: signer.secretKey,
   network: "mainnet",
-  relayUrl: "https://api.cloak.ag",
   debug: true,
 });
 ```
@@ -133,7 +132,6 @@ const sdk = new CloakSDK({
   wallet,
   network: "mainnet",
   storage: new LocalStorageAdapter(),
-  relayUrl: "https://api.cloak.ag",
 });
 ```
 
@@ -145,12 +143,9 @@ import {
   partialWithdraw,
   fullWithdraw,
   swapWithChange,
-  setCircuitsPath,
   CLOAK_PROGRAM_ID,
 } from "@cloak.dev/sdk";
-import { Connection, PublicKey } from "@solana/web3.js";
-
-setCircuitsPath("https://cloak-circuits.s3.us-east-1.amazonaws.com/circuits/0.1.0");
+import { Connection } from "@solana/web3.js";
 
 const connection = new Connection(process.env.SOLANA_RPC_URL!, "confirmed");
 const programId = CLOAK_PROGRAM_ID;
@@ -571,7 +566,7 @@ function verifyAllCircuits(circuitsPath: string): Promise<CircuitVerificationRes
 function areCircuitsAvailable(circuitsPath: string): Promise<boolean>;
 function getDefaultCircuitsPath(): Promise<string>;
 
-const DEFAULT_CIRCUITS_URL: "https://cloak-circuits.s3.us-east-1.amazonaws.com/circuits/0.1.0";
+const DEFAULT_CIRCUITS_URL: string;
 const EXPECTED_CIRCUIT_HASHES: {
   withdraw_regular_wasm: string;
   withdraw_regular_zkey: string;
@@ -685,19 +680,11 @@ function cleanupStalePendingOperations(maxAgeMs?: number): void;
 
 ## 6. Copy-paste recipes (public API only)
 
-All recipes assume you have already run:
-
-```ts
-import { setCircuitsPath } from "@cloak.dev/sdk";
-setCircuitsPath("https://cloak-circuits.s3.us-east-1.amazonaws.com/circuits/0.1.0");
-```
-
-and created:
+All recipes assume you created:
 
 ```ts
 const connection = new Connection(process.env.SOLANA_RPC_URL!, "confirmed");
 const programId  = CLOAK_PROGRAM_ID;
-const relayUrl   = undefined; // omit or pass undefined to use SDK default relay
 ```
 
 ### 6.1 Deposit into a fresh UTXO (SOL)
@@ -725,7 +712,6 @@ const depositResult = await transact(
   {
     connection,
     programId,
-    relayUrl,
     depositorKeypair: sender,
     chainNoteViewingKeyNk: nk,
     onProgress: (s) => console.log("deposit:", s),
@@ -748,7 +734,6 @@ const withdrawResult = await fullWithdraw(
   {
     connection,
     programId,
-    relayUrl,
     depositorKeypair: sender,          // still needs to sign the viewing-key challenge
     walletPublicKey: sender.publicKey,
     chainNoteViewingKeyNk: nk,
@@ -773,7 +758,6 @@ const result = await partialWithdraw(
   {
     connection,
     programId,
-    relayUrl,
     depositorKeypair: sender,
     cachedMerkleTree: depositResult.merkleTree,
   },
@@ -799,7 +783,7 @@ const result = await transact(
     externalAmount: 0n,    // shield-to-shield
   },
   {
-    connection, programId, relayUrl,
+    connection, programId,
     depositorKeypair: sender,
     walletPublicKey: sender.publicKey,
     chainNoteViewingKeyNk: senderNk,
@@ -820,11 +804,11 @@ const nk = getNkFromUtxoPrivateKey(kp.privateKey);
 
 const dep = await transact(
   { inputUtxos: [await createZeroUtxo()], outputUtxos: [utxo], externalAmount: amount, depositor: sender.publicKey },
-  { connection, programId, relayUrl, depositorKeypair: sender, chainNoteViewingKeyNk: nk },
+  { connection, programId, depositorKeypair: sender, chainNoteViewingKeyNk: nk },
 );
 
 const wd = await fullWithdraw([dep.outputUtxos[0]], recipient.publicKey, {
-  connection, programId, relayUrl,
+  connection, programId,
   depositorKeypair: sender,
   walletPublicKey: sender.publicKey,
   chainNoteViewingKeyNk: nk,
@@ -860,7 +844,7 @@ const swapResult = await swapWithChange(
   recipientAta,
   minOut,
   {
-    connection, programId, relayUrl,
+    connection, programId,
     depositorKeypair: sender,
     walletPublicKey: sender.publicKey,
     cachedMerkleTree: depositResult.merkleTree,
@@ -912,20 +896,10 @@ const delta = await scanTransactions({
 });
 ```
 
-### 6.8 Register a viewing key with the relay (wallet-based)
+### 6.8 Viewing-key registration (advanced)
 
-```ts
-import { registerViewingKey, getNkFromUtxoPrivateKey } from "@cloak.dev/sdk";
-
-await registerViewingKey(
-  relayUrl,
-  sender.publicKey,
-  getNkFromUtxoPrivateKey(utxoKeypair.privateKey),
-  async (msg) => await wallet.signMessage!(msg),       // browser wallet adapter
-);
-```
-
-Server-side (no wallet adapter): sign the same challenge bytes with your Keypair using `nacl.sign.detached(msg, keypair.secretKey)`.
+For standard app integrations, keep the SDK-managed registration flow and avoid manual relay wiring.
+Only use direct registration helpers for custom/operator pipelines.
 
 ### 6.9 Fee math (SOL + SPL)
 
@@ -973,19 +947,10 @@ const bundle = await encryptTransactionMetadata(
 const decrypted = await decryptTransactionMetadata(bundle.encrypted_user, vk.privateKey);
 ```
 
-### 6.11 Relay tree helpers + stale-root preflight
+### 6.11 Relay tree helpers + stale-root preflight (advanced)
 
-```ts
-import { preflightCheck, waitForRoot, buildMerkleTreeFromRelay } from "@cloak.dev/sdk";
-
-const tree = await buildMerkleTreeFromRelay(relayUrl, { mint: NATIVE_SOL_MINT, sync: true, repair: true });
-const root = "0x" + tree.root().toString(16);
-
-const check = await preflightCheck(relayUrl, root);
-if (check.action === "wait") {
-  await waitForRoot(relayUrl, root, 30_000, 1_000);
-}
-```
+Use these helpers for operator-grade diagnostics and custom infrastructure.
+They are not required for standard app integrations.
 
 ### 6.12 On-chain Merkle proof fallback (when relay is unavailable)
 
@@ -1048,7 +1013,7 @@ Use section 6 directly as your public, copy-paste integration source:
 3. Never bypass `viewingKeyNk` when calling `scanTransactions` — it cannot return anything without it.
 4. Never change `externalAmount` semantics; treat deposit/withdraw/transfer as three distinct modes derived from that field.
 5. Never call `transact` with raw `number` amounts. Always `BigInt(...)` at API boundaries.
-6. Always `setCircuitsPath` before the first transaction call (default URL is fine).
+6. Use SDK defaults for program, relay, and circuits in standard integrations.
 7. Prefer `scanTransactions` + `toComplianceReport` for user history UX. Do not re-invent compliance endpoints.
 8. For mutating paths in the browser, prefer the wallet adapter (`signTransaction` / `signMessage`). Reserve `depositorKeypair` for Node scripts.
 9. On `RootNotFoundError`, retry with `waitForRoot` or a `cachedMerkleTree`. Do not swallow it as a generic failure.
@@ -1060,7 +1025,7 @@ Use section 6 directly as your public, copy-paste integration source:
 
 When generating Cloak integration code, produce a file-by-file plan that:
 
-1. Declares an explicit `TransactOptions` factory (single source of truth for `connection`, `programId`, `relayUrl`, signing).
+1. Declares an explicit `TransactOptions` factory (single source of truth for `connection` and signing; keep `programId` fixed to `CLOAK_PROGRAM_ID`).
 2. Exposes `deposit`, `transfer`, `partialWithdraw`, `fullWithdraw`, `swap`, and `scanHistory` primitives using the functions in §5.3, §5.2, §5.5.
 3. Persists UTXOs (at minimum: `serializeUtxo(...)`) + viewing key material via an explicit `StorageAdapter` boundary.
 4. Surfaces `onProgress` + `onProofProgress` into the UI layer.
