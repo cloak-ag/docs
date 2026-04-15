@@ -59,7 +59,8 @@ This project integrates `@cloak.dev/sdk`.
 
 ## Safety
 
-- Never log private keys, viewing keys, signatures, or raw note secrets.
+- Never log private keys, viewing keys (`nk`), seed material, or raw note payloads.
+- Transaction signatures are public and can be logged for support/debugging.
 - Use retry/backoff for stale-root and transient RPC failures.
 
 ## Reference docs

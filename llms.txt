@@ -52,5 +52,6 @@ This file is the canonical index for AI coding agents integrating with Cloak.
 - Prefer UTXO APIs for new integrations.
 - Keep tx amounts as `bigint` end-to-end.
 - Treat stale-root failures as retryable.
-- Never log private keys, viewing keys, signatures, or raw note secrets.
+- Never log private keys, viewing keys (`nk`), seed material, or raw note payloads.
+- Transaction signatures are public and can be logged for support/debugging.
 - For one-shot work, start with `/ai-tools/ai-integration`.

@@ -64,6 +64,96 @@ const result = await transact(params, {
 
 Make sure your wallet supports `signMessage` so viewing-key registration can complete before transactions.
 
+## Full wallet-adapter SOL send flow (`transact` -> `fullWithdraw`)
+
+```typescript
+import {
+  CLOAK_PROGRAM_ID,
+  NATIVE_SOL_MINT,
+  createUtxo,
+  createZeroUtxo,
+  fullWithdraw,
+  generateUtxoKeypair,
+  isRootNotFoundError,
+  transact,
+} from "@cloak.dev/sdk";
+import { Connection, PublicKey } from "@solana/web3.js";
+
+const connection = new Connection(process.env.SOLANA_RPC_URL!, "confirmed");
+const programId = process.env.CLOAK_PROGRAM_ID
+  ? new PublicKey(process.env.CLOAK_PROGRAM_ID)
+  : CLOAK_PROGRAM_ID;
+
+async function sendWithWalletAdapter({
+  walletPublicKey,
+  signTransaction,
+  signMessage,
+  recipientAddress,
+  amountLamports,
+}: {
+  walletPublicKey: PublicKey;
+  signTransaction: (tx: any) => Promise<any>;
+  signMessage: (msg: Uint8Array) => Promise<Uint8Array>;
+  recipientAddress: string;
+  amountLamports: bigint;
+}) {
+  const owner = await generateUtxoKeypair();
+  const output = await createUtxo(amountLamports, owner, NATIVE_SOL_MINT);
+
+  const deposited = await transact(
+    {
+      inputUtxos: [await createZeroUtxo(NATIVE_SOL_MINT)],
+      outputUtxos: [output],
+      externalAmount: amountLamports,
+      depositor: walletPublicKey,
+    },
+    {
+      connection,
+      programId,
+      signTransaction,
+      depositorPublicKey: walletPublicKey,
+      walletPublicKey,
+      onProgress: (status) => console.log("deposit", status),
+      onProofProgress: (percent) => console.log("deposit proof", percent),
+    },
+  );
+
+  const recipient = new PublicKey(recipientAddress);
+  let withdrawResult: Awaited<ReturnType<typeof fullWithdraw>> | undefined;
+
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      withdrawResult = await fullWithdraw(deposited.outputUtxos, recipient, {
+        connection,
+        programId,
+        walletPublicKey,
+        signMessage,
+        cachedMerkleTree: deposited.merkleTree,
+        onProgress: (status) => console.log("withdraw", status),
+        onProofProgress: (percent) => console.log("withdraw proof", percent),
+      });
+      break;
+    } catch (error) {
+      if (!isRootNotFoundError(error) || attempt === 3) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 1_500));
+    }
+  }
+
+  if (!withdrawResult) throw new Error("withdraw did not produce a result");
+
+  return {
+    depositSignature: deposited.signature,
+    withdrawSignature: withdrawResult.signature,
+  };
+}
+```
+
+Notes:
+
+- Keep amount values as `bigint` end-to-end.
+- Use `cachedMerkleTree` from deposit for the immediate withdraw call.
+- Treat `isRootNotFoundError` as retryable with bounded backoff.
+
 ## UX requirements
 
 - Show progress during proof generation (`onProgress`, `onProofProgress`).

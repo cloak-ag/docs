@@ -46,7 +46,8 @@ Build requirements:
    - send with `fullWithdraw(...)`
 3) Include one integration path using keypair bytes and one using wallet-adapter where relevant.
 4) Add progress and error states suitable for production UX.
-5) Never log secrets (private keys, viewing keys, signatures, raw note secrets).
+5) Never log secrets (private keys, viewing keys (`nk`), raw note payloads, seed material).
+   Transaction signatures are public and may be logged for support/debugging.
 6) Include retry-safe handling for stale root issues.
 
 Return format:

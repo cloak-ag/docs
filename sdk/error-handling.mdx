@@ -114,6 +114,36 @@ try {
 - Avoid retrying deterministic validation failures.
 - On stale-root errors, rebuild proof data before retrying.
 
+## UTXO stale-root retry template
+
+```typescript
+import { fullWithdraw, isRootNotFoundError } from "@cloak.dev/sdk";
+
+let result: Awaited<ReturnType<typeof fullWithdraw>> | undefined;
+let cachedMerkleTree = initialMerkleTree;
+
+for (let attempt = 1; attempt <= 3; attempt += 1) {
+  try {
+    result = await fullWithdraw(inputUtxos, recipientWallet, {
+      connection,
+      programId,
+      relayUrl,
+      walletPublicKey,
+      signMessage,
+      cachedMerkleTree,
+    });
+    break;
+  } catch (error) {
+    if (!isRootNotFoundError(error) || attempt === 3) throw error;
+    await new Promise((resolve) => setTimeout(resolve, 1_500 * attempt));
+    // refresh proof inputs before retrying (new root + updated tree)
+    cachedMerkleTree = undefined;
+  }
+}
+
+if (!result) throw new Error("withdraw did not complete");
+```
+
 ## Security logging rule
 
-Never log full notes/UTXOs with secrets. Log only non-sensitive identifiers (commitment prefix, leaf index, request ID).
+Never log full notes/UTXOs with secrets. Log only non-sensitive identifiers (commitment prefix, leaf index, request ID, and tx signature when needed for support).

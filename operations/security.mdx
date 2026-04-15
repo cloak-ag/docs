@@ -34,7 +34,8 @@ icon: "shield-check"
 
 - Chain-note scanner flow is chain-native; relay endpoints are for controlled export/decrypt.
 - Registered viewing keys enable compliance export for authorized admin paths.
-- Client apps should never log raw keys, signatures, or decrypted note payloads.
+- Client apps should never log raw keys, seed material, or decrypted note payloads.
+- Transaction signatures are public, but only log them when needed for support/debugging.
 
 ## Recommended operational practice
 

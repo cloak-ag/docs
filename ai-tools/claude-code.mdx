@@ -54,7 +54,8 @@ We use `@cloak.dev/sdk`.
 
 ## Guardrails
 
-- Never log secrets (private keys, viewing keys, signatures, raw note secrets).
+- Never log secrets (private keys, viewing keys (`nk`), raw note payloads, seed material).
+- Transaction signatures are public and can be logged for support/debugging.
 - Enforce viewing-key registration before protocol actions.
 - Keep privacy history cache-first, then explicit rescan.
 - Handle stale-root + RPC errors with retry/backoff.

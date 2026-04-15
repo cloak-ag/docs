@@ -106,8 +106,9 @@ These are intentionally repeated here because agents often miss them.
    - `< 0n` = withdraw or swap
    - `0n` = shield-to-shield transfer
 4. Treat stale-root and root-not-found issues as retryable.
-5. Never log secrets (private keys, viewing keys, signatures, raw note secrets).
-6. Viewing-key registration affects scanner/compliance readability.
+5. Never log secrets (private keys, viewing keys (`nk`), seed material, raw note payloads).
+6. Transaction signatures are public and can be logged for support/debugging.
+7. Viewing-key registration affects scanner/compliance readability.
 
 For full signature-level details, use `/sdk/llms.txt`.
 

@@ -71,4 +71,45 @@ await fullWithdraw(deposited.outputUtxos, recipient, {
 // });
 ```
 
+## Mainnet smoke test (keypair bytes)
+
+Use this when you want a first real send with explicit runtime values.
+
+```bash
+export SOLANA_RPC_URL="https://api.mainnet-beta.solana.com"
+
+# Must be an absolute path. Do not rely on `~` expansion inside env files.
+export KEYPAIR_PATH="/Users/you/.config/solana/id.json"
+export RECIPIENT_ADDRESS="<recipient-wallet-pubkey>"
+export SEND_LAMPORTS="50000000" # 0.05 SOL
+```
+
+Sanity-check before running:
+
+```bash
+solana-keygen pubkey "$KEYPAIR_PATH"
+solana balance "$(solana-keygen pubkey "$KEYPAIR_PATH")" --url "$SOLANA_RPC_URL"
+```
+
+Run your script entrypoint that wraps the snippet above:
+
+```bash
+npx tsx send.ts "$RECIPIENT_ADDRESS" "$SEND_LAMPORTS"
+```
+
+## Funding and net amount
+
+For SOL withdraw/send paths:
+
+- `gross = abs(externalAmount)`
+- `fee = 5_000_000 + floor(gross * 3 / 1000)`
+- `net = gross - fee`
+
+Worked example (`gross = 50_000_000`, i.e. `0.05 SOL`):
+
+- fee = `5_150_000` lamports (`0.00515 SOL`)
+- net = `44_850_000` lamports (`0.04485 SOL`)
+
+Recommended first-run sender balance for this smoke test: `0.07 SOL` or higher.
+
 Next: [Code Examples](/sdk/examples)
