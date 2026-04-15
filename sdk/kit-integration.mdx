@@ -21,6 +21,7 @@ npm install @cloak.dev/sdk @solana/web3.js @solana/kit
 
 ```typescript
 import {
+  CLOAK_PROGRAM_ID,
   createUtxo,
   createZeroUtxo,
   generateUtxoKeypair,
@@ -28,10 +29,10 @@ import {
   transact,
 } from "@cloak.dev/sdk";
 import { address, createSolanaRpc } from "@solana/kit";
-import { Connection, Keypair, PublicKey } from "@solana/web3.js";
+import { Connection, Keypair } from "@solana/web3.js";
 
 const rpcUrl = process.env.SOLANA_RPC_URL!;
-const programId = new PublicKey(process.env.CLOAK_PROGRAM_ID!);
+const programId = CLOAK_PROGRAM_ID;
 
 // Kit client for read paths.
 const kitRpc = createSolanaRpc(rpcUrl);

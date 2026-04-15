@@ -80,9 +80,7 @@ import {
 import { Connection, PublicKey } from "@solana/web3.js";
 
 const connection = new Connection(process.env.SOLANA_RPC_URL!, "confirmed");
-const programId = process.env.CLOAK_PROGRAM_ID
-  ? new PublicKey(process.env.CLOAK_PROGRAM_ID)
-  : CLOAK_PROGRAM_ID;
+const programId = CLOAK_PROGRAM_ID;
 
 async function sendWithWalletAdapter({
   walletPublicKey,

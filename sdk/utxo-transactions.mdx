@@ -67,11 +67,16 @@ const utxo = await createUtxo(100_000_000n, keypair, NATIVE_SOL_MINT);
 
 <CodeGroup>
 ```typescript Keypair bytes
-import { transact, createUtxo, generateUtxoKeypair } from "@cloak.dev/sdk";
-import { Connection, Keypair, PublicKey } from "@solana/web3.js";
+import {
+  CLOAK_PROGRAM_ID,
+  transact,
+  createUtxo,
+  generateUtxoKeypair,
+} from "@cloak.dev/sdk";
+import { Connection, Keypair } from "@solana/web3.js";
 
 const connection = new Connection(process.env.SOLANA_RPC_URL!, "confirmed");
-const programId = new PublicKey(process.env.CLOAK_PROGRAM_ID!);
+const programId = CLOAK_PROGRAM_ID;
 const depositorKeypair = Keypair.fromSecretKey(secretKeyBytes);
 
 const owner = await generateUtxoKeypair();
