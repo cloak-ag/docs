@@ -1,0 +1,74 @@
+---
+title: "AI integration"
+description: "Canonical llms files and one-shot prompts for Cloak integrations"
+icon: "message-bot"
+---
+
+Use this page to point coding agents at the right Cloak docs before they write code.
+
+## Canonical AI files
+
+| File | Purpose |
+| --- | --- |
+| `/llms.txt` | Top-level index of docs routes and integration entrypoints |
+| `/llms-full.txt` | Curated full export for agents that prefer one file |
+| `/sdk/llms.txt` | Exhaustive SDK contract and runtime invariants |
+| `/.well-known/llms.txt` | Compatibility alias that points to canonical files |
+
+## Recommended read order
+
+1. `/llms.txt`
+2. `/llms-full.txt`
+3. `/sdk/llms.txt`
+4. `/sdk/quickstart`
+5. `/sdk/utxo-transactions`
+
+## One-shot prompt: simple SOL send flow
+
+Use this as your first message in Claude Code, Cursor, or Windsurf.
+
+<Accordion title="Copy one-shot prompt">
+
+Implement a minimal Cloak integration for a simple SOL send flow using `@cloak.ag/sdk`.
+
+Read these docs first and follow them exactly:
+- `/llms.txt`
+- `/llms-full.txt`
+- `/sdk/llms.txt`
+- `/sdk/quickstart`
+- `/sdk/utxo-transactions`
+- `/sdk/wallet-integration`
+
+Build requirements:
+1) Use the UTXO API (not legacy note APIs) and keep transaction amounts as `bigint`.
+2) Implement deposit then full withdraw (send) flow:
+   - deposit with `transact(...)`
+   - send with `fullWithdraw(...)`
+3) Include one integration path using keypair bytes and one using wallet-adapter where relevant.
+4) Add progress and error states suitable for production UX.
+5) Never log secrets (private keys, viewing keys, signatures, raw note secrets).
+6) Include retry-safe handling for stale root issues.
+
+Return format:
+- capability matrix (`used` / `not used`) for: note API, UTXO API, scanner/compliance, viewing keys/metadata encryption, relay/proof/Merkle helpers, utility modules
+- file-by-file patches
+- commands run
+- verification summary
+
+</Accordion>
+
+## Success checklist
+
+- UTXO flow is the primary execution path.
+- `externalAmount` semantics are correct (`>0` deposit, `<0` withdraw).
+- All tx amount math stays in `bigint`.
+- No secret leakage in logs or telemetry.
+- Docs references are included in the implementation notes.
+
+## Related docs
+
+- [LLM Index](/llms.txt)
+- [LLM Full Export](/llms-full.txt)
+- [SDK LLM Reference](/sdk/llms.txt)
+- [Quickstart](/sdk/quickstart)
+- [UTXO Transactions](/sdk/utxo-transactions)

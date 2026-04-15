@@ -1,0 +1,56 @@
+# Cloak Documentation
+
+This file is the canonical index for AI coding agents integrating with Cloak.
+
+## AI Entrypoints
+
+- [AI integration](/ai-tools/ai-integration): Read order and one-shot prompt templates.
+- [LLM full export](/llms-full.txt): Single-file context pack for AI agents.
+- [SDK LLM reference](/sdk/llms.txt): Exhaustive `@cloak.ag/sdk` contract map and runtime invariants.
+- [Well-known alias](/.well-known/llms.txt): Compatibility path for tools that probe `.well-known`.
+
+## Documentation
+
+### Getting Started
+
+- [Platform Overview](/platform/overview): How Cloak fits together across SDK, programs, and circuits.
+- [Getting started with Cloak SDK](/sdk/introduction): Current SDK runtime guide with web3.js and Solana Kit options.
+- [Quickstart](/sdk/quickstart): Minimal mainnet setup with SOL send and withdraw examples.
+- [Code Examples](/sdk/examples): Production-style snippets for common integration flows.
+- [Solana Kit integration](/sdk/kit-integration): Integrate Cloak SDK in Kit-standardized codebases.
+
+### Platform
+
+- [Platform Components](/platform/components): Runtime boundaries for each subsystem.
+- [Transaction Flows](/platform/transaction-flows): Deposit, transfer, withdraw, and swap lifecycle details.
+- [Viewing Keys and Compliance](/architecture/viewing-keys-compliance): Key model, registration lifecycle, history behavior.
+
+### SDK
+
+- [Core concepts](/sdk/core-concepts): UTXO model, fee semantics, viewing-key behavior, root retries.
+- [UTXO Transactions](/sdk/utxo-transactions): Primary production APIs (`transact`, `fullWithdraw`, `swapWithChange`).
+- [Wallet integration](/sdk/wallet-integration): wallet-adapter wiring and secure signing patterns.
+- [Error handling](/sdk/error-handling): Retry categories and diagnostics strategy.
+- [API reference](/sdk/api-reference): Public exports and key type signatures.
+- [SDK LLM reference](/sdk/llms.txt): Deep AI-oriented export map for all runtime surfaces.
+
+### Protocol and Runtime
+
+- [Protocol Architecture](/protocol/architecture): End-to-end runtime path from client to on-chain state.
+- [Shield Pool Program](/protocol/shield-pool): Program behavior relevant to integrators.
+- [Circuits Package](/packages/circuits): Proof circuit build and hosting pipeline.
+- [Security](/operations/security): Trust boundaries and security controls.
+
+### AI Tooling
+
+- [Cursor setup](/ai-tools/cursor): Rules and prompt pack for Cursor.
+- [Claude Code setup](/ai-tools/claude-code): Rules and prompt pack for Claude Code.
+- [Windsurf setup](/ai-tools/windsurf): Rules and prompt pack for Windsurf.
+
+## Integration Tips For Agents
+
+- Prefer UTXO APIs for new integrations.
+- Keep tx amounts as `bigint` end-to-end.
+- Treat stale-root failures as retryable.
+- Never log private keys, viewing keys, signatures, or raw note secrets.
+- For one-shot work, start with `/ai-tools/ai-integration`.

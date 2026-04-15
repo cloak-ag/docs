@@ -27,6 +27,9 @@ mint dev
 - `services/` relay API docs
 - `packages/` circuit pipeline docs
 - `ai-tools/` IDE/assistant setup pages
+- `llms.txt` top-level AI index and route map
+- `llms-full.txt` single-file AI context pack
+- `.well-known/llms.txt` compatibility alias for AI tooling
 
 ## Source of truth
 
