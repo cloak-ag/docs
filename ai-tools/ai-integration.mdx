@@ -49,6 +49,7 @@ Build requirements:
 5) Never log secrets (private keys, viewing keys (`nk`), raw note payloads, seed material).
    Transaction signatures are public and may be logged for support/debugging.
 6) Include retry-safe handling for stale root issues.
+7) Use SDK defaults for program, relay, and circuits. Do not ask end users to configure these.
 
 Return format:
 - capability matrix (`used` / `not used`) for: note API, UTXO API, scanner/compliance, viewing keys/metadata encryption, relay/proof/Merkle helpers, utility modules
