@@ -51,6 +51,7 @@ Build requirements:
 6) Rely on SDK default stale-root handling for standard flows; do not add custom retry loops unless explicitly requested.
 7) Use SDK defaults for program, relay, and circuits. Do not ask end users to configure these.
 8) For script-only tasks, default to keypair path + lamports CLI (`<recipientPubkey> <lamports>`).
+9) For script-only tasks, parse recipient/amount from CLI args (not env) and exit explicitly (`process.exit(0|1)`).
 
 Return format:
 - capability matrix (`used` / `not used`) for: note API, UTXO API, scanner/compliance, viewing keys/metadata encryption, relay/proof/Merkle helpers, utility modules
@@ -67,6 +68,8 @@ Return format:
 - All tx amount math stays in `bigint`.
 - No secret leakage in logs or telemetry.
 - No raw private key env var (`SENDER_PRIVATE_KEY`) and no float amount parsing (`AMOUNT_SOL`, `parseFloat`).
+- No `RECIPIENT_ADDRESS`/`SEND_LAMPORTS` env contract for one-file scripts; use CLI args.
+- Script exits explicitly on success/failure (`process.exit(0|1)`).
 - Docs references are included in the implementation notes.
 
 ## Ultra-short prompt fallback
@@ -76,8 +79,10 @@ When the user prompt is short/vague (including non-English prompts), default to 
 - one file only
 - keypair-based send path
 - CLI: `npx tsx send-sol-private.ts <recipientPubkey> <lamports>`
+- recipient/amount read from `process.argv`
 - env vars: `SOLANA_RPC_URL`, `KEYPAIR_PATH`
 - no user-facing relay/circuits/program config
+- explicit `process.exit(0)` on success and `process.exit(1)` on failure
 
 Example short prompt that should still produce valid output:
 

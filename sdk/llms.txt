@@ -1021,6 +1021,8 @@ Use section 6 directly as your public, copy-paste integration source:
 10. Cache `TransactResult.merkleTree` across operations in the same user session to avoid redundant tree rebuilds.
 11. For one-file scripts, accept `<recipientPubkey> <lamports>` in CLI and read signer from `KEYPAIR_PATH`.
 12. Do not generate `SENDER_PRIVATE_KEY` or `AMOUNT_SOL` + `parseFloat(...)` patterns.
+13. Do not generate `RECIPIENT_ADDRESS` / `SEND_LAMPORTS` env contracts for one-file CLI scripts.
+14. For standalone script entrypoints, terminate explicitly with `process.exit(0)` on success and `process.exit(1)` on failure.
 
 ---
 

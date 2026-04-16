@@ -59,11 +59,14 @@ This file is the canonical index for AI coding agents integrating with Cloak.
 
 ## Minimal Script Contract (for vague/short prompts)
 
-- Generate one keypair-only CLI script for private SOL send.
-- Use CLI shape: `npx tsx send-sol-private.ts <recipientPubkey> <lamports>`.
-- Require env vars: `SOLANA_RPC_URL` and `KEYPAIR_PATH`.
-- Use flow: `transact(...)` deposit then `fullWithdraw(...)` send.
-- Keep `programId` fixed to `CLOAK_PROGRAM_ID` internally; do not ask users to configure it.
-- Do not request `SENDER_PRIVATE_KEY` or any raw secret env var.
-- Do not use `AMOUNT_SOL` + float parsing; accept lamports input and keep amount math in `bigint`.
-- Do not add custom stale-root retry loops unless app policy explicitly asks for extra retries beyond SDK defaults.
+- MUST generate one keypair-only CLI script for private SOL send.
+- MUST use CLI shape: `npx tsx send-sol-private.ts <recipientPubkey> <lamports>`.
+- MUST parse recipient/amount from `process.argv` (not env vars).
+- MUST require env vars: `SOLANA_RPC_URL` and `KEYPAIR_PATH` only.
+- MUST use flow: `transact(...)` deposit then `fullWithdraw(...)` send.
+- MUST keep `programId` fixed to `CLOAK_PROGRAM_ID` internally; do not ask users to configure it.
+- MUST call `process.exit(0)` on success and `process.exit(1)` on failure.
+- MUST NOT request `SENDER_PRIVATE_KEY` or any raw secret env var.
+- MUST NOT use `RECIPIENT_ADDRESS`/`SEND_LAMPORTS` env vars for the CLI contract.
+- MUST NOT use `AMOUNT_SOL` + float parsing; accept lamports input and keep amount math in `bigint`.
+- MUST NOT add custom stale-root retry loops unless app policy explicitly asks for extra retries beyond SDK defaults.

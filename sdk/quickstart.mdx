@@ -84,8 +84,10 @@ Guardrails:
 - keep tx amounts as `bigint`
 - use `KEYPAIR_PATH` (file-based keypair), not raw private key env vars
 - do not parse SOL decimals with float math (`parseFloat`, `AMOUNT_SOL`)
+- read recipient/amount from `process.argv` (`<recipientPubkey> <lamports>`), not `RECIPIENT_ADDRESS`/`SEND_LAMPORTS` env vars
 - keep `programId` fixed to `CLOAK_PROGRAM_ID` internally
 - rely on SDK stale-root retries for standard flows
+- call `process.exit(0)` on success and `process.exit(1)` on failure
 
 ## Mainnet smoke test (keypair bytes)
 
@@ -96,8 +98,6 @@ export SOLANA_RPC_URL="https://api.mainnet-beta.solana.com"
 
 # Must be an absolute path. Do not rely on `~` expansion inside env files.
 export KEYPAIR_PATH="/Users/you/.config/solana/id.json"
-export RECIPIENT_ADDRESS="<recipient-wallet-pubkey>"
-export SEND_LAMPORTS="50000000" # 0.05 SOL
 ```
 
 Sanity-check before running:
@@ -110,7 +110,7 @@ solana balance "$(solana-keygen pubkey "$KEYPAIR_PATH")" --url "$SOLANA_RPC_URL"
 Run your script entrypoint that wraps the snippet above:
 
 ```bash
-npx tsx send.ts "$RECIPIENT_ADDRESS" "$SEND_LAMPORTS"
+npx tsx send.ts "<recipient-wallet-pubkey>" "50000000"
 ```
 
 ## Funding and net amount
