@@ -62,7 +62,7 @@ This project integrates `@cloak.dev/sdk`.
 - Never log private keys, viewing keys (`nk`), seed material, or raw note payloads.
 - Transaction signatures are public and can be logged for support/debugging.
 - Use SDK defaults for program, relay, and circuits. Do not expose these as user-facing config.
-- Use retry/backoff for stale-root and transient RPC failures.
+- Rely on SDK stale-root retries by default; add extra app-level retry/backoff only when explicitly required.
 
 ## Reference docs
 

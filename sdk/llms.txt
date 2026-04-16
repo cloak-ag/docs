@@ -54,10 +54,11 @@ npm install @solana/spl-token @solana/kit
    - SPL: `fixed_fee_token = FIXED_FEE_LAMPORTS * (tokenPerSolPrice)` converted via the Q64.64 quote, plus `0.3 %` variable fee. See `calculateSplFeeBreakdown`.
    - Fees only apply on withdrawal/swap paths. Deposits pay zero protocol fee.
 7. Viewing-key registration is required before scanner/compliance flows can decrypt chain notes; for pure deposit/withdraw flows you can pass `enforceViewingKeyRegistration: false` to `TransactOptions`.
-8. Merkle root freshness: treat `RootNotFound` / stale-root errors as retryable. Use `preflightCheck` / `waitForRoot` before proving when possible.
+8. Merkle root freshness: treat `RootNotFound` / stale-root errors as retryable. SDK transaction paths already retry these by default; use `preflightCheck` / `waitForRoot` only for advanced/operator flows.
 9. Never log secrets: spend keys, viewing keys (`nk`), UTXO private keys, blindings, signed messages, note payloads.
 10. Standard integrations should use SDK defaults for program, relay, and circuits. Only override for custom/operator deployments.
 11. In low-level UTXO calls, keep `programId` fixed to `CLOAK_PROGRAM_ID` in one place and do not expose it as user configuration.
+12. Minimal scripts should use `KEYPAIR_PATH` + `<lamports>` input; do not use raw secret env vars or float amount parsing.
 
 ---
 
@@ -1016,8 +1017,10 @@ Use section 6 directly as your public, copy-paste integration source:
 6. Use SDK defaults for program, relay, and circuits in standard integrations.
 7. Prefer `scanTransactions` + `toComplianceReport` for user history UX. Do not re-invent compliance endpoints.
 8. For mutating paths in the browser, prefer the wallet adapter (`signTransaction` / `signMessage`). Reserve `depositorKeypair` for Node scripts.
-9. On `RootNotFoundError`, retry with `waitForRoot` or a `cachedMerkleTree`. Do not swallow it as a generic failure.
+9. Do not add manual stale-root retry loops by default in app scripts; SDK transaction paths already handle these retries.
 10. Cache `TransactResult.merkleTree` across operations in the same user session to avoid redundant tree rebuilds.
+11. For one-file scripts, accept `<recipientPubkey> <lamports>` in CLI and read signer from `KEYPAIR_PATH`.
+12. Do not generate `SENDER_PRIVATE_KEY` or `AMOUNT_SOL` + `parseFloat(...)` patterns.
 
 ---
 

@@ -59,7 +59,7 @@ We use `@cloak.dev/sdk`.
 - Use SDK defaults for program, relay, and circuits. Do not expose these as user-facing config.
 - Enforce viewing-key registration before protocol actions.
 - Keep privacy history cache-first, then explicit rescan.
-- Handle stale-root + RPC errors with retry/backoff.
+- Rely on SDK stale-root retries by default; add extra app-level retry/backoff only when explicitly required.
 
 ## Required references
 

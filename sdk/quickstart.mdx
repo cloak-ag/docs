@@ -71,6 +71,22 @@ await fullWithdraw(deposited.outputUtxos, recipient, {
 // });
 ```
 
+## One-file CLI contract (recommended for one-shot scripts)
+
+For minimal script generation, keep this exact interface:
+
+- file: `send-sol-private.ts`
+- command: `npx tsx send-sol-private.ts <recipientPubkey> <lamports>`
+- env vars: `SOLANA_RPC_URL`, `KEYPAIR_PATH`
+
+Guardrails:
+
+- keep tx amounts as `bigint`
+- use `KEYPAIR_PATH` (file-based keypair), not raw private key env vars
+- do not parse SOL decimals with float math (`parseFloat`, `AMOUNT_SOL`)
+- keep `programId` fixed to `CLOAK_PROGRAM_ID` internally
+- rely on SDK stale-root retries for standard flows
+
 ## Mainnet smoke test (keypair bytes)
 
 Use this when you want a first real send with explicit runtime values.

@@ -48,8 +48,9 @@ Build requirements:
 4) Add progress and error states suitable for production UX.
 5) Never log secrets (private keys, viewing keys (`nk`), raw note payloads, seed material).
    Transaction signatures are public and may be logged for support/debugging.
-6) Include retry-safe handling for stale root issues.
+6) Rely on SDK default stale-root handling for standard flows; do not add custom retry loops unless explicitly requested.
 7) Use SDK defaults for program, relay, and circuits. Do not ask end users to configure these.
+8) For script-only tasks, default to keypair path + lamports CLI (`<recipientPubkey> <lamports>`).
 
 Return format:
 - capability matrix (`used` / `not used`) for: note API, UTXO API, scanner/compliance, viewing keys/metadata encryption, relay/proof/Merkle helpers, utility modules
@@ -65,7 +66,22 @@ Return format:
 - `externalAmount` semantics are correct (`>0` deposit, `<0` withdraw).
 - All tx amount math stays in `bigint`.
 - No secret leakage in logs or telemetry.
+- No raw private key env var (`SENDER_PRIVATE_KEY`) and no float amount parsing (`AMOUNT_SOL`, `parseFloat`).
 - Docs references are included in the implementation notes.
+
+## Ultra-short prompt fallback
+
+When the user prompt is short/vague (including non-English prompts), default to this output shape:
+
+- one file only
+- keypair-based send path
+- CLI: `npx tsx send-sol-private.ts <recipientPubkey> <lamports>`
+- env vars: `SOLANA_RPC_URL`, `KEYPAIR_PATH`
+- no user-facing relay/circuits/program config
+
+Example short prompt that should still produce valid output:
+
+`faca um script com esse sdk para mandar sol privado https://docs.cloak.ag`
 
 ## Related docs
 

@@ -52,7 +52,18 @@ This file is the canonical index for AI coding agents integrating with Cloak.
 - Prefer UTXO APIs for new integrations.
 - Use SDK defaults for program, relay, and circuits in standard integrations.
 - Keep tx amounts as `bigint` end-to-end.
-- Treat stale-root failures as retryable.
+- Treat stale-root failures as retryable (SDK transaction paths already do this by default).
 - Never log private keys, viewing keys (`nk`), seed material, or raw note payloads.
 - Transaction signatures are public and can be logged for support/debugging.
 - For one-shot work, start with `/ai-tools/ai-integration`.
+
+## Minimal Script Contract (for vague/short prompts)
+
+- Generate one keypair-only CLI script for private SOL send.
+- Use CLI shape: `npx tsx send-sol-private.ts <recipientPubkey> <lamports>`.
+- Require env vars: `SOLANA_RPC_URL` and `KEYPAIR_PATH`.
+- Use flow: `transact(...)` deposit then `fullWithdraw(...)` send.
+- Keep `programId` fixed to `CLOAK_PROGRAM_ID` internally; do not ask users to configure it.
+- Do not request `SENDER_PRIVATE_KEY` or any raw secret env var.
+- Do not use `AMOUNT_SOL` + float parsing; accept lamports input and keep amount math in `bigint`.
+- Do not add custom stale-root retry loops unless app policy explicitly asks for extra retries beyond SDK defaults.

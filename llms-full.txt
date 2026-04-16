@@ -105,7 +105,7 @@ These are intentionally repeated here because agents often miss them.
    - `> 0n` = deposit
    - `< 0n` = withdraw or swap
    - `0n` = shield-to-shield transfer
-4. Treat stale-root and root-not-found issues as retryable.
+4. Treat stale-root and root-not-found issues as retryable (SDK transaction paths already retry by default).
 5. Never log secrets (private keys, viewing keys (`nk`), seed material, raw note payloads).
 6. Transaction signatures are public and can be logged for support/debugging.
 7. Viewing-key registration affects scanner/compliance readability.
@@ -183,7 +183,8 @@ await fullWithdraw(deposited.outputUtxos, recipient, {
 - uses `bigint` for transaction amounts
 - no secret logging
 - includes progress and user-facing error states
-- handles retryable root freshness failures
+- uses `KEYPAIR_PATH` + `<recipientPubkey> <lamports>` for minimal CLI scripts
+- does not use `SENDER_PRIVATE_KEY` or `AMOUNT_SOL` + `parseFloat(...)`
 
 ---
 
@@ -194,10 +195,13 @@ Copy this prompt into your coding assistant:
 "Implement a minimal Cloak SOL send integration with `@cloak.dev/sdk`.
 Before coding, read `/llms.txt`, `/llms-full.txt`, `/sdk/llms.txt`, `/sdk/quickstart`, and `/sdk/utxo-transactions`.
 Use UTXO APIs with bigint-safe logic and implement deposit plus full-withdraw send flow.
-Include keypair-bytes path and wallet-adapter path where relevant.
+For script tasks, generate one keypair-only file with CLI shape `npx tsx send-sol-private.ts <recipientPubkey> <lamports>`.
+Use env vars `SOLANA_RPC_URL` and `KEYPAIR_PATH` only.
+Do not generate `SENDER_PRIVATE_KEY` or `AMOUNT_SOL` float parsing.
+Use SDK defaults for program, relay, and circuits.
 Do not log secrets.
 Add progress + error UX.
-Treat stale-root errors as retryable.
+Rely on SDK stale-root retries for standard flows.
 Return a capability matrix, file patches, commands run, and verification summary."
 
 ---
