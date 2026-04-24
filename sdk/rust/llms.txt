@@ -1,0 +1,388 @@
+# Rust SDK LLM Reference
+
+This file is for AI coding agents integrating the `cloak-sdk` Rust crate. Dense,
+code-first, grounded in real exports. Every signature and recipe below maps to
+a real `pub` item in the `cloak-sdk` crate.
+
+Prose guides live under:
+
+- `/sdk/rust/introduction`
+- `/sdk/rust/quickstart`
+- `/sdk/rust/core-concepts`
+- `/sdk/rust/api-reference`
+- `/sdk/rust/error-handling`
+
+Protocol-level shared concepts (same as the TypeScript SDK):
+
+- `/sdk/core-concepts`
+- `/platform/transaction-flows`
+- `/architecture/viewing-keys-compliance`
+
+---
+
+## 1. Crate
+
+- Name: `cloak-sdk`
+- Edition: 2024 (Rust 1.80+)
+- Install:
+
+```toml
+[dependencies]
+cloak-sdk = { git = "https://github.com/cloak-ag/rustsdk" }
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+```
+
+- Runtime: async throughout (`tokio`).
+- Depends on the focused `solana-*` crates (`solana-keypair`, `solana-pubkey`,
+  `solana-transaction`, `solana-rpc-client`, etc.). Does **not** use the
+  `solana-sdk` umbrella.
+- Hashing: BN254 Poseidon via `light-poseidon` + blake3.
+- Proof system: Groth16 via `ark-circom` + `ark-bn254` + `ark-groth16`.
+- Program ID (default, mainnet): `zh1eLd6rSphLejbFfJEneUwzHRfMKxgzrgkfwA6qRkW`.
+
+---
+
+## 2. Runtime contract (invariants an agent MUST preserve)
+
+1. `TransactOptions.external_amount: i64` semantics:
+   - `> 0` → **deposit** (direct submission; `opts.payer` signs the SOL/SPL transfer).
+   - `< 0` → **withdraw** (relay when `relay_url` is set; otherwise direct).
+   - `== 0` → **shield-to-shield transfer** (relay by default).
+2. Every transact has exactly 2 inputs and 2 outputs. Preflight pads zero-UTXOs automatically — callers supply the real ones.
+3. Balance identity enforced by preflight: `sum(inputs) + external_amount == sum(outputs)`.
+4. Amounts are `u64` (or `i64` for `external_amount`). Internal balance check uses `i128` to avoid overflow.
+5. Public inputs are a 264-byte blob; the orchestrator builds it — never hand-pack.
+6. Fees (shared with the TS SDK):
+   - Fixed: `5_000_000` lamports.
+   - Variable: `3 / 1000` of gross (for withdrawal/swap).
+   - Minimum SOL deposit: `10_000_000` lamports.
+7. Swaps (`opts.swap = Some(SwapOptions {...})`) are **relay-only**. `submit_direct` rejects them with `Error::Config`.
+8. Direct **SPL withdraw** is rejected (needs fee-quote path via relay) — use `opts.relay_url` for SPL withdrawals.
+9. `RootNotFound` and `StaleProofState` are retryable and are handled by the outer retry loop automatically.
+10. Never log secrets: UTXO private keys (`Fr`), viewing keys (`nk: [u8; 32]`), blindings, seed material, raw note payloads.
+11. Standard integrations should use SDK defaults for program, relay, and circuits.
+
+---
+
+## 3. Core constants
+
+```rust
+use cloak_sdk::constants::{
+    CLOAK_PROGRAM_ID,            // Pubkey, mainnet
+    NATIVE_SOL_MINT,             // Pubkey, So111...112
+    MIN_DEPOSIT_LAMPORTS,        // u64 = 10_000_000
+    DEFAULT_MAX_ROOT_RETRIES,    // u32 = 40
+    MERKLE_TREE_HEIGHT,          // usize = 32
+    ENVELOPE_VERSION,            // u8 = 0x02
+    DISCRIMINATOR_TRANSACT,      // u8 = 0x00
+    DISCRIMINATOR_TRANSACT_SWAP, // u8 = 0x01
+    CIRCUITS_BASE_URL,           // &str, pinned S3 path
+};
+use cloak_sdk::core::chain_note::CHAIN_NOTE_TAG; // u64 = 2
+```
+
+Fee helpers live under `cloak_sdk::utils::fees`.
+
+---
+
+## 4. Entrypoint and option shape
+
+```rust
+use cloak_sdk::core::transact::{transact, TransactOptions, TransactResult};
+
+pub async fn transact(opts: TransactOptions) -> cloak_sdk::error::Result<TransactResult>;
+```
+
+One function, every flow. `TransactOptions` is the single knob surface:
+
+```rust
+pub struct TransactOptions {
+    // Params
+    pub inputs: Vec<Utxo>,
+    pub outputs: Vec<Utxo>,
+    pub external_amount: i64,
+    pub mint: Option<Pubkey>,
+    pub recipient: Option<Pubkey>,
+
+    // Submission handles
+    pub rpc: Option<Arc<dyn RpcProvider>>,
+    pub payer: Option<Arc<Keypair>>,
+    pub relay_url: Option<String>,
+
+    // Swap (relay-only)
+    pub swap: Option<SwapOptions>,
+    pub swap_status_max_attempts: Option<u32>, // default 60
+    pub swap_status_delay_ms: Option<u64>,     // default 2000
+
+    // Risk oracle
+    pub enable_risk_check: bool,
+    pub risk_quote_url: Option<String>, // auto-derives ${relay_url}/range-quote
+
+    // Viewing key
+    pub require_viewing_key: bool,
+    pub chain_note_nk: Option<[u8; 32]>,
+
+    // Relayer meta (bound into extDataHash)
+    pub relayer: Option<Pubkey>,
+    pub relayer_fee: u64,
+
+    // Caching / chaining
+    pub cached_merkle_tree: Option<MerkleTree>,
+    pub address_lookup_table_accounts: Vec<AddressLookupTableAccount>,
+
+    // Retry tuning
+    pub max_root_retries: Option<u32>,         // default 40
+    pub alt_warmup_ms: Option<u64>,             // default 800
+    pub transport_backoff_base_ms: Option<u64>, // default 500
+}
+```
+
+```rust
+pub struct TransactResult {
+    pub signature: Signature,
+    pub nullifiers: [Fr; 2],
+    pub output_commitments: [Fr; 2],
+    pub output_indices: [Option<u32>; 2],
+    pub sibling_commitments: [Option<Fr>; 2],
+    pub pre_transaction_left_sibling: Option<Fr>,
+    pub cached_merkle_tree: Option<MerkleTree>,
+    pub address_lookup_table_accounts: Vec<AddressLookupTableAccount>,
+}
+```
+
+Thread `cached_merkle_tree` and `address_lookup_table_accounts` from one result into the next `TransactOptions` to skip `/commitments` + ALT recreation.
+
+---
+
+## 5. UTXO primitives
+
+```rust
+use cloak_sdk::core::utxo::{Utxo, UtxoKeypair, compute_commitment};
+
+let kp = UtxoKeypair::generate()?;                  // random field-element keypair
+let u = Utxo::new(amount_u64, kp, mint_pubkey)?;    // commitment cached eagerly
+let zero = Utxo::zero(Some(mint), None)?;            // for padding (random salt)
+let commitment: Fr = compute_commitment(&u)?;
+let nullifier: Fr = u.compute_nullifier()?;          // requires u.index
+```
+
+`UtxoKeypair` is **not** a Solana keypair — it's a Poseidon-compatible field-element keypair. Save it alongside the note; it's required to spend.
+
+---
+
+## 6. RPC
+
+```rust
+use cloak_sdk::rpc::{RpcProvider, SolanaRpc};
+
+let rpc = SolanaRpc::new("https://api.mainnet-beta.solana.com");
+// or: SolanaRpc::with_commitment(url, CommitmentConfig::confirmed());
+```
+
+Trait surface (object-safe via `async-trait`):
+
+```rust
+async fn get_account_data(&self, pubkey: &Pubkey) -> Result<Vec<u8>>;
+async fn latest_blockhash(&self)             -> Result<Hash>;
+async fn send_and_confirm(&self, wire: &[u8]) -> Result<Signature>;
+async fn get_slot(&self)                     -> Result<u64>;
+```
+
+Tests use `rpc::test_support::MockRpc` (scripted responses, captured sends).
+
+---
+
+## 7. Relay
+
+```rust
+use cloak_sdk::services::relay::{
+    Relay, CommitmentsQuery, RangeQuoteQuery,
+    TransactRequest, TransactSwapRequest,
+    build_transact_request, build_transact_swap_request,
+    build_merkle_tree_from_relay,
+    fetch_risk_quote, wait_for_swap_completion,
+    SWAP_STATUS_DEFAULT_MAX_ATTEMPTS, SWAP_STATUS_DEFAULT_DELAY_MS,
+};
+
+let relay = Relay::new("https://api.cloak.ag");
+
+relay.commitments(&query).await?;                // GET /commitments
+relay.merkle_root(&mint).await?;                  // GET /merkle-root
+relay.transact(&body).await?;                     // POST /transact
+relay.transact_swap(&body).await?;                // POST /transact_swap  → { request_id, ... }
+relay.status(&request_id).await?;                 // GET /status/{id}
+relay.viewing_key_challenge(&user).await?;        // POST /viewing-key/challenge → { nonce, message }
+relay.viewing_key_register(&body).await?;         // POST /viewing-key/register
+relay.range_quote(&query).await?;                 // GET /range-quote → RiskQuote
+```
+
+---
+
+## 8. Recipes
+
+### SOL deposit (direct)
+
+```rust
+use std::sync::Arc;
+use cloak_sdk::{
+    constants::{MIN_DEPOSIT_LAMPORTS, NATIVE_SOL_MINT},
+    core::{transact::{transact, TransactOptions}, utxo::{Utxo, UtxoKeypair}},
+    rpc::SolanaRpc,
+};
+use solana_keypair::Keypair;
+
+let rpc = Arc::new(SolanaRpc::new(rpc_url));
+let payer = Arc::new(Keypair::from_bytes(&secret_bytes).unwrap());
+let output = Utxo::new(
+    MIN_DEPOSIT_LAMPORTS,
+    UtxoKeypair::generate()?,
+    NATIVE_SOL_MINT,
+)?;
+
+let opts = TransactOptions {
+    inputs: vec![],
+    outputs: vec![output],
+    external_amount: MIN_DEPOSIT_LAMPORTS as i64,
+    rpc: Some(rpc),
+    payer: Some(payer),
+    relay_url: Some("https://api.cloak.ag".into()),
+    ..Default::default()
+};
+let result = transact(opts).await?;
+```
+
+### Shield-to-shield transfer
+
+```rust
+// input_utxo.index must be set (assigned at deposit time).
+let opts = TransactOptions {
+    inputs: vec![input_utxo],
+    outputs: vec![recipient_output, change_output],
+    external_amount: 0,
+    rpc: Some(rpc),
+    payer: Some(payer),
+    relay_url: Some("https://api.cloak.ag".into()),
+    cached_merkle_tree: prior_result.cached_merkle_tree,
+    ..Default::default()
+};
+let result = transact(opts).await?;
+```
+
+### Withdraw
+
+```rust
+let opts = TransactOptions {
+    inputs: vec![input_utxo],
+    outputs: vec![change_output, Utxo::zero(Some(mint), None)?],
+    external_amount: -(withdraw_amount as i64),
+    recipient: Some(recipient_pubkey),
+    rpc: Some(rpc),
+    payer: Some(payer),        // ignored on relay path but required for sender metadata
+    relay_url: Some(relay_url),
+    ..Default::default()
+};
+let result = transact(opts).await?;
+```
+
+### Swap (relay-only, two-phase)
+
+```rust
+use cloak_sdk::core::transact::options::SwapOptions;
+
+let opts = TransactOptions {
+    inputs: vec![input_utxo],
+    outputs: vec![change_output, Utxo::zero(Some(input_mint), None)?],
+    external_amount: -(swap_amount as i64),
+    recipient: Some(recipient_wallet),
+    swap: Some(SwapOptions {
+        output_mint,
+        recipient_ata,
+        min_output_amount,
+        slippage_bps: 500,
+        dexes: None,
+        exclude_dexes: None,
+    }),
+    rpc: Some(rpc),
+    relay_url: Some(relay_url),
+    ..Default::default()
+};
+// transact() internally posts /transact_swap then polls /status/{request_id}.
+let result = transact(opts).await?;
+```
+
+---
+
+## 9. Error enum + retry semantics
+
+```rust
+use cloak_sdk::error::{Error, Result};
+
+pub enum Error {
+    Config(&'static str),
+    Validation(&'static str),
+    InsufficientFunds { available: u64, required: u64 },
+    MissingUtxos,
+    Storage(&'static str),
+    Signer(&'static str),
+    Crypto(&'static str),
+    RootNotFound,            // 0x1001 — outer loop refreshes tree, re-proves
+    BlockhashExpired,        // inner submit_direct loop refreshes blockhash + resigns
+    StaleProofState,         // circuit assertion — outer loop forces chain-indexing rebuild
+    Relay(&'static str),
+}
+```
+
+Two retry loops run automatically:
+
+- **Outer** (`max_root_retries`, default 40): re-proves on `RootNotFound` / `StaleProofState`.
+- **Inner** (`submit_direct` only): 2× blockhash refresh on `BlockhashExpired`, 3× same-bytes retry on transient `Error::Relay` with exp-backoff + jitter.
+
+Dynamic error bodies are logged via `tracing` at `debug` level. Enable with `RUST_LOG=cloak_sdk=debug`.
+
+---
+
+## 10. Composition scope
+
+`cloak-sdk` is the engine. It owns the protocol primitives — proving, chain-note
+encryption, viewing-key registration, direct + relay submission with retries,
+ALT auto-creation, swap polling, typed error classification — and exposes them
+through one function (`transact()`) and a handful of helpers.
+
+What the engine deliberately leaves to consumers:
+
+- **Wallet / UTXO-set management.** Pick any storage (sled, sqlite, memory). The engine returns commitments, indices, siblings, and the post-tx Merkle tree on each call so you can persist what you need.
+- **Chain scanner / compliance reports.** `get_account_data` + `get_signatures_for_address` via your `RpcProvider` are all you need; trial-decrypt chain notes with `ChainNote::decrypt(nk, candidates)` and classify by discriminator.
+- **High-level wallet façades.** The TS `CloakSDK` class is an ergonomic wrapper on top of the engine; build your own shape that matches your app's lifecycle.
+
+Alternate providers not currently wired through the crate:
+
+- **Switchboard direct risk quotes** — gated behind the `switchboard` Cargo feature. The relay `/range-quote` path is wired and is the standard production path.
+- **Relay-discovered ALTs** via `/health` — the engine auto-creates ephemeral ALTs and returns them for caller reuse, so this path is optional.
+
+---
+
+## 11. Validation checklist for AI agents
+
+- Uses `cloak_sdk::core::transact::transact` as the entrypoint.
+- Populates `opts.rpc` and `opts.payer`; sets `opts.relay_url` for non-deposit flows.
+- Amounts are `u64` / `i64` — no float math.
+- Derives and saves UTXO keypairs durably (they're required to spend).
+- No secret logging.
+- Uses SDK defaults for program / relay / circuits (no user-facing config).
+- Relies on built-in retry loops (no custom stale-root loops unless app policy demands it).
+
+---
+
+## 12. Sources of truth
+
+When docs differ from code, trust the implementation:
+
+- Public API: `rustsdk/src/lib.rs`
+- Orchestrator: `rustsdk/src/core/transact.rs`
+- Option/result types: `rustsdk/src/core/transact/{options,result,flow,envelope,proof}.rs`
+- Relay typed surface: `rustsdk/src/services/relay.rs`
+- RPC trait + impl: `rustsdk/src/rpc.rs`
+- Instruction builders: `rustsdk/src/solana/instructions.rs`
+- ALT creation: `rustsdk/src/solana/alt.rs`
+- Proof generation: `rustsdk/src/utils/proof_generation.rs`
+- Error enum: `rustsdk/src/error.rs`

@@ -17,10 +17,7 @@
             "group": "Getting Started",
             "pages": [
               "platform/overview",
-              "sdk/introduction",
-              "sdk/quickstart",
-              "sdk/examples",
-              "sdk/kit-integration"
+              "sdk/introduction"
             ]
           },
           {
@@ -32,13 +29,26 @@
             ]
           },
           {
-            "group": "SDK",
+            "group": "TypeScript SDK",
             "pages": [
+              "sdk/quickstart",
+              "sdk/examples",
+              "sdk/kit-integration",
               "sdk/core-concepts",
               "sdk/utxo-transactions",
               "sdk/wallet-integration",
               "sdk/error-handling",
               "sdk/api-reference"
+            ]
+          },
+          {
+            "group": "Rust SDK",
+            "pages": [
+              "sdk/rust/introduction",
+              "sdk/rust/quickstart",
+              "sdk/rust/core-concepts",
+              "sdk/rust/api-reference",
+              "sdk/rust/error-handling"
             ]
           },
           {

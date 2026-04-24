@@ -1,0 +1,120 @@
+---
+title: "Core concepts"
+description: "How Rust types map to Cloak protocol primitives"
+icon: "lightbulb"
+---
+
+This page covers the Rust-specific shape of the primitives. The protocol-level concepts (commitments, Merkle tree, nullifiers, fees) are identical across both SDKs — see [the shared core concepts page](/sdk/core-concepts) for those.
+
+## Flow classification
+
+Every transact is one of three flows, discriminated by the sign of `external_amount`:
+
+```rust
+pub enum FlowKind {
+    Deposit { amount: u64 },   // external_amount > 0
+    Transfer,                  // external_amount == 0
+    Withdraw { amount: u64 },  // external_amount < 0
+}
+```
+
+Preflight classifies automatically — you never construct `FlowKind` yourself. The orchestrator then routes:
+
+- **Deposits** → always direct submission (user must sign the SOL/SPL transfer into the pool).
+- **Transfers / withdrawals** → relay when `relay_url` is set, else direct.
+- **Swaps** → always relay (the relay selects DEX routes).
+
+## UTXOs
+
+```rust
+pub struct Utxo {
+    pub amount: u64,
+    pub keypair: UtxoKeypair,           // Poseidon-compatible field-element keypair
+    pub blinding: Fr,                   // per-UTXO entropy
+    pub mint: Pubkey,
+    pub index: Option<u32>,             // assigned when inserted into the tree
+    pub commitment: Option<Fr>,         // memoized: Poseidon(amount, pk, blinding, mint)
+    pub nullifier: Option<Fr>,          // memoized: requires index to be set
+    pub sibling_commitment: Option<Fr>, // cached sibling at leaf level
+}
+```
+
+The `keypair` field is a **field-element keypair** (not an Ed25519 Solana keypair). It's how you prove ownership of a note later — save it.
+
+The fixed-arity circuit consumes exactly 2 inputs and 2 outputs. You supply the real ones; preflight pads with zero-UTXOs (random blinding) up to 2 each.
+
+## `TransactOptions` as the single knob surface
+
+Every flow is one struct. Common fields:
+
+| Field | Purpose |
+|---|---|
+| `inputs`, `outputs` | the UTXOs being consumed / created (≤ 2 each) |
+| `external_amount: i64` | signed — sign discriminates flow kind |
+| `mint: Option<Pubkey>` | override; defaults to first non-zero UTXO's mint |
+| `recipient: Option<Pubkey>` | required for withdrawals |
+| `rpc: Option<Arc<dyn RpcProvider>>` | real or mock RPC handle |
+| `payer: Option<Arc<Keypair>>` | signer for direct submission + VK |
+| `relay_url: Option<String>` | when set, non-deposits route via relay |
+
+Flow-specific extras:
+
+| Field | Purpose |
+|---|---|
+| `swap: Option<SwapOptions>` | set for a TransactSwap flow (relay-only) |
+| `enable_risk_check: bool` | prepend Ed25519 risk-quote sigverify |
+| `risk_quote_url: Option<String>` | overrides the auto-derived `${relay_url}/range-quote` |
+| `require_viewing_key: bool` | run VK challenge+register before proving |
+| `chain_note_nk: Option<[u8; 32]>` | explicit viewing key (else derived from UTXO key) |
+
+Chaining:
+
+| Field | Purpose |
+|---|---|
+| `cached_merkle_tree: Option<MerkleTree>` | skip `/commitments` fetch when set |
+| `address_lookup_table_accounts` | reuse ALTs from a prior `TransactResult` |
+| `max_root_retries: Option<u32>` | default 40 |
+| `alt_warmup_ms: Option<u64>` | delay after ALT creation; default 800 ms |
+
+## The retry loop
+
+`transact()` runs up to `max_root_retries` iterations of:
+
+1. **fetch merkle proofs** — pull on-chain state + rebuild local tree
+2. **build circuit inputs** — 90 signals, decimal-encoded
+3. **prove** — Groth16 via ark-circom (heavy; cached artifacts + `spawn_blocking`)
+4. **encrypt chain notes** — one compact note bound to output_commitments[0]
+5. **submit** — direct (with blockhash + transport retries) or relay POST
+6. **reconcile indices** — best-effort poll to fill `output_indices`
+
+Errors map to `IterationStatus`:
+
+| Error variant | Status | Next iteration |
+|---|---|---|
+| `Error::RootNotFound` | `RootNotFound` | drop cached tree, re-prove against fresh root |
+| `Error::StaleProofState` | `StaleProofState` | force chain-indexing rebuild, re-prove |
+| `Error::BlockhashExpired` | handled inside `submit_direct` | refresh blockhash + re-sign |
+| any other | `FatalError` | bubble up to caller |
+
+## Commitments and the cached tree
+
+After each successful transact, `TransactResult.cached_merkle_tree` holds a local `MerkleTree` with the two new output commitments appended. Thread it into the next `TransactOptions.cached_merkle_tree` and you skip the `/commitments` fetch on the next call — the orchestrator seeds `LoopState.merkle_tree` from it directly.
+
+`sibling_commitments` and `pre_transaction_left_sibling` on the result are populated from the post-tx tree so the next proof can use them without a fresh relay hit.
+
+## Chain notes
+
+Every non-zero-output transact emits exactly one compact v2 chain note:
+
+- **Primary commitment**: `output_commitments[0]` — same value bound into `chainNoteHash`.
+- **Plaintext**: 8-byte LE unix timestamp.
+- **Encryption**: `HKDF-SHA256(ikm=nk, salt=commitment)` → AES-256-GCM key + nonce.
+- **Envelope**: `[0x02 | count | (len, ciphertext)*]` appended at instruction byte 521.
+
+`nk` resolution falls back: `opts.chain_note_nk` → first non-zero output's UTXO key → first non-zero input's.
+
+## Related
+
+- [API reference](/sdk/rust/api-reference) — full type definitions.
+- [Error handling](/sdk/rust/error-handling) — the `Error` enum and when each variant fires.
+- [Shared core concepts](/sdk/core-concepts) — protocol-level primitives that apply to both SDKs.

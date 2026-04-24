@@ -1,0 +1,141 @@
+---
+title: "Quickstart"
+description: "First direct-path SOL deposit end-to-end with the Rust SDK"
+icon: "rocket"
+---
+
+This walks through the smallest useful integration: a single-output SOL deposit submitted directly (user signs).
+
+## Prerequisites
+
+- Rust 1.80+ (edition 2024)
+- A funded Solana keypair (mainnet or a local validator)
+- A Solana RPC endpoint
+
+## Project setup
+
+```toml
+# Cargo.toml
+[package]
+name = "cloak-quickstart"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+cloak-sdk = { git = "https://github.com/cloak-ag/rustsdk" }
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+anyhow = "1"
+solana-keypair = "3.1"
+```
+
+## A SOL deposit end-to-end
+
+```rust
+use std::sync::Arc;
+
+use cloak_sdk::{
+    constants::{MIN_DEPOSIT_LAMPORTS, NATIVE_SOL_MINT},
+    core::{
+        transact::{transact, TransactOptions},
+        utxo::{Utxo, UtxoKeypair},
+    },
+    rpc::SolanaRpc,
+};
+use solana_keypair::Keypair;
+
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    // ---- 1. Wire up RPC + payer -----------------------------------------
+    let rpc = Arc::new(SolanaRpc::new("https://api.mainnet-beta.solana.com"));
+    let payer = Arc::new(Keypair::new()); // replace with a funded keypair
+
+    // ---- 2. Create the output UTXO --------------------------------------
+    // A UTXO is a (keypair, amount, mint) triple. The keypair is local-only
+    // — save it somewhere durable, it's how you'll spend this note later.
+    let utxo_kp = UtxoKeypair::generate()?;
+    let output = Utxo::new(MIN_DEPOSIT_LAMPORTS, utxo_kp, NATIVE_SOL_MINT)?;
+
+    // ---- 3. Describe the transaction ------------------------------------
+    let opts = TransactOptions {
+        // Flow shape: no inputs, one output, external_amount > 0 = deposit.
+        inputs: vec![],
+        outputs: vec![output],
+        external_amount: MIN_DEPOSIT_LAMPORTS as i64,
+
+        // Handles
+        rpc: Some(rpc),
+        payer: Some(payer),
+        relay_url: Some("https://api.cloak.ag".into()),
+
+        ..Default::default()
+    };
+
+    // ---- 4. Run the engine ----------------------------------------------
+    let result = transact(opts).await?;
+
+    println!("signature: {}", result.signature);
+    println!("output commitments: {:?}", result.output_commitments);
+    println!("assigned leaf indices: {:?}", result.output_indices);
+
+    // Cache the post-tx Merkle tree for the next transact to skip
+    // `/commitments` on the next call:
+    if let Some(tree) = &result.cached_merkle_tree {
+        println!("cached tree has {} leaves", tree.len());
+    }
+
+    Ok(())
+}
+```
+
+## What just happened
+
+1. **Preflight** (synchronous, pure): validated arity / balance / mint, classified the flow as `Deposit`, and padded inputs to the fixed 2-in/2-out arity.
+2. **Viewing-key registration** (skipped by default — flip `require_viewing_key` to enable): challenge + register against the relay with the payer signing the message.
+3. **Merkle fetch**: pulled the on-chain tree state via RPC and the commitment set via relay `/commitments`, falling back to a frontier proof if needed.
+4. **Circuit input packing**: 90 decimal-string signals, in the exact order the circom transaction circuit consumes.
+5. **Proof generation**: ark-circom + ark-groth16 emitted a 256-byte proof. Artifacts (wasm + zkey) cache under `~/Library/Caches/cloak-sdk/circuits/0.1.0/` on macOS, `~/.cache/cloak-sdk/circuits/0.1.0/` on Linux.
+6. **Chain-note encryption**: a single compact v2 note bound to the primary output commitment, encrypted under HKDF-derived AES-256-GCM.
+7. **Direct submission**: compiled a v0 transaction, signed with the payer, auto-created an ephemeral ALT if the tx exceeded 1232 bytes, retried on blockhash expiry and transient transport errors.
+8. **Commitment reconciliation**: best-effort poll against `/commitments` to fill `output_indices`.
+
+All this is one `transact(opts).await?` call.
+
+## Chaining transactions
+
+Thread the returned tree and ALTs into the next call to avoid repeating work:
+
+```rust
+let first = transact(deposit_opts).await?;
+
+let transfer_opts = TransactOptions {
+    // Spend the output we just created
+    inputs: vec![/* the Utxo with its keypair, index set to first.output_indices[0] */],
+    outputs: vec![/* one new output for the recipient, one zero-UTXO change */],
+    external_amount: 0, // shield-to-shield transfer
+    cached_merkle_tree: first.cached_merkle_tree,
+    address_lookup_table_accounts: first.address_lookup_table_accounts,
+    ..base_opts
+};
+
+let second = transact(transfer_opts).await?;
+```
+
+## Next steps
+
+<CardGroup cols={2}>
+<Card title="Core concepts" icon="lightbulb" href="/sdk/rust/core-concepts">
+  How UTXOs, proofs, and retries map to Rust types.
+</Card>
+
+<Card title="API reference" icon="rectangle-terminal" href="/sdk/rust/api-reference">
+  Full surface of TransactOptions, TransactResult, Relay, etc.
+</Card>
+
+<Card title="Error handling" icon="triangle-exclamation" href="/sdk/rust/error-handling">
+  Retry classification (RootNotFound / StaleProofState / BlockhashExpired).
+</Card>
+
+<Card title="Transaction flows" icon="route" href="/platform/transaction-flows">
+  The on-chain protocol this SDK implements.
+</Card>
+</CardGroup>

@@ -1,0 +1,120 @@
+---
+title: "Error handling"
+description: "The Error enum and retry semantics in the Rust SDK"
+icon: "triangle-exclamation"
+---
+
+The Rust SDK exposes a single `Error` enum with typed variants. The engine classifies RPC / relay responses into these variants internally so callers (and the retry loop) can match on them without string-sniffing.
+
+## The `Error` enum
+
+```rust
+pub enum Error {
+    Config(&'static str),
+    Validation(&'static str),
+    InsufficientFunds { available: u64, required: u64 },
+    MissingUtxos,
+    Storage(&'static str),
+    Signer(&'static str),
+    Crypto(&'static str),
+    RootNotFound,
+    BlockhashExpired,
+    StaleProofState,
+    Relay(&'static str),
+}
+```
+
+### Classification
+
+| Variant | Emitted when | Handled by |
+|---|---|---|
+| `Config` | Missing required option (rpc / payer / relay_url), dep setup issue, serialization failure | caller — fix the config |
+| `Validation` | Preflight rejects inputs (bad arity, balance mismatch, min deposit, etc.) | caller — fix the params |
+| `InsufficientFunds` | Surfaced by wallet-layer code composed on top of the engine (coin selection, balance checks). `transact()` itself validates balance at the circuit level via `Error::Validation`. | caller |
+| `MissingUtxos` | Same — surfaced by wallet-layer code that selects inputs. | caller |
+| `Signer` | Ed25519 signing failed on the v0 tx message | caller — check the keypair |
+| `Crypto` | Poseidon / HKDF / AES-GCM failure | caller — usually a serialization bug |
+| `RootNotFound` | Program error `0x1001` (proof root not in history) | retry loop — refresh tree |
+| `BlockhashExpired` | RPC returned `BlockhashNotFound` / `TransactionExpiredBlockhashNotFound` | `submit_direct` — refresh + resign |
+| `StaleProofState` | Circuit assertion failed (`ForceEqual*`, "invalid proof") | retry loop — force chain-indexing rebuild |
+| `Relay` | Non-classified relay / RPC failure | caller — check `tracing::debug!` for body |
+
+## Retry loops
+
+Two loops run automatically; callers rarely need to retry themselves.
+
+### Outer (transact-level)
+
+Up to `opts.max_root_retries` (default 40) iterations. Mapped via `classify_iteration_error`:
+
+- `RootNotFound` → drop `LoopState.tree_state` → refetch from RPC → re-prove
+- `StaleProofState` → drop `LoopState.merkle_tree` + set `force_chain_indexing` → re-prove
+- Any other → bubble up as `FatalError`
+
+### Inner (submit_direct)
+
+Wrapped around the signed-tx send:
+
+- `BlockhashExpired` → refresh blockhash, recompile the v0 message, re-sign, re-send (up to 2 refreshes).
+- `Relay(_)` → retry the same wire bytes with exponential backoff + jitter (up to 3 attempts, base 500 ms).
+- `RootNotFound` → bubble up immediately for the outer loop.
+- Anything else → bubble up.
+
+Tune the backoff base with `opts.transport_backoff_base_ms` (set to 0 in tests).
+
+## Matching errors in caller code
+
+Most callers only need to distinguish "fatal" from "ask-again" cases:
+
+```rust
+match transact(opts).await {
+    Ok(result) => { /* success */ }
+    Err(Error::Validation(msg)) => {
+        eprintln!("bad request: {msg}");
+    }
+    Err(Error::Config(msg)) => {
+        eprintln!("misconfigured: {msg}");
+    }
+    Err(Error::RootNotFound) => {
+        // Only reached if max_root_retries was exhausted — unusually bad
+        // relay or cluster state. Wait and retry.
+    }
+    Err(e) => {
+        eprintln!("other: {e}");
+    }
+}
+```
+
+Most `Error` variants are non-exhaustive-friendly (`#[non_exhaustive]` on the enum), so caller code should include a default arm.
+
+## Debug tracing
+
+Dynamic error bodies don't live inside the typed `Error` to keep the variant set stable. They're logged via `tracing` at `debug` level with `target = "cloak_sdk::relay"` or `target = "cloak_sdk::rpc"`:
+
+```rust
+use tracing_subscriber::{EnvFilter, FmtSubscriber};
+
+FmtSubscriber::builder()
+    .with_env_filter(EnvFilter::from_default_env())
+    .init();
+```
+
+Run with `RUST_LOG=cloak_sdk=debug` to see the full RPC / relay bodies that led to each classification.
+
+## Common failure modes
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| `Error::Config("direct submission requires opts.payer")` | No keypair on a deposit | Set `opts.payer = Some(Arc::new(keypair))` |
+| `Error::Config("SPL direct withdraw is not supported")` | SPL withdraw via direct path | Use a relay (`opts.relay_url`) |
+| `Error::Config("TransactSwap is relay-only")` | Swap without relay | Set `opts.relay_url` |
+| `Error::Validation("balance mismatch")` | `inputs + external_amount != outputs` | Fix the UTXO amounts |
+| `Error::Validation("transact exhausted max_root_retries")` | Outer loop gave up | Increase `max_root_retries` or investigate relay health |
+| `Error::Relay("swap execution failed")` | Status poll returned `failed` | Check `tracing` output for the relay error string |
+| `Error::Relay("swap status: polling timed out")` | 60 polls × 2 s without resolution | Bump `opts.swap_status_max_attempts` |
+| `Error::Crypto("circuit artifact hash mismatch")` | Corrupt cached zkey/wasm | Delete `~/Library/Caches/cloak-sdk/circuits/` and retry |
+
+## Related
+
+- [API reference](/sdk/rust/api-reference) — full surface
+- [Core concepts](/sdk/rust/core-concepts) — retry-loop structure

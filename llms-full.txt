@@ -3,7 +3,8 @@
 This file is a single-document context pack for AI coding agents.
 It complements:
 - `/llms.txt` (index)
-- `/sdk/llms.txt` (full SDK contract map)
+- `/sdk/llms.txt` (full TypeScript SDK contract map)
+- `/sdk/rust/llms.txt` (full Rust SDK contract map)
 
 Use this file when an agent asks for "all docs in one place".
 
@@ -13,15 +14,19 @@ Use this file when an agent asks for "all docs in one place".
 
 Cloak is a privacy-focused Solana stack with:
 - an app/client integration layer
-- `@cloak.dev/sdk` for transaction orchestration
+- `@cloak.dev/sdk` (TypeScript) for transaction orchestration
+- `cloak-sdk` (Rust crate) for server-side / CLI / program-client orchestration
 - on-chain shield-pool program logic
 - proof circuits and relay services
 
-Primary integration path is the SDK UTXO API.
+Both SDKs target the same on-chain protocol and produce identical wire payloads.
+Primary integration path is the SDK UTXO API in whichever language matches the host app.
 
 ---
 
 ## 2) AI read order
+
+For TypeScript integrations:
 
 1. `/llms.txt`
 2. `/llms-full.txt`
@@ -29,6 +34,15 @@ Primary integration path is the SDK UTXO API.
 4. `/sdk/quickstart`
 5. `/sdk/utxo-transactions`
 6. `/sdk/wallet-integration`
+
+For Rust integrations:
+
+1. `/llms.txt`
+2. `/llms-full.txt`
+3. `/sdk/rust/llms.txt`
+4. `/sdk/rust/quickstart`
+5. `/sdk/rust/core-concepts`
+6. `/sdk/rust/api-reference`
 
 ---
 
@@ -39,13 +53,7 @@ Primary integration path is the SDK UTXO API.
 - `/platform/overview`
   - Purpose: high-level architecture across SDK, programs, and circuits.
 - `/sdk/introduction`
-  - Purpose: current runtime setup options (web3.js and Solana Kit patterns).
-- `/sdk/quickstart`
-  - Purpose: smallest end-to-end example for deposit plus send/withdraw.
-- `/sdk/examples`
-  - Purpose: concise examples for send, swap, payroll-like flows, compliance history.
-- `/sdk/kit-integration`
-  - Purpose: integrate Cloak with codebases standardized on `@solana/kit`.
+  - Purpose: language picker — TypeScript vs Rust.
 
 ### Platform
 
@@ -56,8 +64,14 @@ Primary integration path is the SDK UTXO API.
 - `/architecture/viewing-keys-compliance`
   - Purpose: viewing-key lifecycle, registration requirements, compliance history behavior.
 
-### SDK
+### TypeScript SDK (`@cloak.dev/sdk`)
 
+- `/sdk/quickstart`
+  - Purpose: smallest end-to-end example for deposit plus send/withdraw.
+- `/sdk/examples`
+  - Purpose: concise examples for send, swap, payroll-like flows, compliance history.
+- `/sdk/kit-integration`
+  - Purpose: integrate Cloak with codebases standardized on `@solana/kit`.
 - `/sdk/core-concepts`
   - Purpose: UTXO primitives, fee model, root freshness, operational defaults.
 - `/sdk/utxo-transactions`
@@ -69,7 +83,22 @@ Primary integration path is the SDK UTXO API.
 - `/sdk/api-reference`
   - Purpose: public SDK exports.
 - `/sdk/llms.txt`
-  - Purpose: exhaustive SDK contract and symbol map for AI tools.
+  - Purpose: exhaustive TypeScript SDK contract and symbol map for AI tools.
+
+### Rust SDK (`cloak-sdk`)
+
+- `/sdk/rust/introduction`
+  - Purpose: scope, install from git, minimal `TransactOptions` setup, TS→Rust mental model.
+- `/sdk/rust/quickstart`
+  - Purpose: first SOL deposit end-to-end with retry-loop walkthrough.
+- `/sdk/rust/core-concepts`
+  - Purpose: Rust types mapped to protocol primitives (`FlowKind`, `Utxo`, retry classification).
+- `/sdk/rust/api-reference`
+  - Purpose: `TransactOptions`, `TransactResult`, `SwapOptions`, `RpcProvider`, `Relay`, instruction builders.
+- `/sdk/rust/error-handling`
+  - Purpose: `Error` variants, inner/outer retry loops, common failure modes, `RUST_LOG` tracing.
+- `/sdk/rust/llms.txt`
+  - Purpose: exhaustive Rust SDK contract map and symbol reference for AI tools.
 
 ### Protocol / Runtime
 
@@ -97,20 +126,21 @@ Primary integration path is the SDK UTXO API.
 
 ## 4) High-signal runtime contracts
 
-These are intentionally repeated here because agents often miss them.
+These are intentionally repeated here because agents often miss them. They apply to both SDKs.
 
 1. Prefer UTXO APIs for new integrations.
-2. Keep all transaction amount math in `bigint`.
-3. `externalAmount` semantics in UTXO flows:
-   - `> 0n` = deposit
-   - `< 0n` = withdraw or swap
-   - `0n` = shield-to-shield transfer
-4. Treat stale-root and root-not-found issues as retryable (SDK transaction paths already retry by default).
-5. Never log secrets (private keys, viewing keys (`nk`), seed material, raw note payloads).
+2. Keep all transaction amount math in `bigint` (TS) or `u64` / `i64` (Rust) — no float math.
+3. `externalAmount` / `external_amount` semantics in UTXO flows:
+   - positive = deposit
+   - negative = withdraw or swap
+   - zero = shield-to-shield transfer
+4. Treat stale-root and root-not-found issues as retryable (SDK transaction paths already retry by default; Rust uses typed `Error::RootNotFound` / `Error::StaleProofState` variants).
+5. Never log secrets (private keys, viewing keys (`nk`), seed material, raw note payloads, blindings, UTXO private keys).
 6. Transaction signatures are public and can be logged for support/debugging.
 7. Viewing-key registration affects scanner/compliance readability.
+8. Rust-specific: swaps (`opts.swap = Some(...)`) and direct SPL withdraw are **relay-only** — `submit_direct` rejects them with `Error::Config`.
 
-For full signature-level details, use `/sdk/llms.txt`.
+For full signature-level details, use `/sdk/llms.txt` (TypeScript) or `/sdk/rust/llms.txt` (Rust).
 
 ---
 
@@ -124,13 +154,19 @@ Send SOL privately through Cloak by:
 - depositing SOL into shielded state
 - then performing a full withdrawal to a public recipient wallet
 
-### Required API path
+### Required API path (TypeScript)
 
 - `transact(...)` for deposit
 - `fullWithdraw(...)` for send
 - optional `partialWithdraw(...)` for keep-change behavior
 
-### Reference snippet
+### Required API path (Rust)
+
+- `cloak_sdk::core::transact::transact(opts)` with `opts.external_amount > 0` for deposit
+- `cloak_sdk::core::transact::transact(opts)` with `opts.external_amount < 0` + `opts.recipient` for withdraw
+- Thread `cached_merkle_tree` + `address_lookup_table_accounts` from the deposit result into the withdraw `TransactOptions`
+
+### Reference snippet (TypeScript)
 
 ```typescript
 import {
@@ -177,7 +213,62 @@ await fullWithdraw(deposited.outputUtxos, recipient, {
 });
 ```
 
-### Validation checklist for agents
+### Reference snippet (Rust)
+
+```rust
+use std::sync::Arc;
+use cloak_sdk::{
+    constants::{MIN_DEPOSIT_LAMPORTS, NATIVE_SOL_MINT},
+    core::{transact::{transact, TransactOptions}, utxo::{Utxo, UtxoKeypair}},
+    rpc::SolanaRpc,
+};
+use solana_keypair::Keypair;
+use solana_pubkey::Pubkey;
+
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    let rpc = Arc::new(SolanaRpc::new(std::env::var("SOLANA_RPC_URL")?));
+    let payer = Arc::new(load_keypair_from_path(&std::env::var("KEYPAIR_PATH")?)?);
+    let amount = MIN_DEPOSIT_LAMPORTS;
+
+    // Deposit.
+    let owner = UtxoKeypair::generate()?;
+    let output = Utxo::new(amount, owner, NATIVE_SOL_MINT)?;
+    let deposit = transact(TransactOptions {
+        inputs: vec![],
+        outputs: vec![output],
+        external_amount: amount as i64,
+        rpc: Some(rpc.clone()),
+        payer: Some(payer.clone()),
+        relay_url: Some("https://api.cloak.ag".into()),
+        ..Default::default()
+    }).await?;
+
+    // Withdraw (full) via relay.
+    let mut input = deposit.output_commitments; // actual `Utxo` — saved with its keypair
+    let recipient: Pubkey = args_recipient()?;
+    let withdraw = transact(TransactOptions {
+        inputs: vec![/* the Utxo from deposit, with index populated */],
+        outputs: vec![
+            Utxo::zero(Some(NATIVE_SOL_MINT), None)?,
+            Utxo::zero(Some(NATIVE_SOL_MINT), None)?,
+        ],
+        external_amount: -(amount as i64),
+        recipient: Some(recipient),
+        rpc: Some(rpc),
+        payer: Some(payer),
+        relay_url: Some("https://api.cloak.ag".into()),
+        cached_merkle_tree: deposit.cached_merkle_tree,
+        address_lookup_table_accounts: deposit.address_lookup_table_accounts,
+        ..Default::default()
+    }).await?;
+
+    println!("{}", withdraw.signature);
+    Ok(())
+}
+```
+
+### Validation checklist for agents (TypeScript)
 
 - uses UTXO API (not legacy note API)
 - uses `bigint` for transaction amounts
@@ -187,6 +278,17 @@ await fullWithdraw(deposited.outputUtxos, recipient, {
 - does not use `SENDER_PRIVATE_KEY` or `AMOUNT_SOL` + `parseFloat(...)`
 - does not use `RECIPIENT_ADDRESS` / `SEND_LAMPORTS` env input for one-file CLI scripts
 - exits explicitly with `process.exit(0)` on success and `process.exit(1)` on failure
+
+### Validation checklist for agents (Rust)
+
+- uses `cloak_sdk::core::transact::transact(opts)` as the entrypoint
+- amounts are `u64` / `i64` — no float math
+- saves the `UtxoKeypair` durably (required to spend the note later)
+- threads `cached_merkle_tree` + `address_lookup_table_accounts` between transacts
+- no secret logging; enables `RUST_LOG=cloak_sdk=debug` for troubleshooting only
+- uses SDK defaults for program/relay/circuits (no user-facing config)
+- does not add custom retry loops — the SDK retries RootNotFound/BlockhashExpired/StaleProofState
+- loads signer from `KEYPAIR_PATH` (Solana JSON keypair file); does not accept raw secret bytes via env
 
 ---
 
@@ -213,8 +315,11 @@ Return a capability matrix, file patches, commands run, and verification summary
 ## 7) Sources of truth in this repository
 
 When docs and code differ, validate against implementation:
-- SDK exports: `sdk/src/index.ts`
-- SDK runtime: `sdk/src/core/*`, `sdk/src/utils/*`
+- TypeScript SDK exports: `sdk/src/index.ts`
+- TypeScript SDK runtime: `sdk/src/core/*`, `sdk/src/utils/*`
+- Rust SDK public API: `rustsdk/src/lib.rs`
+- Rust SDK orchestrator: `rustsdk/src/core/transact.rs`, `rustsdk/src/core/transact/*.rs`
+- Rust SDK relay + RPC: `rustsdk/src/services/relay.rs`, `rustsdk/src/rpc.rs`
 - Program behavior: `programs/shield-pool/src/*`
 - Relay routes/payloads: `services/relay/src/main.rs`, `services/relay/src/api/*`
 - Relay sync behavior: `services/relay/src/commitment_sync.rs`
@@ -226,5 +331,6 @@ When docs and code differ, validate against implementation:
 
 - `/llms.txt`
 - `/.well-known/llms.txt`
-- `/sdk/llms.txt`
+- `/sdk/llms.txt` (TypeScript)
+- `/sdk/rust/llms.txt` (Rust)
 - `/ai-tools/ai-integration`

@@ -12,10 +12,13 @@ Use this page to point coding agents at the right Cloak docs before they write c
 | --- | --- |
 | `/llms.txt` | Top-level index of docs routes and integration entrypoints |
 | `/llms-full.txt` | Curated full export for agents that prefer one file |
-| `/sdk/llms.txt` | Exhaustive SDK contract and runtime invariants |
+| `/sdk/llms.txt` | Exhaustive TypeScript SDK (`@cloak.dev/sdk`) contract and runtime invariants |
+| `/sdk/rust/llms.txt` | Exhaustive Rust SDK (`cloak-sdk`) contract and runtime invariants |
 | `/.well-known/llms.txt` | Compatibility alias that points to canonical files |
 
 ## Recommended read order
+
+### TypeScript integrations
 
 1. `/llms.txt`
 2. `/llms-full.txt`
@@ -23,11 +26,19 @@ Use this page to point coding agents at the right Cloak docs before they write c
 4. `/sdk/quickstart`
 5. `/sdk/utxo-transactions`
 
-## One-shot prompt: simple SOL send flow
+### Rust integrations
 
-Use this as your first message in Claude Code, Cursor, or Windsurf.
+1. `/llms.txt`
+2. `/llms-full.txt`
+3. `/sdk/rust/llms.txt`
+4. `/sdk/rust/quickstart`
+5. `/sdk/rust/core-concepts`
 
-<Accordion title="Copy one-shot prompt">
+## One-shot prompt: simple SOL send flow (TypeScript)
+
+Use this as your first message in Claude Code, Cursor, or Windsurf when the host app is TypeScript.
+
+<Accordion title="Copy TypeScript one-shot prompt">
 
 Implement a minimal Cloak integration for a simple SOL send flow using `@cloak.dev/sdk`.
 
@@ -61,20 +72,73 @@ Return format:
 
 </Accordion>
 
+## One-shot prompt: simple SOL send flow (Rust)
+
+Use this as your first message when the host app is Rust.
+
+<Accordion title="Copy Rust one-shot prompt">
+
+Implement a minimal Cloak integration for a simple SOL send flow using the `cloak-sdk` Rust crate.
+
+Read these docs first and follow them exactly:
+- `/llms.txt`
+- `/llms-full.txt`
+- `/sdk/rust/llms.txt`
+- `/sdk/rust/quickstart`
+- `/sdk/rust/api-reference`
+- `/sdk/rust/error-handling`
+
+Build requirements:
+1) Use `cloak_sdk::core::transact::transact(opts)` as the single entrypoint. Every flow is a `TransactOptions` shape.
+2) Keep amounts as `u64` / `i64`. No float parsing.
+3) Implement deposit → withdraw as two sequential `transact()` calls. Thread `cached_merkle_tree` + `address_lookup_table_accounts` from the first result into the second.
+4) Load the signer from the `KEYPAIR_PATH` Solana JSON keypair file. Never accept raw secret bytes via env.
+5) Populate `opts.rpc` with `SolanaRpc::new(SOLANA_RPC_URL)`, `opts.payer` with `Arc::new(keypair)`, and `opts.relay_url` with `https://api.cloak.ag`.
+6) Save the `UtxoKeypair` for every output you create — it's required to spend the note later. Persist it to disk.
+7) Never log private keys, viewing keys (`nk`), UTXO private keys, blindings, or note payloads.
+   Transaction signatures are public and may be logged.
+8) Rely on SDK default retry loops (`RootNotFound`, `BlockhashExpired`, `StaleProofState`); do not add custom retry wrappers.
+9) Use SDK defaults for program, relay, and circuits (`CLOAK_PROGRAM_ID`, `NATIVE_SOL_MINT`, `CIRCUITS_BASE_URL` from `cloak_sdk::constants`). Do not expose as user config.
+10) For one-file binaries, parse recipient/amount from `std::env::args()` and exit explicitly with `std::process::exit(0|1)` (or return `Result<()>` from `main`).
+
+Return format:
+- capability matrix (`used` / `not used`) for: `transact()` entrypoint, UTXO primitives, risk oracle, ALT auto-create, VK registration, swap, scanner (stub — mention if you'd need it)
+- file-by-file patches
+- commands run (`cargo build`, `cargo run -- ...`)
+- verification summary
+
+</Accordion>
+
 ## Success checklist
 
+Shared across both SDKs:
+
 - UTXO flow is the primary execution path.
-- `externalAmount` semantics are correct (`>0` deposit, `<0` withdraw).
-- All tx amount math stays in `bigint`.
+- Sign-of-external-amount semantics are correct (positive = deposit, negative = withdraw/swap, zero = transfer).
 - No secret leakage in logs or telemetry.
+- Docs references are included in the implementation notes.
+- No custom retry wrappers (the SDK handles stale-root + blockhash + transient transport).
+
+TypeScript-specific:
+
+- All tx amount math stays in `bigint`.
 - No raw private key env var (`SENDER_PRIVATE_KEY`) and no float amount parsing (`AMOUNT_SOL`, `parseFloat`).
 - No `RECIPIENT_ADDRESS`/`SEND_LAMPORTS` env contract for one-file scripts; use CLI args.
 - Script exits explicitly on success/failure (`process.exit(0|1)`).
-- Docs references are included in the implementation notes.
+
+Rust-specific:
+
+- Amounts stay as `u64` / `i64`. No float math.
+- Signer loaded from `KEYPAIR_PATH` (Solana JSON keypair file).
+- `UtxoKeypair` for each output is persisted (required to spend the note later).
+- `cached_merkle_tree` + `address_lookup_table_accounts` threaded across sequential transacts.
+- `main` returns `Result<()>` or exits via `std::process::exit(0|1)`.
 
 ## Ultra-short prompt fallback
 
-When the user prompt is short/vague (including non-English prompts), default to this output shape:
+When the user prompt is short/vague (including non-English prompts), detect the likely host language and default to the matching shape.
+
+### TypeScript default
 
 - one file only
 - keypair-based send path
@@ -84,14 +148,26 @@ When the user prompt is short/vague (including non-English prompts), default to 
 - no user-facing relay/circuits/program config
 - explicit `process.exit(0)` on success and `process.exit(1)` on failure
 
-Example short prompt that should still produce valid output:
+### Rust default
 
-`faca um script com esse sdk para mandar sol privado https://docs.cloak.ag`
+- one `cargo run`-able binary
+- CLI: `cargo run -- <recipientPubkey> <lamports>`
+- recipient/amount parsed from `std::env::args()`
+- env vars: `SOLANA_RPC_URL`, `KEYPAIR_PATH`
+- no user-facing relay/circuits/program config
+- `main` returns `anyhow::Result<()>` or exits via `std::process::exit(0|1)`
+
+Example short prompts that should still produce valid output:
+
+- TypeScript: `faca um script com esse sdk para mandar sol privado https://docs.cloak.ag`
+- Rust: `a rust cli that privately sends sol`
 
 ## Related docs
 
 - [LLM Index](/llms.txt)
 - [LLM Full Export](/llms-full.txt)
-- [SDK LLM Reference](/sdk/llms.txt)
-- [Quickstart](/sdk/quickstart)
-- [UTXO Transactions](/sdk/utxo-transactions)
+- [TypeScript SDK LLM Reference](/sdk/llms.txt)
+- [Rust SDK LLM Reference](/sdk/rust/llms.txt)
+- [TypeScript Quickstart](/sdk/quickstart)
+- [Rust Quickstart](/sdk/rust/quickstart)
+- [UTXO Transactions (TS)](/sdk/utxo-transactions)

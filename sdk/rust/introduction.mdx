@@ -1,0 +1,109 @@
+---
+title: "Rust SDK"
+description: "cloak-sdk — an engine-first Rust crate for server-side, CLI, and program-client integrations"
+icon: "rust"
+---
+
+`cloak-sdk` is a focused, engine-first Rust crate for building on Cloak. Its surface is the transact engine: you hand it a `TransactOptions`, it hands back a signed on-chain transaction (or submits it for you) along with the cached state to chain the next call.
+
+Every flow the protocol supports — deposit, transfer, withdraw, swap — goes through one entrypoint:
+
+```rust
+pub async fn transact(opts: TransactOptions) -> Result<TransactResult>;
+```
+
+## What `transact()` does for you
+
+Each call runs the full protocol pipeline end-to-end:
+
+- SOL and SPL deposits, transfers, and withdrawals (direct or relay-submitted)
+- Relay-submitted swaps via `/transact_swap` with status polling
+- Risk-oracle Ed25519 sigverify prepended at tx index 0
+- Ephemeral ALT auto-creation for oversized v0 transactions
+- Viewing-key challenge/register flow with process-local caching
+- Chain-note v2 envelope (HKDF-SHA256 + AES-256-GCM)
+- Stale-root retry loop with blockhash + transport backoff
+
+The result carries the post-tx Merkle tree and any ALTs used — thread them into the next call to skip `/commitments` and ALT re-creation.
+
+## Runtime defaults
+
+| Setting | Value |
+|---|---|
+| Program ID | `zh1eLd6rSphLejbFfJEneUwzHRfMKxgzrgkfwA6qRkW` |
+| Relay URL | `https://api.cloak.ag` |
+| Circuits base URL | `https://cloak-circuits.s3.us-east-1.amazonaws.com/circuits/0.1.0` |
+| Minimum SOL deposit | `10_000_000` lamports (0.01 SOL) |
+| Max inputs / outputs | 2 / 2 (fixed circuit arity) |
+
+## Install
+
+```toml
+[dependencies]
+cloak-sdk = { git = "https://github.com/cloak-ag/rustsdk" }
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+```
+
+Runtime: the crate is async throughout and uses `tokio`.
+
+## Minimal setup
+
+```rust
+use std::sync::Arc;
+
+use cloak_sdk::{
+    core::transact::{transact, TransactOptions},
+    rpc::SolanaRpc,
+};
+use solana_keypair::Keypair;
+
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    let rpc = Arc::new(SolanaRpc::new("https://api.mainnet-beta.solana.com"));
+    let payer = Arc::new(Keypair::new());
+
+    let opts = TransactOptions {
+        rpc: Some(rpc),
+        payer: Some(payer),
+        relay_url: Some("https://api.cloak.ag".into()),
+        // ...inputs / outputs / external_amount filled in per flow
+        ..Default::default()
+    };
+
+    let result = transact(opts).await?;
+    println!("landed: {}", result.signature);
+    Ok(())
+}
+```
+
+`TransactOptions` is the single knob surface — no client builder, no stateful client object. Every flow is a different `TransactOptions` shape routed through the same `transact()` call.
+
+## Design at a glance
+
+A few intentional choices shape how the crate reads:
+
+- **Engine-first, no stateful façade.** The TS SDK's `CloakSDK` class is a wallet-aware façade over the same engine; the Rust crate exposes the engine directly. Build your own wallet, scanner, or compliance report on top — `TransactResult` gives you the commitments, indices, and post-tx tree to do it.
+- **`TransactOptions` as the one knob.** Parameters (inputs, outputs, external_amount, recipient) and submission config (rpc, payer, relay, risk checks) live on one struct. `..Default::default()` + struct-update syntax keeps call sites readable.
+- **`RpcProvider` is a trait.** Production wraps `solana-rpc-client::nonblocking::RpcClient` via `SolanaRpc`; tests inject `MockRpc`. Same shape, no cfg-gated code paths.
+- **Focused Solana crates.** Depends on `solana-keypair`, `solana-pubkey`, `solana-transaction`, `solana-rpc-client`, etc. — not the `solana-sdk` umbrella. Keeps the dep graph predictable and compile times reasonable.
+- **Typed retry classification.** `Error::RootNotFound` / `Error::StaleProofState` / `Error::BlockhashExpired` are variants the retry loop matches on directly — no string-sniffing, no `Box<dyn Error>` hand-unwrapping.
+
+## Next steps
+
+<CardGroup cols={2}>
+<Card title="Quickstart" icon="rocket" href="/sdk/rust/quickstart">
+  Walk through a minimal SOL deposit end-to-end.
+</Card>
+
+<Card title="Core concepts" icon="lightbulb" href="/sdk/rust/core-concepts">
+  How the Rust types map to protocol primitives.
+</Card>
+
+<Card title="API reference" icon="rectangle-terminal" href="/sdk/rust/api-reference">
+  TransactOptions, TransactResult, Relay, and helper types.
+</Card>
+
+<Card title="Error handling" icon="triangle-exclamation" href="/sdk/rust/error-handling">
+  The Error enum + retry semantics.
+</Card>
+</CardGroup>

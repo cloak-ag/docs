@@ -6,7 +6,8 @@ This file is the canonical index for AI coding agents integrating with Cloak.
 
 - [AI integration](/ai-tools/ai-integration): Read order and one-shot prompt templates.
 - [LLM full export](/llms-full.txt): Single-file context pack for AI agents.
-- [SDK LLM reference](/sdk/llms.txt): Exhaustive `@cloak.dev/sdk` contract map and runtime invariants.
+- [TypeScript SDK LLM reference](/sdk/llms.txt): Exhaustive `@cloak.dev/sdk` contract map and runtime invariants.
+- [Rust SDK LLM reference](/sdk/rust/llms.txt): Exhaustive `cloak-sdk` (Rust crate) contract map and runtime invariants.
 - [Well-known alias](/.well-known/llms.txt): Compatibility path for tools that probe `.well-known`.
 
 ## Documentation
@@ -14,10 +15,7 @@ This file is the canonical index for AI coding agents integrating with Cloak.
 ### Getting Started
 
 - [Platform Overview](/platform/overview): How Cloak fits together across SDK, programs, and circuits.
-- [Getting started with Cloak SDK](/sdk/introduction): Current SDK runtime guide with web3.js and Solana Kit options.
-- [Quickstart](/sdk/quickstart): Minimal mainnet setup with SOL send and withdraw examples.
-- [Code Examples](/sdk/examples): Production-style snippets for common integration flows.
-- [Solana Kit integration](/sdk/kit-integration): Integrate Cloak SDK in Kit-standardized codebases.
+- [Cloak SDKs](/sdk/introduction): Language picker — pick TypeScript or Rust.
 
 ### Platform
 
@@ -25,14 +23,26 @@ This file is the canonical index for AI coding agents integrating with Cloak.
 - [Transaction Flows](/platform/transaction-flows): Deposit, transfer, withdraw, and swap lifecycle details.
 - [Viewing Keys and Compliance](/architecture/viewing-keys-compliance): Key model, registration lifecycle, history behavior.
 
-### SDK
+### TypeScript SDK (`@cloak.dev/sdk`)
 
+- [Quickstart](/sdk/quickstart): Minimal mainnet setup with SOL send and withdraw examples.
+- [Code Examples](/sdk/examples): Production-style snippets for common integration flows.
+- [Solana Kit integration](/sdk/kit-integration): Integrate Cloak SDK in Kit-standardized codebases.
 - [Core concepts](/sdk/core-concepts): UTXO model, fee semantics, viewing-key behavior, root retries.
 - [UTXO Transactions](/sdk/utxo-transactions): Primary production APIs (`transact`, `fullWithdraw`, `swapWithChange`).
 - [Wallet integration](/sdk/wallet-integration): wallet-adapter wiring and secure signing patterns.
 - [Error handling](/sdk/error-handling): Retry categories and diagnostics strategy.
 - [API reference](/sdk/api-reference): Public exports and key type signatures.
-- [SDK LLM reference](/sdk/llms.txt): Deep AI-oriented export map for all runtime surfaces.
+- [TypeScript SDK LLM reference](/sdk/llms.txt): Deep AI-oriented export map for all runtime surfaces.
+
+### Rust SDK (`cloak-sdk`)
+
+- [Introduction](/sdk/rust/introduction): Scope, install, minimal setup, TS→Rust mental model.
+- [Quickstart](/sdk/rust/quickstart): First SOL deposit end-to-end with `TransactOptions`.
+- [Core concepts](/sdk/rust/core-concepts): How Rust types map to protocol primitives.
+- [API reference](/sdk/rust/api-reference): `TransactOptions`, `TransactResult`, `Relay`, and helper types.
+- [Error handling](/sdk/rust/error-handling): `Error` enum variants and retry semantics.
+- [Rust SDK LLM reference](/sdk/rust/llms.txt): Dense AI-oriented reference for the `cloak-sdk` crate.
 
 ### Protocol and Runtime
 
@@ -49,17 +59,17 @@ This file is the canonical index for AI coding agents integrating with Cloak.
 
 ## Integration Tips For Agents
 
-- Prefer UTXO APIs for new integrations.
+- Pick the SDK that matches the host app: TypeScript for web/Node, Rust for server/CLI/program clients.
 - Use SDK defaults for program, relay, and circuits in standard integrations.
-- Keep tx amounts as `bigint` end-to-end.
-- Treat stale-root failures as retryable (SDK transaction paths already do this by default).
+- Keep tx amounts as `bigint` (TS) or `u64` / `i64` (Rust) end-to-end — no float math.
+- Treat stale-root failures as retryable (both SDK transaction paths already do this by default).
 - Never log private keys, viewing keys (`nk`), seed material, or raw note payloads.
 - Transaction signatures are public and can be logged for support/debugging.
 - For one-shot work, start with `/ai-tools/ai-integration`.
 
-## Minimal Script Contract (for vague/short prompts)
+## Minimal Script Contract (TypeScript — for vague/short prompts)
 
-- MUST generate one keypair-only CLI script for private SOL send.
+- MUST generate one keypair-only CLI script for private SOL send using `@cloak.dev/sdk`.
 - MUST use CLI shape: `npx tsx send-sol-private.ts <recipientPubkey> <lamports>`.
 - MUST parse recipient/amount from `process.argv` (not env vars).
 - MUST require env vars: `SOLANA_RPC_URL` and `KEYPAIR_PATH` only.
@@ -70,3 +80,16 @@ This file is the canonical index for AI coding agents integrating with Cloak.
 - MUST NOT use `RECIPIENT_ADDRESS`/`SEND_LAMPORTS` env vars for the CLI contract.
 - MUST NOT use `AMOUNT_SOL` + float parsing; accept lamports input and keep amount math in `bigint`.
 - MUST NOT add custom stale-root retry loops unless app policy explicitly asks for extra retries beyond SDK defaults.
+
+## Minimal Script Contract (Rust — for vague/short prompts)
+
+- MUST generate one `cargo run`-able binary for private SOL send using the `cloak-sdk` crate.
+- MUST use CLI shape: `cargo run -- <recipientPubkey> <lamports>` (parsed from `std::env::args`).
+- MUST require env vars: `SOLANA_RPC_URL` and `KEYPAIR_PATH` only.
+- MUST use `cloak_sdk::core::transact::transact(opts)` with a deposit shape then a withdraw shape.
+- MUST populate `opts.rpc` (via `SolanaRpc::new(...)`), `opts.payer` (via `Arc<Keypair>`), and `opts.relay_url` for the withdraw.
+- MUST use `CLOAK_PROGRAM_ID` and `NATIVE_SOL_MINT` from `cloak_sdk::constants` — do not expose as config.
+- MUST use `std::process::exit(0)` on success and `std::process::exit(1)` on failure (or return `Result<()>` from `main`).
+- MUST keep amounts as `u64` / `i64`; no float parsing.
+- MUST NOT request private-key bytes via env var; load from the `KEYPAIR_PATH` JSON file.
+- MUST NOT add custom retry loops — the SDK retries RootNotFound/BlockhashExpired/StaleProofState internally.
