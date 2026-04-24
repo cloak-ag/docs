@@ -1,11 +1,13 @@
 ---
-title: Develop on devnet
-description: How to build and test apps with Cloak on Solana devnet.
+title: Devnet
+description: Build and test your Cloak integration on Solana devnet.
 ---
 
-# Develop on devnet
+# Devnet
 
 Cloak runs on Solana devnet so you can develop and test your integration against a live shield pool without spending real funds. Devnet is intended for development only — token balances are not real and supported assets are limited.
+
+This page is for **app developers** who want to integrate the Cloak SDK against a non-production environment.
 
 ## Endpoints
 

@@ -65,10 +65,15 @@
             ]
           },
           {
+            "group": "Development",
+            "pages": [
+              "development/devnet"
+            ]
+          },
+          {
             "group": "Operations",
             "pages": [
-              "operations/security",
-              "operations/devnet"
+              "operations/security"
             ]
           }
         ]
