@@ -22,7 +22,8 @@ Use this file as your primary SDK briefing and only fall back to the friendlier 
 - Version: `0.1.x`
 - Runtime: Node `>=18` and modern browsers. ESM and CJS both shipped (`dist/index.js`, `dist/index.cjs`).
 - Types: `dist/index.d.ts`
-- Program ID (default, mainnet + devnet alias): `zh1eLd6rSphLejbFfJEneUwzHRfMKxgzrgkfwA6qRkW`
+- Program ID (default, mainnet): `zh1eLd6rSphLejbFfJEneUwzHRfMKxgzrgkfwA6qRkW`
+- Devnet program ID: `Zc1kHfp4rajSMeASFDwFFgkHRjv7dFQuLheJoQus27h` (served by the local-only `@cloak.dev/sdk-devnet` fork — see `docs/operations/devnet.md`; NOT available through the published `@cloak.dev/sdk` NPM package).
 - Relay and circuits defaults are built into the SDK for standard integrations.
 - Hashing: BN254 Poseidon (via `@lightprotocol/hasher.rs`) + BLAKE3.
 - Proof system: Groth16 via `snarkjs`.

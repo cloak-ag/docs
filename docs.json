@@ -67,7 +67,8 @@
           {
             "group": "Operations",
             "pages": [
-              "operations/security"
+              "operations/security",
+              "operations/devnet"
             ]
           }
         ]
