@@ -22,7 +22,7 @@ Program   Zc1kHfp4rajSMeASFDwFFgkHRjv7dFQuLheJoQus27h
 | Token | Mint | Notes |
 |---|---|---|
 | SOL | `So11111111111111111111111111111111111111112` (native) | Faucet via `https://faucet.solana.com/` |
-| Mock USDC | `61ro7AExqfk4dZYoCyRzTahahCC2TdUUZ4M5epMPunJf` | 6 decimals, devnet-only test token. Ask the Cloak team in Discord for a transfer to your wallet. |
+| Mock USDC | `61ro7AExqfk4dZYoCyRzTahahCC2TdUUZ4M5epMPunJf` | 6 decimals, devnet-only test token. Mint to any wallet via the public faucet at [devnet.cloak.ag/privacy/faucet](https://devnet.cloak.ag/privacy/faucet). |
 
 Real Circle USDC and USDT are not available on devnet.
 
@@ -306,7 +306,7 @@ console.log("Transfer landed:", transfer.signature);
 
 ## Example: mock-USDC shielded transfer
 
-Same pattern as SOL, but using the devnet mock-USDC mint. The sender's mock-USDC ATA must already hold the deposit amount — request from the Cloak team in Discord, or wire your own funding flow.
+Same pattern as SOL, but using the devnet mock-USDC mint. The sender's mock-USDC ATA must already hold the deposit amount — mint via the [faucet](#getting-mock-usdc) (UI or HTTP), or wire your own funding flow.
 
 <CodeGroup>
 ```typescript @solana/web3.js
@@ -680,7 +680,53 @@ Or via the web faucet at `https://faucet.solana.com/`. Faucets rate-limit at rou
 
 ## Getting mock USDC
 
-The devnet mock-USDC mint is admin-controlled. Ask in Discord for a transfer to your wallet — there is no public faucet.
+Cloak runs a public faucet that mints mock USDC straight to any devnet wallet's associated token account. Two ways to use it:
+
+### Web UI
+
+Visit [devnet.cloak.ag/privacy/faucet](https://devnet.cloak.ag/privacy/faucet), paste a recipient address (or connect a wallet), pick an amount, click send. The faucet creates the recipient's mock-USDC ATA on demand if it doesn't exist yet.
+
+### HTTP API
+
+For scripted or automated flows (CI, integration tests, soak runs), POST directly to `/api/faucet`:
+
+```bash
+curl -X POST https://devnet.cloak.ag/api/faucet \
+  -H "Content-Type: application/json" \
+  -d '{
+    "wallet": "<RECIPIENT_BASE58_PUBKEY>",
+    "amount": 100000000
+  }'
+```
+
+`amount` is in 6-decimal mock-USDC base units (`100_000_000` = 100 mock USDC). If omitted, the default is 100 mock USDC.
+
+Successful response:
+
+```json
+{
+  "signature": "5KX...",
+  "mintedAmount": 100000000,
+  "recipientAta": "Hxy...",
+  "explorer": "https://solscan.io/tx/5KX...?cluster=devnet"
+}
+```
+
+### Rate limits
+
+| Limit | Value |
+|---|---|
+| Per request | 1,000 mock USDC (`1_000_000_000` base units) |
+| Per wallet, rolling 24h | 5,000 mock USDC |
+| Cooldown between requests for the same wallet | 30 seconds |
+
+Limits are enforced server-side in-memory per Vercel instance — they reset when the warm container is evicted, so don't treat them as a hard ceiling. If you need significantly more than the per-day cap for a load test, ask in Discord.
+
+### Notes
+
+- Rate limits are scoped to the **recipient** wallet, not the caller. Spamming from multiple machines doesn't bypass them.
+- Mock USDC only. SOL comes from `https://faucet.solana.com/`.
+- Devnet only — there is no equivalent endpoint on mainnet (mainnet uses real Circle USDC, sourced normally).
 
 ## Switching to mainnet
 
