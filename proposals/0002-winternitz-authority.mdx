@@ -1,0 +1,284 @@
+---
+title: "CIP-0002: Winternitz authority for Cloak shielded actions"
+description: "Compose CIP-0001's cloak_advance meta-verb with a Winternitz one-time-signature authority gate, yielding a post-quantum shielded send/swap path on Solana."
+status: "draft"
+author: "marcelo"
+created: "2026-04-27"
+icon: "snowflake"
+---
+
+# CIP-0002: Winternitz authority for Cloak shielded actions
+
+> **Status:** draft / pre-implementation. NOT v2 critical path —
+> CIP-0001 (`cloak_advance` meta-verb) ships first; this proposal layers
+> on top.
+
+## Motivation
+
+Cloak today verifies user authority over a shielded note via the
+Groth16 proof itself: the prover demonstrates knowledge of the
+spending key inside the circuit. The spending key is an Ed25519
+keypair — same primitive Solana itself uses for tx fee-payer signing.
+
+This means: **an attacker who breaks Ed25519 breaks every Cloak
+note**. Solana's own security floor would crack first, but for a
+privacy-focused wallet that survives "what if the chain itself
+moves to PQ" matters as a multi-decade story.
+
+[blueshift-gg/winterwallet](https://github.com/blueshift-gg/winterwallet)
+is a deployed-on-mainnet Solana smart wallet whose authority is a
+**Winternitz one-time signature** rather than Ed25519. Security
+depends only on SHA-256, which is post-quantum-hard at the bit-lengths
+used here. The cost: each signature burns one position in a finite
+(~2^64) lifetime budget per wallet, requiring durable position state.
+
+This proposal **composes Cloak's `cloak_advance` meta-verb (CIP-0001)
+with Winternitz authority**. Result: a Cloak action whose
+authorization is post-quantum AND whose recipient/amount is private.
+
+Sigil already ships the off-chain TS port of winterwallet's client
+(see `sigil/src/domain/chains/winterwallet/`), proven byte-for-byte
+parity against upstream's golden fixtures. The on-chain integration
+in Cloak is the missing piece.
+
+## Layered structure
+
+CIP-0001 introduced a `cloak_advance` instruction whose preimage
+binds:
+
+```
+extDataHash = poseidon_or_sha256(
+    existing_ext_data,
+    inner_payload_bytes,
+    sorted_inner_account_addresses,
+)
+```
+
+CIP-0002 extends this binding to commit to a Winternitz-authority
+signature:
+
+```
+extDataHash = poseidon_or_sha256(
+    existing_ext_data,
+    inner_payload_bytes,
+    sorted_inner_account_addresses,
+    winternitz_authority_root,
+)
+```
+
+Where `winternitz_authority_root` is the 32-byte merklized OTS pubkey
+the user committed to when shielding the note. The Cloak shield-pool
+program runs **two** verifications per `cloak_advance` call:
+
+1. **Groth16 verify** — proves note ownership + value conservation.
+2. **Winternitz verify** — proves authorization of *this specific
+   action* (committed via `extDataHash`) by the holder of the OTS
+   keypair recorded in the note.
+
+A single shielded action thus has both privacy (Groth16 hides the
+amount + recipient) and PQ resistance (Winternitz authorization
+depends only on SHA-256).
+
+## On-chain instruction surface
+
+```
+discriminator: u8 = 0x11  // cloak_advance + winternitz, peer to 0x10
+cloak_advance_winter:
+  proof:                [u8; 256]   // Groth16
+  public_inputs:        [u8; 296]   // 264-byte CIP-0001 layout
+                                    //   + 32-byte winternitz_authority_root
+  winternitz_signature: [u8; 768]   // 24 × 32 OTS scalars + checksum
+  current_root:         [u8; 32]    // chain-stored OTS root
+  next_root:            [u8; 32]    // new OTS root after this advance
+  inner_payload:        varlen      // CIP-0001 wire format
+```
+
+After both verifications pass, the program:
+
+1. Atomically rotates the on-chain `winternitz_root` PDA from
+   `current_root` to `next_root` (replay protection).
+2. Applies CIP-0001's nullifier + commitment side-effects.
+3. CPIs the inner instructions with the shield-pool authority PDA
+   promoted to signer.
+
+## Wallet model
+
+A Cloak note holds:
+
+```
+note = {
+    amount:                u64,
+    blinding:              [u8; 32],
+    recipient_pubkey:      [u8; 32],   // Ed25519 (today)
+    winternitz_root:       [u8; 32],   // NEW (was implicit "no PQ")
+    chain_note_hash:       [u8; 32],
+}
+```
+
+Spending requires:
+
+1. The Ed25519 secret key (proves recipient binding inside the
+   Groth16 circuit — unchanged from v1).
+2. A current Winternitz keypair whose merklized pubkey at some
+   position equals `winternitz_root`, plus the associated position
+   state.
+
+Either alone is insufficient. This is **dual-key**: an attacker
+needs both the spending key AND the OTS material to spend.
+
+## What's the same as CIP-0001
+
+- 2-in / 2-out commitment topology.
+- 32-level merkle tree.
+- Per-pool nullifier + commitment PDAs.
+- `chainNoteHash` semantics.
+- Fee math.
+- v0/ALT transaction format.
+- The `Advance`-style payload + atomic accounts encoder.
+
+## What's new
+
+- **Winternitz verifier on-chain**: 24 SHA-256 chains × up to 255
+  iterations + merklize over 24 leaves. Fits in CU budget — see
+  measurements below.
+- **OTS root rotation as a PDA mutation**: each shielded action
+  burns one position from the user's lifetime budget.
+- **Recovery scan in the SDK**: position state is durable but the
+  app can crash between sign and submit. The SDK runs ±N scans on
+  sign mismatches. Sigil already implements this in
+  `sigil/src/domain/chains/winterwallet/recovery.ts`.
+- **Note layout change**: notes shielded under v1 are NOT spendable
+  under v2 — they have no `winternitz_root` field. Migration is
+  via deshield→reshield. Discussed in § Migration below.
+
+## Compute budget
+
+Reference numbers (see `sigil/docs/winterwallet-cu-benchmark.md`):
+
+| Component                                  | Approx CU |
+|--------------------------------------------|-----------|
+| Cloak Groth16 verify + nullifier PDAs (v1) | ~350k     |
+| Winternitz verify + merklize               | ~600k     |
+| Root mutation + state I/O                  | ~50k      |
+| **Subtotal: cloak_advance_winter base**    | ~1.0M     |
+| Inner CPI budget remaining                 | ~400k     |
+| Pad 10% headroom                           | tight     |
+
+The 1.4M Solana per-tx ceiling leaves room for a SOL-transfer or
+small SPL-transfer inner CPI but not a multi-hop Jupiter route.
+Three workarounds:
+
+1. **v0/ALT transactions** for the wire size (already required by
+   CIP-0001).
+2. **Split flows**: shielded auth in tx 1, inner action in tx 2.
+   The shield-pool stores a one-shot intent PDA between them.
+3. **SHA-256 syscall improvements**: Solana's `sol_sha256_syscall`
+   has been getting faster across releases. A future budget may
+   shave the Winternitz cost enough to fit Jupiter routes inline.
+
+For CIP-0002 v1 we accept #2 as the fallback for "rich" flows.
+
+## Privacy implications
+
+**Pro**: shielded transfers gain a PQ authorization layer without
+revealing anything beyond what CIP-0001 already does. The
+`winternitz_authority_root` is committed via `extDataHash` —
+observable as a 32-byte hash in the proof's public inputs but not
+linkable across actions (each note has its own `winternitz_root`).
+
+**Caveat**: position-burn introduces a new metadata channel. A
+network observer who can correlate `winternitz_root` rotations with
+specific note spends can build a chain of OTS positions per user.
+Mitigations:
+
+- Commit to a fresh OTS root per note at shield time. The chain
+  doesn't see "user X spent at OTS position 47" because OTS roots
+  aren't reusable across notes.
+- Per-note OTS trees do increase shield-time computation (full
+  derivation per shield). Acceptable cost.
+
+**Don't conflate**: this proposal does NOT add PQ to Solana itself.
+A quantum break of Solana's Ed25519 signature scheme cracks every
+non-Cloak action. CIP-0002 specifically protects the Cloak shielded
+authorization layer.
+
+## Migration
+
+Notes shielded under v1 (no `winternitz_root` field) are not
+spendable under a hypothetical v2-only program. Two strategies:
+
+### Strategy A: dual-mode shield-pool
+
+Keep CIP-0001's `cloak_advance` (disc 0x10) AND ship 0x11
+(`cloak_advance_winter`) side by side. Notes carry a flag indicating
+which mode authorized them. Spend uses the matching path. v1 notes
+remain spendable indefinitely.
+
+**Pro**: zero forced migration.
+**Con**: two verifier paths in the program forever. Bigger audit
+scope, more state to reason about.
+
+### Strategy B: forced migration via deshield
+
+Schedule a sunset for `cloak_advance` (disc 0x10). Users deshield
+v1 notes and re-shield under 0x11. After sunset, v1 notes become
+permanently locked.
+
+**Pro**: clean instruction set after migration.
+**Con**: forces user action; some notes will get orphaned.
+
+**Recommendation**: Strategy A. The program complexity is real but
+contained, and the privacy story is stronger when v1 notes don't
+have to advertise "I'm an old note, deshield me before sunset."
+
+## Open questions
+
+1. **Per-note OTS tree vs shared user tree?** A per-note tree
+   sidesteps the position-correlation metadata channel but multiplies
+   shield-time work by N. A shared tree is cheaper at shield time
+   but lets observers chain OTS positions across notes. Open.
+
+2. **Does Cloak's circuit change?** With Option 1 (extend
+   `extDataHash` to include `winternitz_authority_root`), no. The
+   circuit just hashes a longer ext-data blob. The on-chain program
+   adds the Winternitz verifier alongside existing Groth16 verify.
+   Confirmed feasible.
+
+3. **Trusted setup?** Same circuit → no re-run. Strong reason to
+   pursue Option 1.
+
+4. **Fee-payer model?** Cloak's relay infrastructure fronts SOL
+   today. Winternitz authorization is independent of fee-payment, so
+   the relay model carries forward unchanged. The OTS sig
+   authorizes the Cloak action; the Ed25519 fee-payer pays for the
+   Solana tx.
+
+5. **OTS budget per user?** ~2^64 sigs is fine in theory but the
+   parent overflow at 2^32 sigs (then resetting child to 0) is the
+   practical concern. A user shielding 100 sigs/day would burn
+   through one parent slot in ~118,000 years. Not a real limit.
+
+## Status checklist
+
+- [x] Composition with CIP-0001 specified
+- [x] Public-input layout extended to 296 bytes
+- [x] CU envelope fits in 1.4M tx ceiling for SOL/SPL flows
+- [x] Privacy implications analyzed
+- [x] Migration strategy proposed (dual-mode A)
+- [ ] Per-note vs shared OTS tree decided
+- [ ] Audit scope drafted for Winternitz verifier code path
+- [ ] Decision: ship as Cloak v2 contemporaneous with CIP-0001, or
+      defer to v3
+
+## References
+
+- **CIP-0001:** [`cloak_advance` generic shielded meta-verb](/proposals/0001-cloak-advance-meta-verb)
+- **winterwallet `Advance`:**
+  [`program/src/instructions/advance.rs:62-204`](https://github.com/blueshift-gg/winterwallet/blob/main/program/src/instructions/advance.rs#L62)
+- **Sigil winterwallet TS port:**
+  [`sigil/src/domain/chains/winterwallet/`](https://github.com/marcelofeitoza/sigil/tree/master/src/domain/chains/winterwallet)
+  — proven byte-for-byte parity with upstream golden fixtures.
+- **Sigil CU benchmark methodology:**
+  [`sigil/docs/winterwallet-cu-benchmark.md`](https://github.com/marcelofeitoza/sigil/blob/master/docs/winterwallet-cu-benchmark.md)
+- **Cloak v1 shield-pool:**
+  [`docs/protocol/shield-pool.mdx`](/protocol/shield-pool)
