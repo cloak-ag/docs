@@ -55,7 +55,8 @@
             "group": "Programs",
             "pages": [
               "protocol/architecture",
-              "protocol/shield-pool"
+              "protocol/shield-pool",
+              "protocol/fee-model"
             ]
           },
           {

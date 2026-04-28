@@ -1,0 +1,30 @@
+---
+title: "Fee Model"
+description: "How Cloak computes gross, fee, and net amounts across deposits, transfers, and withdrawals"
+icon: "receipt"
+---
+
+Fees are collected strictly on-chain by the shield-pool program. The relay and SDK do not assess or deduct fees.
+
+## Constants
+
+- Fixed fee floor: `0.005 SOL`
+- Variable fee: `gross * 3 / 1000` (0.30%)
+- Total fee: `fixed + variable`
+- Net recipient amount: `gross - fee`
+- Minimum deposit: `10_000_000` lamports
+
+## Worked example
+
+For a `1 SOL` (`1_000_000_000` lamports) gross amount:
+
+- Fixed: `5_000_000` lamports
+- Variable: `1_000_000_000 * 3 / 1000 = 3_000_000` lamports
+- Fee: `8_000_000` lamports
+- Net: `992_000_000` lamports
+
+## Where it applies
+
+- **Deposit (`publicAmount > 0`)**: `gross` is the lamports moved into the pool; the recipient commitment encodes `net`.
+- **Shield-to-shield transfer (`publicAmount = 0`)**: fee is paid out of the input notes; the output commitments sum to `inputs - fee`.
+- **Withdrawal (`publicAmount < 0`)**: the destination receives `net`; the treasury PDA receives `fee`.
