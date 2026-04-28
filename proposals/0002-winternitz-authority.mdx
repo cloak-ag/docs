@@ -153,20 +153,42 @@ needs both the spending key AND the OTS material to spend.
 
 ## Compute budget
 
-Reference numbers (see `sigil/docs/winterwallet-cu-benchmark.md`):
+**Measured numbers** (Sigil end-to-end on surfpool, freshly-built
+upstream Pinocchio program; raw `unitsConsumed` from on-chain
+receipts, no padding):
 
-| Component                                  | Approx CU |
+| Operation                                  | Measured CU |
+|--------------------------------------------|-------------|
+| `Initialize` (recover pubkey + merklize + create PDA) | **~426,000** |
+| `Advance(Withdraw)` outer + inner CPI      | **~393,000–425,000** |
+| └ inner `Withdraw` CPI (rent-guard + lamport move) | ~200 |
+| `Advance` outer minus inner                | ~393k–425k |
+
+Two consecutive sends measured: 393,408 and 425,234 CU. Variance is
+the post-Initialize-vs-post-Advance state-comparison cost; both well
+within budget.
+
+For CIP-0002's combined Cloak + Winternitz envelope:
+
+| Component                                  | CU |
 |--------------------------------------------|-----------|
-| Cloak Groth16 verify + nullifier PDAs (v1) | ~350k     |
-| Winternitz verify + merklize               | ~600k     |
-| Root mutation + state I/O                  | ~50k      |
-| **Subtotal: cloak_advance_winter base**    | ~1.0M     |
-| Inner CPI budget remaining                 | ~400k     |
-| Pad 10% headroom                           | tight     |
+| Cloak Groth16 verify + nullifier PDAs (v1) | ~350k |
+| Winternitz verify + merklize + root rotate | **~425k** |
+| **Subtotal: `cloak_advance_winter` base**  | **~775k** |
+| Inner CPI budget remaining                 | **~625k** |
+| Pad 10% headroom                           | comfortable |
 
-The 1.4M Solana per-tx ceiling leaves room for a SOL-transfer or
-small SPL-transfer inner CPI but not a multi-hop Jupiter route.
-Three workarounds:
+The 1.4M Solana per-tx ceiling leaves **~625k CU** for the inner
+shielded action. That's enough for:
+
+- SOL transfer (~150 CU) — easy
+- Small SPL transfer (~5k CU) — easy
+- A 2-hop Jupiter route — fits with margin
+- A 4-hop Jupiter route — borderline; v0/ALT required for the wire
+
+Workarounds previously listed for "rich" flows are still good
+fallbacks but a smaller share of routes need them than the prior
+~400k headroom estimate suggested:
 
 1. **v0/ALT transactions** for the wire size (already required by
    CIP-0001).
@@ -174,9 +196,24 @@ Three workarounds:
    The shield-pool stores a one-shot intent PDA between them.
 3. **SHA-256 syscall improvements**: Solana's `sol_sha256_syscall`
    has been getting faster across releases. A future budget may
-   shave the Winternitz cost enough to fit Jupiter routes inline.
+   shave the Winternitz cost enough to fit even multi-hop Jupiter
+   routes inline.
 
-For CIP-0002 v1 we accept #2 as the fallback for "rich" flows.
+For CIP-0002 v1 we accept #2 as the fallback for routes that
+overflow ~625k inner CU.
+
+**Provenance:** numbers above are reproducible. The two reference txs
+on a Sigil-deployed dev clone of the upstream program (program ID
+`DnaS3LaoXtNjtpzfXXr5Wqnb362QVg9fzMvSs4YxMNDT`):
+
+- `4YDf5x9fPWLSyALHaEnzJropNhGyDRCEg6AZR5sim3fnh5oCPNYKjtdYWzTuLRKuqftjpbtP3ZUD95BcTK5K9Upv`
+  — first Withdraw at position (0,0,1), 393,408 CU.
+- `38EtAaobfZpdccrBobsP2tSiMxmYLorMe2MSzoSv1suRuihmBE9QY7jLoK1WUm5yWiPskWGmLY54qwNftS9kXcJU`
+  — second Withdraw at position (0,0,2), 425,234 CU.
+
+Both signed via Sigil's TypeScript port of the upstream Winternitz
+client (cross-language fixture parity locked in
+`sigil/tests/unit/winterwalletCore.test.ts`).
 
 ## Privacy implications
 
