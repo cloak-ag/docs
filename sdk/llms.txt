@@ -24,7 +24,7 @@ Use this file as your primary SDK briefing and only fall back to the friendlier 
 - Types: `dist/index.d.ts`
 - Program ID (default, mainnet): `zh1eLd6rSphLejbFfJEneUwzHRfMKxgzrgkfwA6qRkW`
 - Devnet program ID: `Zc1kHfp4rajSMeASFDwFFgkHRjv7dFQuLheJoQus27h` (served by the local-only `@cloak.dev/sdk-devnet` fork — see `docs/operations/devnet.md`; NOT available through the published `@cloak.dev/sdk` NPM package).
-- Relay and circuits defaults are built into the SDK for standard integrations.
+- Submission endpoint and circuits defaults are built into the SDK for standard integrations.
 - Hashing: BN254 Poseidon (via `@lightprotocol/hasher.rs`) + BLAKE3.
 - Proof system: Groth16 via `snarkjs`.
 - Native companion types: `@solana/web3.js` for `Connection`, `Keypair`, `Transaction`, `PublicKey`. `@solana/kit` is supported for reads (see §4d).
@@ -43,8 +43,8 @@ npm install @solana/spl-token @solana/kit
 
 1. UTXO external amount semantics:
    - `externalAmount > 0n` -> **deposit** (SDK submits the transaction directly, signed by the user).
-   - `externalAmount < 0n` -> **withdraw / swap** (SDK submits via relay; user does not sign on-chain).
-   - `externalAmount === 0n` -> **shield-to-shield transfer** (goes through relay).
+   - `externalAmount < 0n` -> **withdraw / swap** (user does not sign on-chain; SDK handles submission).
+   - `externalAmount === 0n` -> **shield-to-shield transfer** (SDK handles submission).
 2. Every UTXO transaction has exactly 2 inputs and 2 outputs. The SDK pads for you using `createZeroUtxo()`.
 3. UTXO balance identity the circuit enforces:
    `inputSum + externalAmount === outputSum`.
@@ -854,7 +854,7 @@ const swapResult = await swapWithChange(
     swapStatusMaxAttempts: 60,
     swapStatusDelayMs: 2000,
   },
-  sender.publicKey,            // so relay can create ATA if missing
+  sender.publicKey,            // so the SDK can create ATA if missing
 );
 
 console.log("swap sig", swapResult.signature);
@@ -900,7 +900,7 @@ const delta = await scanTransactions({
 
 ### 6.8 Viewing-key registration (advanced)
 
-For standard app integrations, keep the SDK-managed registration flow and avoid manual relay wiring.
+For standard app integrations, keep the SDK-managed registration flow and avoid manual wiring.
 Only use direct registration helpers for custom/operator pipelines.
 
 ### 6.9 Fee math (SOL + SPL)
@@ -949,12 +949,12 @@ const bundle = await encryptTransactionMetadata(
 const decrypted = await decryptTransactionMetadata(bundle.encrypted_user, vk.privateKey);
 ```
 
-### 6.11 Relay tree helpers + stale-root preflight (advanced)
+### 6.11 Tree helpers + stale-root preflight (advanced)
 
 Use these helpers for operator-grade diagnostics and custom infrastructure.
 They are not required for standard app integrations.
 
-### 6.12 On-chain Merkle proof fallback (when relay is unavailable)
+### 6.12 On-chain Merkle proof fallback
 
 ```ts
 import { computeProofFromChain, getShieldPoolPDAs, NATIVE_SOL_MINT } from "@cloak.dev/sdk";

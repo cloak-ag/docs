@@ -48,6 +48,7 @@ This file is the canonical index for AI coding agents integrating with Cloak.
 
 - [Protocol Architecture](/protocol/architecture): End-to-end runtime path from client to on-chain state.
 - [Shield Pool Program](/protocol/shield-pool): Program behavior relevant to integrators.
+- [Fee Model](/protocol/fee-model): Constants, formula, and per-flow breakdown for the on-chain fee.
 - [Circuits Package](/packages/circuits): Proof circuit build and hosting pipeline.
 - [Security](/operations/security): Trust boundaries and security controls.
 

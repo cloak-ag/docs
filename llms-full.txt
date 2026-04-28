@@ -17,7 +17,7 @@ Cloak is a privacy-focused Solana stack with:
 - `@cloak.dev/sdk` (TypeScript) for transaction orchestration
 - `cloak-sdk` (Rust crate) for server-side / CLI / program-client orchestration
 - on-chain shield-pool program logic
-- proof circuits and relay services
+- proof circuits
 
 Both SDKs target the same on-chain protocol and produce identical wire payloads.
 Primary integration path is the SDK UTXO API in whichever language matches the host app.
@@ -106,6 +106,8 @@ For Rust integrations:
   - Purpose: end-to-end data flow from client to chain.
 - `/protocol/shield-pool`
   - Purpose: on-chain behavior that integrators must align with.
+- `/protocol/fee-model`
+  - Purpose: on-chain fee constants, formula, and per-flow breakdown.
 - `/packages/circuits`
   - Purpose: circuit build and consumption pipeline.
 - `/operations/security`
@@ -138,7 +140,7 @@ These are intentionally repeated here because agents often miss them. They apply
 5. Never log secrets (private keys, viewing keys (`nk`), seed material, raw note payloads, blindings, UTXO private keys).
 6. Transaction signatures are public and can be logged for support/debugging.
 7. Viewing-key registration affects scanner/compliance readability.
-8. Rust-specific: swaps (`opts.swap = Some(...)`) and direct SPL withdraw are **relay-only** — `submit_direct` rejects them with `Error::Config`.
+8. Rust-specific: swaps (`opts.swap = Some(...)`) and direct SPL withdraw require `opts.relay_url` — `submit_direct` rejects them with `Error::Config`.
 
 For full signature-level details, use `/sdk/llms.txt` (TypeScript) or `/sdk/rust/llms.txt` (Rust).
 
@@ -244,7 +246,7 @@ async fn main() -> anyhow::Result<()> {
         ..Default::default()
     }).await?;
 
-    // Withdraw (full) via relay.
+    // Withdraw (full).
     let mut input = deposit.output_commitments; // actual `Utxo` — saved with its keypair
     let recipient: Pubkey = args_recipient()?;
     let withdraw = transact(TransactOptions {

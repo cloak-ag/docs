@@ -46,8 +46,8 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 
 1. `TransactOptions.external_amount: i64` semantics:
    - `> 0` → **deposit** (direct submission; `opts.payer` signs the SOL/SPL transfer).
-   - `< 0` → **withdraw** (relay when `relay_url` is set; otherwise direct).
-   - `== 0` → **shield-to-shield transfer** (relay by default).
+   - `< 0` → **withdraw** (submitted via `relay_url` when set, otherwise direct).
+   - `== 0` → **shield-to-shield transfer** (submitted via `relay_url` when set, otherwise direct).
 2. Every transact has exactly 2 inputs and 2 outputs. Preflight pads zero-UTXOs automatically — callers supply the real ones.
 3. Balance identity enforced by preflight: `sum(inputs) + external_amount == sum(outputs)`.
 4. Amounts are `u64` (or `i64` for `external_amount`). Internal balance check uses `i128` to avoid overflow.
@@ -56,8 +56,8 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
    - Fixed: `5_000_000` lamports.
    - Variable: `3 / 1000` of gross (for withdrawal/swap).
    - Minimum SOL deposit: `10_000_000` lamports.
-7. Swaps (`opts.swap = Some(SwapOptions {...})`) are **relay-only**. `submit_direct` rejects them with `Error::Config`.
-8. Direct **SPL withdraw** is rejected (needs fee-quote path via relay) — use `opts.relay_url` for SPL withdrawals.
+7. Swaps (`opts.swap = Some(SwapOptions {...})`) require `opts.relay_url`. `submit_direct` rejects them with `Error::Config`.
+8. Direct **SPL withdraw** is rejected — set `opts.relay_url` for SPL withdrawals.
 9. `RootNotFound` and `StaleProofState` are retryable and are handled by the outer retry loop automatically.
 10. Never log secrets: UTXO private keys (`Fr`), viewing keys (`nk: [u8; 32]`), blindings, seed material, raw note payloads.
 11. Standard integrations should use SDK defaults for program, relay, and circuits.
@@ -109,7 +109,7 @@ pub struct TransactOptions {
     pub payer: Option<Arc<Keypair>>,
     pub relay_url: Option<String>,
 
-    // Swap (relay-only)
+    // Swap (requires relay_url)
     pub swap: Option<SwapOptions>,
     pub swap_status_max_attempts: Option<u32>, // default 60
     pub swap_status_delay_ms: Option<u64>,     // default 2000
@@ -284,7 +284,7 @@ let opts = TransactOptions {
 let result = transact(opts).await?;
 ```
 
-### Swap (relay-only, two-phase)
+### Swap (requires relay_url, two-phase)
 
 ```rust
 use cloak_sdk::core::transact::options::SwapOptions;
@@ -356,8 +356,8 @@ What the engine deliberately leaves to consumers:
 
 Alternate providers not currently wired through the crate:
 
-- **Switchboard direct risk quotes** — gated behind the `switchboard` Cargo feature. The relay `/range-quote` path is wired and is the standard production path.
-- **Relay-discovered ALTs** via `/health` — the engine auto-creates ephemeral ALTs and returns them for caller reuse, so this path is optional.
+- **Switchboard direct risk quotes** — gated behind the `switchboard` Cargo feature. The `/range-quote` path is wired and is the standard production path.
+- **Server-discovered ALTs** via `/health` — the engine auto-creates ephemeral ALTs and returns them for caller reuse, so this path is optional.
 
 ---
 
