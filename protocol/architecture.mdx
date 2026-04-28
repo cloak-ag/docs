@@ -1,14 +1,13 @@
 ---
 title: "Protocol Architecture"
-description: "Current end-to-end data flow across app, SDK, relay, and shield-pool runtime"
+description: "Current end-to-end data flow across app, SDK, and shield-pool runtime"
 icon: "diagram-project"
 ---
 
-Cloak is a UTXO privacy system on Solana with five active runtime surfaces:
+Cloak is a UTXO privacy system on Solana with four active runtime surfaces:
 
 - Your app's wallet UX, encrypted local cache, and scan/export flows
 - SDK proof generation, transaction coordination, and chain-note scan/decrypt
-- Relay service for transaction orchestration, status tracking, and chain indexing
 - Shield Pool on-chain proof verifier + state machine
 - Circuit layer constraints (2-in/2-out transaction circuit)
 
@@ -28,7 +27,7 @@ Cloak is a UTXO privacy system on Solana with five active runtime surfaces:
   - `> 0`: deposit into pool
   - `< 0`: withdrawal from pool
   - `= 0`: shield-to-shield transfer
-- The same proof/public-input shape is consumed by relay and on-chain program.
+- The same proof/public-input shape is consumed by the on-chain program.
 
 ## Fee model (gross, fee, net)
 
@@ -50,18 +49,10 @@ Shield Pool maintains:
 - Mint-scoped Pool/Treasury PDAs (`["pool", mint]`, `["treasury", mint]`)
 - SwapState PDA (`["swap_state", pool_pubkey, nullifier]`) for two-phase swaps
 
-## Relay responsibilities
-
-- Accept and validate transaction submissions from SDK clients
-- Track lifecycle states for asynchronous and multi-phase flows
-- Provide indexed commitment/root data for proof construction
-- Verify and store viewing-key registrations for compliance workflows
-- Enforce policy checks (risk/compliance) before signing sensitive actions
-
 ## Viewing keys and history scanning
 
 - Viewing-key registration is enforced by default for SDK transaction paths.
-- User signs a fixed sign-in message; relay verifies signature and stores the 32-byte viewing key with an identifier hash.
+- User signs a fixed sign-in message; the SDK submits the registration and binds the 32-byte viewing key to the wallet identity.
 - Scanner path is chain-native: SDK reads program transactions from RPC, decrypts compact chain notes with `nk`, verifies `chainNoteHash` integrity, and computes running balance/fees.
 - History UIs commonly use encrypted local cache and support explicit `Clear cache & rescan`.
 

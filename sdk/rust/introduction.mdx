@@ -16,8 +16,8 @@ pub async fn transact(opts: TransactOptions) -> Result<TransactResult>;
 
 Each call runs the full protocol pipeline end-to-end:
 
-- SOL and SPL deposits, transfers, and withdrawals (direct or relay-submitted)
-- Relay-submitted swaps via `/transact_swap` with status polling
+- SOL and SPL deposits, transfers, and withdrawals
+- Swaps via `/transact_swap` with status polling
 - Risk-oracle Ed25519 sigverify prepended at tx index 0
 - Ephemeral ALT auto-creation for oversized v0 transactions
 - Viewing-key challenge/register flow with process-local caching
@@ -83,7 +83,7 @@ async fn main() -> anyhow::Result<()> {
 A few intentional choices shape how the crate reads:
 
 - **Engine-first, no stateful façade.** The TS SDK's `CloakSDK` class is a wallet-aware façade over the same engine; the Rust crate exposes the engine directly. Build your own wallet, scanner, or compliance report on top — `TransactResult` gives you the commitments, indices, and post-tx tree to do it.
-- **`TransactOptions` as the one knob.** Parameters (inputs, outputs, external_amount, recipient) and submission config (rpc, payer, relay, risk checks) live on one struct. `..Default::default()` + struct-update syntax keeps call sites readable.
+- **`TransactOptions` as the one knob.** Parameters (inputs, outputs, external_amount, recipient) and submission config (rpc, payer, relay_url, risk checks) live on one struct. `..Default::default()` + struct-update syntax keeps call sites readable.
 - **`RpcProvider` is a trait.** Production wraps `solana-rpc-client::nonblocking::RpcClient` via `SolanaRpc`; tests inject `MockRpc`. Same shape, no cfg-gated code paths.
 - **Focused Solana crates.** Depends on `solana-keypair`, `solana-pubkey`, `solana-transaction`, `solana-rpc-client`, etc. — not the `solana-sdk` umbrella. Keeps the dep graph predictable and compile times reasonable.
 - **Typed retry classification.** `Error::RootNotFound` / `Error::StaleProofState` / `Error::BlockhashExpired` are variants the retry loop matches on directly — no string-sniffing, no `Box<dyn Error>` hand-unwrapping.

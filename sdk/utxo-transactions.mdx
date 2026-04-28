@@ -36,7 +36,7 @@ interface TransactParams {
 - `< 0`: public withdrawal from the pool
 - `0`: fully shielded transfer
 
-Under the hood, SDK builds proof + `264`-byte public inputs and submits through relay transaction orchestration.
+Under the hood, SDK builds proof + `264`-byte public inputs and submits the resulting on-chain transaction.
 
 ## Fees
 
@@ -202,13 +202,13 @@ await swapWithChange(
 
 </CodeGroup>
 
-`swapWithChange` sends `TransactSwap` payload (`proof + 264-byte public inputs + swap params`) through relay swap orchestration.
+`swapWithChange` sends a `TransactSwap` payload (`proof + 264-byte public inputs + swap params`).
 
 ## Viewing-key registration requirements
 
 - Default behavior enforces viewing-key registration before protocol txs.
 - `TransactOptions.enforceViewingKeyRegistration` defaults to `true`.
-- Registration signs fixed sign-in message and submits through relay compliance registration.
+- Registration signs the fixed sign-in message and submits the registration record.
 
 If viewing key is missing, history and decrypt flows cannot resolve your transaction data.
 
@@ -219,7 +219,7 @@ When deposits require Range/Switchboard validation, include:
 - `riskOracleQueue`
 - `riskQuoteUrl` (or `getRiskQuoteInstruction`)
 
-Relay can serve risk quotes; you can also provide your own quote backend/direct instruction callback.
+The SDK can fetch risk quotes for you; you can also provide your own quote backend or a direct instruction callback.
 
 If deposit account list is large, use v0 transactions with `addressLookupTableAccounts`.
 
@@ -227,13 +227,13 @@ If deposit account list is large, use v0 transactions with `addressLookupTableAc
 
 - Amounts use `bigint` in the UTXO API.
 - Proof retries are built in for stale roots (`0x1001`).
-- Relay-backed Merkle reconstruction is preferred for older indices.
+- SDK-side Merkle reconstruction is preferred for older indices.
 - Optional `cachedMerkleTree` helps sequential txs avoid extra rebuild/fetch.
 - Optional `useUniqueNullifiers` helps repeated development runs avoid nullifier collisions.
 
 ## Troubleshooting
 
-- `Invalid public inputs size`: relay expects `264` bytes, not `232`.
+- `Invalid public inputs size`: the protocol expects `264` bytes, not `232`.
 - `RootNotFound` / `0x1001`: regenerate proof with fresh root (SDK retry usually handles this).
 - `0x1020` in local repeated runs: set `CLOAK_UNIQUE_NULLIFIERS=1`.
 - `viewing key not found`: re-run a transaction with registration enabled, then rescan history.

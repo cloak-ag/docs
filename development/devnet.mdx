@@ -194,7 +194,7 @@ await new Promise((r) => setTimeout(r, 20_000));
 
 // 2. Shield-to-shield transfer: split the deposited UTXO into a recipient
 //    output and a change output. externalAmount=0 keeps everything inside
-//    the pool. The transfer is routed through the relay (`/transact`).
+//    the pool. The SDK handles submission.
 const recipientOut = await createUtxo(TRANSFER_AMOUNT, recipientUtxo, NATIVE_SOL_MINT);
 const changeOut = await createUtxo(
   DEPOSIT_AMOUNT - TRANSFER_AMOUNT,

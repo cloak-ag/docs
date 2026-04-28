@@ -28,7 +28,7 @@ Cloak ships two first-party SDKs targeting the same on-chain protocol. Pick the 
 | A Rust backend, service, or CLI | Rust |
 | A Solana program client | Rust |
 
-Both SDKs speak the same protocol, produce the same 264-byte public inputs, and submit to the same relay. Migrating between them is straightforward once you understand the shared primitives.
+Both SDKs speak the same protocol and produce the same 264-byte public inputs. Migrating between them is straightforward once you understand the shared primitives.
 
 ## Shared runtime defaults
 
@@ -41,6 +41,8 @@ Both SDKs speak the same protocol, produce the same 264-byte public inputs, and 
 | Circuit arity | 2 inputs / 2 outputs |
 | Proof format | 256-byte Groth16 (pinocchio) |
 | Public inputs | 264 bytes |
+
+The **relay URL** points at Cloak's hosted submission endpoint that the SDK uses to land transactions on-chain. The default is correct for mainnet — only override `relayUrl` if you're targeting a different deployment (e.g. devnet).
 
 ## Shared concepts
 

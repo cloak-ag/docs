@@ -24,31 +24,28 @@ Public input layout:
 ## Deposit flow (`publicAmount > 0`)
 
 1. SDK creates output UTXOs and generates proof inputs.
-2. SDK resolves Merkle data (relay cache first, chain fallback).
+2. SDK resolves Merkle data from chain.
 3. Transaction is submitted (direct signer path for deposit variants).
 4. Program verifies proof and appends commitments to the tree.
-5. Relay/SDK resolve commitment index and persist local proof context.
+5. SDK resolves commitment index and persists local proof context.
 
 ## Withdraw/transfer flow
 
 1. SDK builds 2-in/2-out witness and computes nullifiers.
 2. SDK optionally ensures viewing-key registration.
-3. SDK submits proof + public inputs through relay transaction submit path.
-4. Relay validates sizes/shape and submits on-chain transaction.
-5. Program rejects reused nullifiers and enforces amount/fee constraints.
-6. Client polls transaction status until completed or failed.
+3. SDK submits the proof + public inputs and the resulting on-chain transaction lands.
+4. Program rejects reused nullifiers and enforces amount/fee constraints.
+5. Client polls transaction status until completed or failed.
 
 ## Swap flow
 
 1. SDK generates proof for withdraw-like step with swap params.
-2. Relay submits `TransactSwap` (Tx1) to open `SwapState`.
-3. Worker executes swap settlement path (Tx2), validates output min amount.
+2. `TransactSwap` (Tx1) opens `SwapState`.
+3. Settlement path (Tx2) executes the swap and validates output min amount.
 4. Status includes `swap_phase`, signatures, and error context.
 5. Timeout/close paths can reclaim state if settlement cannot complete.
 
 ## Reliability behaviors
 
 - Stale root retries: SDK regenerates proofs when root history moved
-- Queue recovery: relay resets stuck jobs and requeues retryable failures
-- Commitment sync repair: relay can backfill sparse windows and rebuild cursors
 - Recovery operations: bots can withdraw indexed historical deposits

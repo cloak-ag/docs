@@ -14,8 +14,8 @@ icon: "key"
 ## Registration lifecycle
 
 1. Wallet signs a fixed Cloak sign-in challenge.
-2. Client submits signed viewing-key registration through the relay-managed compliance channel.
-3. Relay verifies signature ownership and binds the viewing key to the wallet identity.
+2. SDK submits the signed viewing-key registration.
+3. Signature ownership is verified and the viewing key is bound to the wallet identity.
 
 ## Enforcement and UX behavior
 
@@ -32,6 +32,6 @@ icon: "key"
 
 ## Trust model
 
-- Relay compliance services can only process history for keys users have registered.
-- Scanner-based discovery remains chain-native and does not require relay decryption.
+- Compliance services can only process history for keys users have registered.
+- Scanner-based discovery remains chain-native — history is reconstructed directly from on-chain data using the viewing key.
 - Clients should never log raw viewing keys or full decrypted note payloads.

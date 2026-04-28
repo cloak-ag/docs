@@ -21,8 +21,8 @@ pub enum FlowKind {
 Preflight classifies automatically — you never construct `FlowKind` yourself. The orchestrator then routes:
 
 - **Deposits** → always direct submission (user must sign the SOL/SPL transfer into the pool).
-- **Transfers / withdrawals** → relay when `relay_url` is set, else direct.
-- **Swaps** → always relay (the relay selects DEX routes).
+- **Transfers / withdrawals** → submitted via `relay_url` when set, otherwise direct.
+- **Swaps** → always submitted via `relay_url` (DEX routing happens server-side).
 
 ## UTXOs
 
@@ -61,7 +61,7 @@ Flow-specific extras:
 
 | Field | Purpose |
 |---|---|
-| `swap: Option<SwapOptions>` | set for a TransactSwap flow (relay-only) |
+| `swap: Option<SwapOptions>` | set for a TransactSwap flow (requires `relay_url`) |
 | `enable_risk_check: bool` | prepend Ed25519 risk-quote sigverify |
 | `risk_quote_url: Option<String>` | overrides the auto-derived `${relay_url}/range-quote` |
 | `require_viewing_key: bool` | run VK challenge+register before proving |
@@ -84,7 +84,7 @@ Chaining:
 2. **build circuit inputs** — 90 signals, decimal-encoded
 3. **prove** — Groth16 via ark-circom (heavy; cached artifacts + `spawn_blocking`)
 4. **encrypt chain notes** — one compact note bound to output_commitments[0]
-5. **submit** — direct (with blockhash + transport retries) or relay POST
+5. **submit** — direct (with blockhash + transport retries) or `relay_url` POST
 6. **reconcile indices** — best-effort poll to fill `output_indices`
 
 Errors map to `IterationStatus`:
@@ -100,7 +100,7 @@ Errors map to `IterationStatus`:
 
 After each successful transact, `TransactResult.cached_merkle_tree` holds a local `MerkleTree` with the two new output commitments appended. Thread it into the next `TransactOptions.cached_merkle_tree` and you skip the `/commitments` fetch on the next call — the orchestrator seeds `LoopState.merkle_tree` from it directly.
 
-`sibling_commitments` and `pre_transaction_left_sibling` on the result are populated from the post-tx tree so the next proof can use them without a fresh relay hit.
+`sibling_commitments` and `pre_transaction_left_sibling` on the result are populated from the post-tx tree so the next proof can use them without a fresh `/commitments` fetch.
 
 ## Chain notes
 

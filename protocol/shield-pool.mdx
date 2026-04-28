@@ -32,7 +32,7 @@ SDK consumers typically interact through `Transact` and `TransactSwap`.
 - `outputCommitments[64]` (2 x 32)
 - `chainNoteHash[32]`
 
-This matches the transaction circuit constraints and relay validation.
+This matches the transaction circuit constraints.
 
 ## Fees and amount semantics
 
@@ -78,7 +78,7 @@ Mint-scoped PDAs:
 
 - Runs the same proof/nullifier/commitment checks as `Transact`.
 - Requires negative `publicAmount` (swap is a withdrawal path).
-- Creates `SwapState` for follow-up settlement path handled by relay worker flow.
+- Creates `SwapState` for the follow-up settlement path.
 
 ## Circuit assumptions the program relies on
 

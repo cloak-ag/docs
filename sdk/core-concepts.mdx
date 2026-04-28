@@ -10,7 +10,7 @@ The active runtime path is UTXO transactions through:
 
 - `transact` for deposit/withdraw/transfer
 - `swapWithChange` / `swapUtxo` for swap flows
-- Relay-managed submit and status lifecycle
+- SDK-managed submit and status lifecycle
 
 Note-model and UTXO-model methods are both part of v1, with UTXO-first integrations recommended for most apps.
 
@@ -71,7 +71,7 @@ For SOL withdrawals/swaps:
 
 ## Chain-native scanner and cache model
 
-- `scanTransactions` reads chain transactions directly from RPC (no relay dependency).
+- `scanTransactions` reads chain transactions directly from RPC.
 - It decrypts compact chain notes with viewing key `nk` and verifies `chainNoteHash` integrity.
 - It computes per-tx `gross`, `fee`, `netAmount`, and running balance.
 - Client apps can store encrypted report snapshots locally and expose explicit cache clear + rescan.

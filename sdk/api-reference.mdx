@@ -115,7 +115,7 @@ buildMerkleTreeFromRelay(relayUrl)
 Notes:
 
 - UTXO transact/swap flows submit 256-byte proofs and 264-byte public inputs.
-- `RelayService` methods and UTXO helpers share the same relay orchestration surface with different payload shapes.
+- `RelayService` is the low-level submission client; the high-level `CloakSDK` class wraps it for you.
 
 ## Fee constants
 

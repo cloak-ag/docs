@@ -90,8 +90,8 @@ async fn main() -> anyhow::Result<()> {
 ## What just happened
 
 1. **Preflight** (synchronous, pure): validated arity / balance / mint, classified the flow as `Deposit`, and padded inputs to the fixed 2-in/2-out arity.
-2. **Viewing-key registration** (skipped by default — flip `require_viewing_key` to enable): challenge + register against the relay with the payer signing the message.
-3. **Merkle fetch**: pulled the on-chain tree state via RPC and the commitment set via relay `/commitments`, falling back to a frontier proof if needed.
+2. **Viewing-key registration** (skipped by default — flip `require_viewing_key` to enable): challenge + register with the payer signing the message.
+3. **Merkle fetch**: pulled the on-chain tree state via RPC and the commitment set via `/commitments`, falling back to a frontier proof if needed.
 4. **Circuit input packing**: 90 decimal-string signals, in the exact order the circom transaction circuit consumes.
 5. **Proof generation**: ark-circom + ark-groth16 emitted a 256-byte proof. Artifacts (wasm + zkey) cache under `~/Library/Caches/cloak-sdk/circuits/0.1.0/` on macOS, `~/.cache/cloak-sdk/circuits/0.1.0/` on Linux.
 6. **Chain-note encryption**: a single compact v2 note bound to the primary output commitment, encrypted under HKDF-derived AES-256-GCM.
