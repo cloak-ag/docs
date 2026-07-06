@@ -62,7 +62,7 @@ This file is the canonical index for AI coding agents integrating with Cloak.
 
 - [What is Cloak?](/guide/what-is-cloak): Plain-language positioning — what Cloak does and who it's for.
 - [How Cloak works](/guide/how-it-works): The four user flows — shield, private send, private swap, unshield.
-- [Your private balance and backup file](/guide/private-balance): Custody model — notes, the backup file, loss and recovery semantics.
+- [Your private balance and backup file](/guide/private-balance): Custody model — UTXOs, the backup file, loss and recovery semantics.
 - [Fees](/guide/fees): Who pays what per action; free shielding, 0.3% to leave the pool.
 - [Security](/guide/security): Audit status, threat model, what Cloak cannot do, governance.
 - [Compliance and proof of funds](/guide/compliance): Viewing-key selective disclosure, reports, screening.

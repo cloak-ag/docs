@@ -7,24 +7,24 @@ icon: "book"
 Every term Cloak uses, in plain language, in alphabetical order. Definitions here match the app and the rest of these docs exactly.
 
 <Tip>
-Three terms carry most of the weight: **private balance**, **notes**, and **backup file**. If you read nothing else, read those — and remember: your backup file is the money.
+Three terms carry most of the weight: **private balance**, **UTXOs**, and **backup file**. If you read nothing else, read those — and remember: your backup file is the money.
 </Tip>
 
 **Anonymity set** — The crowd your transaction hides in: all the other activity in the same pool. The more a pool is used, the harder it becomes for a chain-watcher to link any deposit to any withdrawal.
 
 **Backup file** — A JSON file, downloaded from Backup & Restore, that restores your private balance on any device. It is a bearer instrument and a point-in-time snapshot: anyone holding it can withdraw your funds, so guard it like cash and re-export it after new activity.
 
-**Change** — The note that comes back to you when you spend more than a payment needs, like coins handed back at a register. Every private transaction creates up to two new notes: one for the payment, one for your change.
+**Change** — The UTXO that comes back to you when you spend more than a payment needs, like coins handed back at a register. Every private transaction creates up to two new UTXOs: one for the payment, one for your change.
 
-**Commitment** — The sealed on-chain record of a note, proving the note exists without revealing its amount or owner. The chain stores commitments; the details stay with you.
+**Commitment** — The sealed on-chain record of a UTXO, proving it exists without revealing its amount or owner. The chain stores commitments; the details stay with you.
 
 **Gasless** — A property of private sends and swaps: your wallet pays no gas and never appears as sender. The transaction is submitted for you — your wallet only signs a sign-in message.
 
-**Merkle tree** — A data structure that lets the chain confirm a note belongs to the pool without pointing at which note. Each Cloak pool keeps its own tree, with room for roughly 4.3 billion notes.
+**Merkle tree** — A data structure that lets the chain confirm a UTXO belongs to the pool without pointing at which one. Each Cloak pool keeps its own tree, with room for roughly 4.3 billion UTXOs.
 
-**Note (shielded note)** — A unit of value inside your private balance, created when you shield and consumed when you spend. Each private transaction consumes up to two notes and creates up to two new ones.
+**Note** — The friendly name for a UTXO; the app and these docs use both. See **UTXO**.
 
-**Nullifier** — A one-time tag published when a note is spent, guaranteeing the same note can never be spent twice — without revealing which note it was.
+**Nullifier** — A one-time tag published when a UTXO is spent, guaranteeing the same UTXO can never be spent twice — without revealing which one it was.
 
 **Payment link** — A single-use link funded from a shielded deposit; whoever holds the link can claim the funds. Treat this link like cash — and note that unclaimed links are not included in your backup file.
 
@@ -32,7 +32,7 @@ Three terms carry most of the weight: **private balance**, **notes**, and **back
 
 **Pool (shielded pool)** — The on-chain account where everyone's shielded funds of one token sit together; Cloak runs a separate pool for each token (SOL, USDC, USDT). Shielded pools are like sealed envelopes in a public mailbox: everyone sees mail, not what's inside.
 
-**Private balance** — Your shielded funds: the total value of your notes, stored encrypted in your browser and nowhere else. Cloak's servers never hold it — which is why the [backup file](/guide/private-balance) matters.
+**Private balance** — Your shielded funds: the total value of your UTXOs, encrypted and held only by you, never on Cloak's servers — which is why the [backup file](/guide/private-balance) matters.
 
 **Private send** — A payment from your private balance to any Solana address or .sol domain. On-chain, the funds arrive from the Cloak pool, and the recipient receives the exact amount you entered — the fee is added on top.
 
@@ -50,6 +50,8 @@ Three terms carry most of the weight: **private balance**, **notes**, and **back
 
 **Treasury** — The on-chain account where the program collects protocol fees. Fees are taken on-chain by the program itself — nothing else in Cloak charges a fee ([see the fee table](/guide/fees)).
 
+**UTXO (unspent transaction output)** — A private note of value inside your private balance, created when you shield or receive and consumed when you spend. Each private transaction consumes up to two UTXOs and creates up to two new ones. Your UTXOs are encrypted, held only by you, and carried in your backup file.
+
 **Viewing key** — A read-only key that can decrypt your transaction history — amounts, fees, recipients — but can never move funds. Read access and spend authority are cryptographically separate ([compliance](/guide/compliance)).
 
 **Wallet (and Wallet Standard)** — The Solana app (Phantom, Solflare, Ledger, among others) that signs your deposits and sign-in messages; any wallet supporting the Wallet Standard is detected automatically. Your wallet is not a backup: it cannot restore a private balance — only the backup file can.
@@ -60,7 +62,7 @@ Three terms carry most of the weight: **private balance**, **notes**, and **back
 
 <CardGroup cols={2}>
   <Card title="Your private balance" icon="wallet" href="/guide/private-balance">
-    The three terms that matter most — private balance, notes, backup file — and what happens if you lose them.
+    The three terms that matter most — private balance, UTXOs, backup file — and what happens if you lose them.
   </Card>
   <Card title="How Cloak works" icon="arrows-rotate" href="/guide/how-it-works">
     See these terms in action across shield, private send, private swap, and unshield.

@@ -9,7 +9,7 @@ Honest answers, worst cases first. If your question isn't here, start with [What
 <AccordionGroup>
 
 <Accordion title="Has Cloak been audited?">
-Cloak's shield-pool program has undergone an external security assessment by Certora. The full report is being prepared for publication and will be linked here. {/* TODO(audit-url): link published Certora report */} Our full threat model — including what Cloak cannot do — is at [Security](/guide/security).
+Cloak's shield-pool program has undergone an external security assessment. The full report is being prepared for publication and will be linked here. {/* TODO(audit-url): link the published audit report */} Our full threat model — including what Cloak cannot do — is at [Security](/guide/security).
 </Accordion>
 
 <Accordion title="Can Cloak freeze, seize, or spend my funds?">
@@ -25,7 +25,7 @@ Your funds are safe as long as you still have your browser data or your backup f
 </Accordion>
 
 <Accordion title="Can Cloak recover my balance for me?">
-No. Your private balance lives encrypted in your browser; Cloak's servers never hold note secrets, so there is nothing on our side to restore from. Your backup file is the money — it is the only recovery artifact, and it restores your balance on any device via Backup &amp; Restore.
+No. Your private balance lives encrypted in your UTXOs, on your device; Cloak's servers never hold UTXO secrets, so there is nothing on our side to restore from. Your backup file is the money — it is the only recovery artifact, and it restores your balance on any device via Backup &amp; Restore.
 </Accordion>
 
 <Accordion title="What does a chain-watcher actually see?">
@@ -77,6 +77,6 @@ Before you rely on any of the above: export your backup file. Your backup file i
     The threat model, on-chain protections, and the full "What Cloak cannot do" list.
   </Card>
   <Card title="Your private balance" icon="wallet" href="/guide/private-balance">
-    How notes, the backup file, and restore actually work — read before you shield.
+    How UTXOs, the backup file, and restore actually work — read before you shield.
   </Card>
 </CardGroup>

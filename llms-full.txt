@@ -134,7 +134,7 @@ integration questions. They are authoritative for user-facing wording.
 - `/guide/how-it-works`
   - Purpose: the four user flows (shield, private send, private swap, unshield) without protocol internals.
 - `/guide/private-balance`
-  - Purpose: canonical custody model — private balance, notes, backup file, loss/recovery semantics.
+  - Purpose: canonical custody model — private balance, UTXOs, backup file, loss/recovery semantics.
 - `/guide/fees`
   - Purpose: user-facing who-pays fee table (free shielding; SOL 0.005 + 0.3%; SPL 0.3% on the way out).
 - `/guide/security`

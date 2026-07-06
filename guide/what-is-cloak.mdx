@@ -25,7 +25,7 @@ Under the hood, a zero-knowledge proof generated in your browser — in under th
 
 ## What makes Cloak different
 
-**Self-custodial, literally.** Your private balance lives encrypted in your own browser, and your backup file is the money. Cloak can't see your balance, can't spend it, and can't recover it. That's the design.
+**Self-custodial, literally.** Your private balance lives encrypted in your UTXOs — private notes only you hold — and your backup file is the money. Cloak can't see your balance, can't spend it, and can't recover it. That's the design.
 
 **No gas, no sender trail.** When you act from your private balance, your wallet pays no gas and never appears as sender. Deposits into the pool and payments out of it are both visible on-chain — the link between them isn't.
 
@@ -43,8 +43,8 @@ Under the hood, a zero-knowledge proof generated in your browser — in under th
 
 ## Where Cloak stands today
 
-Cloak is live on Solana mainnet, in beta, with $250K+ in shielded volume and 3,000+ proofs generated to date. Cloak's shield-pool program has undergone an external security assessment by Certora. The full report is being prepared for publication and will be linked here.
-{/* TODO(audit-url): link published Certora report */}
+Cloak is live on Solana mainnet, in beta, with $500K+ in shielded volume and 1,500+ transactions processed on mainnet to date. Cloak's shield-pool program has undergone an external security assessment. The full report is being prepared for publication and will be linked here.
+{/* TODO(audit-url): link the published audit report */}
 
 For the threat model and the full list of what Cloak cannot do, see [Security](/guide/security).
 
@@ -55,6 +55,6 @@ For the threat model and the full list of what Cloak cannot do, see [Security](/
     The four flows, step by step — shield, send, swap, unshield.
   </Card>
   <Card title="Your private balance" icon="file-shield" href="/guide/private-balance">
-    Notes, the backup file, and exactly what happens if you lose them.
+    UTXOs, the backup file, and exactly what happens if you lose them.
   </Card>
 </CardGroup>
