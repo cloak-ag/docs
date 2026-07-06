@@ -69,7 +69,7 @@ npm install @solana/spl-token @solana/kit
 import {
   CLOAK_PROGRAM_ID,           // PublicKey, mainnet + devnet
   NATIVE_SOL_MINT,            // PublicKey, So111...112
-  DEFAULT_CIRCUITS_URL,       // S3 base URL, pinned
+  DEFAULT_CIRCUITS_URL,       // GCS base URL, pinned
   MERKLE_TREE_HEIGHT,         // 32
   FIXED_FEE_LAMPORTS,         // 5_000_000n
   MIN_DEPOSIT_LAMPORTS,       // 10_000_000n

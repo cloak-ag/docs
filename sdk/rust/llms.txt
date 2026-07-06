@@ -76,7 +76,7 @@ use cloak_sdk::constants::{
     ENVELOPE_VERSION,            // u8 = 0x02
     DISCRIMINATOR_TRANSACT,      // u8 = 0x00
     DISCRIMINATOR_TRANSACT_SWAP, // u8 = 0x01
-    CIRCUITS_BASE_URL,           // &str, pinned S3 path
+    CIRCUITS_BASE_URL,           // &str, pinned GCS path
 };
 use cloak_sdk::core::chain_note::CHAIN_NOTE_TAG; // u64 = 2
 ```

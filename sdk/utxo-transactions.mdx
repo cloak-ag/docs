@@ -44,7 +44,9 @@ Under the hood, SDK builds proof + `264`-byte public inputs and submits the resu
   - `gross = abs(externalAmount)`
   - `fee = 5_000_000 + floor(gross * 3 / 1000)`
   - `net = gross - fee`
-- Deposits have no protocol fee but still must satisfy min deposit (`10_000_000` lamports)
+- SPL (USDC/USDT) withdraw: `fee = floor(gross * 3 / 1000)` only — no fixed component
+- Deposits and shielded transfers have no protocol fee; SOL deposits must satisfy the
+  min deposit (`10_000_000` lamports — SOL pool only, no program minimum for SPL)
 
 SDK helpers you can call directly:
 
