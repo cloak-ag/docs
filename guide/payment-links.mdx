@@ -16,6 +16,12 @@ Treat this link like cash — anyone who has it can claim the funds.
 
 ## How it works
 
+<img
+  src="/images/payment-link-flow.svg"
+  alt="Payment link flow: you shield funds into the pool, share the link off-chain, and whoever holds it claims from the pool — the two wallets never touch on-chain"
+  style={{ width: "100%", borderRadius: 12, border: "1px solid var(--mint-border)" }}
+/>
+
 1. **Create.** In the app, open **Payment Links**, pick a token (SOL, USDC, or USDT) and an amount, and choose the source — your private balance (most private) or straight from your wallet in one step. Cloak makes a shielded deposit and locks it to a fresh, single-use key.
 2. **Share.** The link carries its secret in the URL fragment — the part after `#`, which browsers never transmit to web servers. It cannot end up in server or CDN logs. It can, of course, end up with anyone you forward it to: the link is the money.
 3. **Claim.** The recipient opens the link, connects any Solana wallet, and presses **Claim to My Wallet**. The funds arrive as a private withdrawal from the pool — the claim is submitted for them, with no gas from their wallet on the standard path — and the link is spent. Opening it again shows "Already Claimed."
