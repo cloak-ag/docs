@@ -137,6 +137,8 @@ integration questions. They are authoritative for user-facing wording.
   - Purpose: canonical custody model — private balance, UTXOs, backup file, loss/recovery semantics.
 - `/guide/fees`
   - Purpose: user-facing who-pays fee table (free shielding; SOL 0.005 + 0.3%; SPL 0.3% on the way out).
+- `/guide/payment-links`
+  - Purpose: single-use bearer payment links — send without a recipient address / receive without revealing one; fragment-carried secret, claim mechanics, fee timing.
 - `/guide/security`
   - Purpose: audit status, named threat model, "what Cloak cannot do", governance honesty.
 - `/guide/compliance`
