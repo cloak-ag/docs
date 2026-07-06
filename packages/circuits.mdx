@@ -27,7 +27,8 @@ This is the circuit shape consumed by both SDK and on-chain verifier logic.
 ## Important scripts
 
 - `packages/scripts/convert-vkey.ts`: transforms JSON vkey into verifier binary layout
-- `packages/scripts/publish-circuits-s3.mjs`: publishes artifacts and manifest to S3
+- Artifact publishing: circuit artifacts and the manifest are published to the hosted
+  circuits bucket (`storage.googleapis.com/cloak-circuits`) consumed by both SDKs
 
 ## Consumer surfaces
 
