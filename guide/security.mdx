@@ -8,16 +8,16 @@ Security claims are cheap. This page sticks to what is verified: how the pool pr
 
 ## The audit
 
-Cloak's shield-pool program has undergone an external security assessment by Certora. The full report is being prepared for publication and will be linked here.
+Cloak's shield-pool program has undergone an external security assessment. The full report is being prepared for publication and will be linked here.
 
-{/* TODO(audit-url): link published Certora report */}
+{/* TODO(audit-url): link the published audit report */}
 
 That is the whole claim. When the report is public, it will be on this page.
 
 ## What protects your funds
 
 - **Proof verification on every state change.** Nothing moves in the pool unless a zero-knowledge proof checks out on-chain — the chain verifies the math is right without ever seeing the details.
-- **Double-spend protection.** Spending a note publishes a nullifier: a marker that the note is used, without revealing which note it was. The same funds can never be spent twice.
+- **Double-spend protection.** Spending a UTXO publishes a nullifier: a marker that it has been used, without revealing which UTXO it was. The same funds can never be spent twice.
 - **Root-history validation.** The program only accepts proofs built against a recent, recognized state of the pool (the last 100 Merkle roots). Proofs against stale or fabricated states are rejected.
 - **Per-token pool isolation.** SOL, USDC, and USDT each have their own pool and their own tree. A problem in one pool cannot spill into another.
 - **Pre-broadcast screening.** Every transaction is screened against sanctions and high-risk lists before it is broadcast. Flagged transactions are blocked, with a support path — you never notice this on the happy path.
@@ -29,7 +29,7 @@ Privacy isn't hiding — it's choosing who gets the receipt. Here is what each a
 | Actor | Can | Cannot |
 | --- | --- | --- |
 | **A chain-watcher** (anyone reading the public ledger) | See deposits going into the pool and withdrawals coming out of it | Link a specific withdrawal back to a specific deposit |
-| **Other pool users** | Share the pool with you | See anything about you — not your notes, your balance, or your history |
+| **Other pool users** | Share the pool with you | See anything about you — not your UTXOs, your balance, or your history |
 | **Cloak's own infrastructure** | Submit transactions on your behalf — a property of the system, and the reason your wallet pays no gas and never appears as sender | Hold your keys or funds, see your balance without your viewing key, or move anything without a valid proof |
 | **A thief with your backup file** | Restore your full private balance on their own device and withdraw everything — the file is the money | Be stopped by Cloak; there is no freeze or recovery path |
 
@@ -63,6 +63,6 @@ There is no public bug bounty or dedicated security inbox yet, and we won't pret
     Privacy you can prove: viewing keys, exportable reports, and how screening works.
   </Card>
   <Card title="Private balance" icon="file-shield" href="/guide/private-balance">
-    Notes, the backup file, and exactly what happens if you lose either.
+    UTXOs, the backup file, and exactly what happens if you lose either.
   </Card>
 </CardGroup>

@@ -1,6 +1,6 @@
 ---
 title: "Your private balance and backup file"
-description: "The three concepts behind Cloak custody — private balance, notes, and the backup file that recovers them"
+description: "The three concepts behind Cloak custody — private balance, UTXOs, and the backup file that recovers them"
 icon: "file-shield"
 ---
 
@@ -10,23 +10,23 @@ Cloak can't see your balance, can't spend it, and can't recover it. That's the d
 
 <CardGroup cols={3}>
   <Card title="Private balance" icon="wallet">
-    Your shielded funds. It lives only in your browser, encrypted locally — Cloak's servers never hold it, and there is no cloud sync.
+    Your shielded funds, held as encrypted UTXOs on your device — Cloak's servers never hold them, and there is no cloud sync.
   </Card>
-  <Card title="Notes" icon="note-sticky">
-    The units inside your private balance. Each shielded deposit and each payment you receive becomes a note.
+  <Card title="UTXOs" icon="cube">
+    The private notes inside your balance. Each shielded deposit and each payment you receive becomes a UTXO — a unit of value only you can spend.
   </Card>
   <Card title="Backup file" icon="file-shield">
     A JSON file you download from Backup &amp; Restore. It is the recovery artifact — the one thing that can rebuild your private balance on another device.
   </Card>
 </CardGroup>
 
-Under the hood, notes are commitments in an on-chain Merkle tree, spendable only with secrets held on your device — and that is all the cryptography this page needs.
+Under the hood, each UTXO is a commitment in an on-chain Merkle tree, spendable only with secrets held on your device — and that is all the cryptography this page needs.
 
 ## Your backup file is the money
 
 The backup file is a bearer instrument. Anyone holding it can restore your balance on their own device and withdraw — no wallet check or identity check stands in the way. Treat it like cash: store it somewhere you would trust with cash (a password manager or an encrypted drive), and never send it to anyone. Cloak will never ask for it.
 
-It is also a point-in-time snapshot. Notes created after you exported it — new deposits, payments received — are not in the old file. Re-export after new activity.
+It is also a point-in-time snapshot. UTXOs created after you exported it — new deposits, payments received — are not in the old file. Re-export after new activity.
 
 <Tip>
 Make a fresh backup part of the routine: shield, send, receive — then re-export the file.
@@ -38,7 +38,7 @@ Everywhere else on Solana, the wallet seed is the master key. Cloak breaks that 
 
 **Your wallet does not restore your balance.** Connecting the same wallet on a new device does not bring your private balance back. The wallet signature is used for sign-in and local encryption only — it is not a recovery root. On a new device, the backup file is what restores funds.
 
-**Losing your wallet does not lose your funds.** If your browser data or your backup file survives, your shielded funds survive too: any connected wallet can spend restored notes. What goes with the old wallet is its [viewing key](/guide/compliance) — read-only access to the compliance history of your old activity, not the funds themselves.
+**Losing your wallet does not lose your funds.** If your browser data or your backup file survives, your shielded funds survive too: any connected wallet can spend restored UTXOs. What goes with the old wallet is its [viewing key](/guide/compliance) — read-only access to the compliance history of your old activity, not the funds themselves.
 
 ## What loss actually looks like
 
@@ -57,7 +57,7 @@ Two paths, same result:
 - **New device, first visit** — the onboarding flow offers "I already have a backup, restore my balance." Import your file there.
 - **Existing session** — open **Backup &amp; Restore** in the sidebar and choose **Import backup**.
 
-On import, Cloak checks every note against the chain and prunes anything already spent, so an older file restores cleanly — you get exactly the notes that are still unspent. Then connect a wallet and use the balance as normal.
+On import, Cloak checks every UTXO against the chain and prunes anything already spent, so an older file restores cleanly — you get exactly the UTXOs that are still unspent. Then connect a wallet and use the balance as normal.
 
 ## Payment links are not in your backup file
 

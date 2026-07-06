@@ -8,7 +8,7 @@ Every private action in Cloak is authorized by a Groth16 zero-knowledge proof, g
 
 ## 1. Shield
 
-Shielding moves SOL, USDC, or USDT from your wallet into your private balance. Your wallet signs the transaction and the funds enter the shielded pool for that token — each token has its own pool. In return, your private balance holds notes: private records of value that live only in your browser.
+Shielding moves SOL, USDC, or USDT from your wallet into your private balance. Your wallet signs the transaction and the funds enter the shielded pool for that token — each token has its own pool. In return, your private balance holds UTXOs: encrypted private notes of value that only you hold.
 
 - Minimum 0.01 SOL for SOL. No protocol minimum for USDC or USDT.
 - No protocol fee on deposits.
@@ -17,7 +17,7 @@ Shielding moves SOL, USDC, or USDT from your wallet into your private balance. Y
 A chain-watcher sees exactly one thing: your wallet deposited into the pool. That is where the public trail ends.
 
 <Tip>
-After your first shield, download your backup file from Backup & Restore. Your private balance lives only in your browser, and your backup file is the money. See [Private balance](/guide/private-balance).
+After your first shield, download your backup file from Backup & Restore. Your UTXOs exist only on this device until you export them — and your backup file is the money. See [Private balance](/guide/private-balance).
 </Tip>
 
 ## 2. Private send
@@ -61,6 +61,6 @@ Privacy strength grows with pool activity. Three habits make yours stronger:
     The full who-pays table — every flow, every fee, collected on-chain by the program.
   </Card>
   <Card title="Private balance" icon="wallet" href="/guide/private-balance">
-    Notes, the backup file, and why the backup file is the money.
+    UTXOs, the backup file, and why the backup file is the money.
   </Card>
 </CardGroup>
