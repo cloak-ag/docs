@@ -1,0 +1,60 @@
+---
+title: "What is Cloak?"
+description: "A privacy layer for Solana — a private, self-custodied balance you can spend from without your wallet appearing as sender"
+icon: "circle-info"
+---
+
+Cloak is a privacy layer for Solana: shield funds into a private balance, transact from it privately, and leave whenever you want. It is live on Solana mainnet today, in beta.
+
+Shielded pools are like sealed envelopes in a public mailbox: everyone sees mail, not what's inside.
+
+## The problem
+
+Everything on Solana is public by default. Anyone with your address can read your balance, your income, your counterparties, and your habits — no subpoena, no hack, no permission needed. [Your wallet is a public diary](/learn/wallet-public-diary), and most people write in it every day. Privacy isn't hiding — it's choosing who gets the receipt.
+
+## What you can do today
+
+- **Shield** — move SOL, USDC, or USDT from your wallet into your private balance. Free — no protocol fee; your wallet pays normal network gas.
+- **Private send** — pay any Solana address or .sol domain from your private balance. On-chain, the funds arrive from the Cloak pool; your wallet never appears as sender.
+- **Private swap** — swap shielded SOL into any Jupiter-verified token, delivered to the address you choose without linking back to your funding wallet.
+- **Unshield** — withdraw to your own wallet whenever you want. Same mechanics as a private send, with you as the recipient.
+
+Payroll (batch private payouts in USDC or USDT) and single-use payment links build on the same rails.
+
+Under the hood, a zero-knowledge proof generated in your browser — in under three seconds — convinces the chain that each transaction is valid without revealing which funds moved; the plain-language explanation is in [Zero-knowledge without the math](/learn/zero-knowledge-without-the-math).
+
+## What makes Cloak different
+
+**Self-custodial, literally.** Your private balance lives encrypted in your own browser, and your backup file is the money. Cloak can't see your balance, can't spend it, and can't recover it. That's the design.
+
+**No gas, no sender trail.** When you act from your private balance, your wallet pays no gas and never appears as sender. Deposits into the pool and payments out of it are both visible on-chain — the link between them isn't.
+
+**Auditable when required.** A viewing key lets you disclose your own history — amounts, fees, recipients — to an auditor or counterparty, and can never move funds. Disclosing reveals your transactions only, nothing about anyone else in the pool. Private by default. Auditable when required.
+
+**Cheaper to leave.** Shielding is free. Leaving the pool costs 0.3% (plus a 0.005 SOL fixed fee for SOL) — other Solana privacy protocols charge a flat 1% on every withdrawal. The full who-pays-what table is in [Fees](/guide/fees).
+
+**Screened before broadcast.** Every transaction is screened against sanctions and high-risk lists before it goes out — invisible on the happy path.
+
+## Who it's for
+
+- **Individuals** — get paid, save, and spend without publishing your finances to anyone who has your address.
+- **Teams** — run payroll and treasury payouts without broadcasting salaries or vendor relationships.
+- **Developers** — build private payments into your own product with the [TypeScript SDK](/sdk/introduction).
+
+## Where Cloak stands today
+
+Cloak is live on Solana mainnet, in beta, with $250K+ in shielded volume and 3,000+ proofs generated to date. Cloak's shield-pool program has undergone an external security assessment by Certora. The full report is being prepared for publication and will be linked here.
+{/* TODO(audit-url): link published Certora report */}
+
+For the threat model and the full list of what Cloak cannot do, see [Security](/guide/security).
+
+## Where next
+
+<CardGroup cols={2}>
+  <Card title="How Cloak works" icon="diagram-project" href="/guide/how-it-works">
+    The four flows, step by step — shield, send, swap, unshield.
+  </Card>
+  <Card title="Your private balance" icon="file-shield" href="/guide/private-balance">
+    Notes, the backup file, and exactly what happens if you lose them.
+  </Card>
+</CardGroup>

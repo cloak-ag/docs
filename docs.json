@@ -11,6 +11,45 @@
   "navigation": {
     "tabs": [
       {
+        "tab": "Guide",
+        "groups": [
+          {
+            "group": "Start here",
+            "pages": [
+              "guide/what-is-cloak",
+              "guide/how-it-works",
+              "guide/private-balance",
+              "guide/fees"
+            ]
+          },
+          {
+            "group": "Trust & safety",
+            "pages": [
+              "guide/security",
+              "guide/compliance",
+              "guide/verified-addresses"
+            ]
+          },
+          {
+            "group": "Learn",
+            "pages": [
+              "learn/wallet-public-diary",
+              "learn/zero-knowledge-without-the-math",
+              "learn/privacy-is-not-anonymity",
+              "learn/prove-your-funds-privately"
+            ]
+          },
+          {
+            "group": "Reference",
+            "pages": [
+              "guide/faq",
+              "guide/glossary",
+              "guide/wallets-and-tokens"
+            ]
+          }
+        ]
+      },
+      {
         "tab": "Documentation",
         "groups": [
           {
@@ -143,7 +182,7 @@
   },
   "footer": {
     "socials": {
-      "x": "https://x.com/cloak_xyz",
+      "x": "https://x.com/cloak_ag",
       "github": "https://github.com/cloak-ag",
       "discord": "https://discord.gg/FmtUrR3a9"
     }
@@ -151,7 +190,7 @@
   "redirects": [
     {
       "source": "/",
-      "destination": "/platform/overview"
+      "destination": "/guide/what-is-cloak"
     },
     {
       "source": "/quickstart",

@@ -20,6 +20,8 @@ mint dev
 
 ## Structure
 
+- `guide/` user-facing guide (what-is-cloak, flows, custody, fees, security, compliance, FAQ)
+- `learn/` plain-language explainers (privacy, zero-knowledge, proof of funds)
 - `sdk/` SDK guides and API references
 - `platform/` architecture components and transaction flows
 - `protocol/` on-chain architecture and Shield Pool docs

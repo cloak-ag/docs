@@ -1,0 +1,60 @@
+---
+title: "Zero-knowledge, without the math"
+description: "A plain-language tour of the proofs that make a private balance possible"
+icon: "graduation-cap"
+---
+
+"Zero-knowledge proof" sounds like something you need a PhD to follow. You don't. This page explains what the proofs do, where they run, and why they matter — with no equations anywhere.
+
+## The one-sentence version
+
+A zero-knowledge proof lets you prove a statement is true without revealing why it is true.
+
+That is the entire idea. You convince a verifier that a claim holds — "this transaction is valid" — while the evidence behind the claim stays with you. The verifier learns exactly one thing: true. Nothing else leaks — not the notes behind the claim, not your balance, not your history, not the reason the claim holds.
+
+## Two ways to picture it
+
+### Over 18, no birthdate
+
+Buying a drink today means handing over an ID card that shows your full birthdate, your address, and a document number — far more than the question required. A zero-knowledge version would confirm one fact: over 18, yes. The bartender learns the single thing they needed and nothing they didn't. Cloak applies the same principle to money: the chain learns "this spend is legitimate" — not which note funded it, what that note held, or which wallet deposited it. The link back to you is what stays sealed.
+
+### Sealed envelopes in a public mailbox
+
+Shielded pools are like sealed envelopes in a public mailbox: everyone sees mail, not what's inside. A zero-knowledge proof is what lets you take value back out without opening anything in public. You prove that one of the envelopes is yours and still sealed — without pointing at which one.
+
+## What the proof actually proves in Cloak
+
+When you shield funds, they become notes — the individual units inside your private balance. Every time you spend from that balance, your browser produces a proof that convinces the Cloak program of three things:
+
+- **The note you're spending is really yours.** Only someone holding the note's secret can produce the proof, and the proof never reveals which note in the pool it refers to.
+- **It hasn't been spent before.** Each spend publishes a one-time marker called a nullifier. Spend the same note twice and the marker repeats, so the program rejects the transaction — still without learning which note was involved.
+- **The amounts balance.** What leaves your notes equals what arrives on the other side — a payment and, usually, change back to you. Nothing created, nothing destroyed. A transaction can never invent value that was never deposited.
+
+Everything else — which note, what it held, the rest of your balance — stays with you.
+
+## Where it happens
+
+In your browser. When you confirm a private send, your device generates the proof locally, typically in under 3 seconds, and attaches it to the transaction. The chain verifies the proof, never the details. Your note secrets are never uploaded, never sent to a server, and never seen by Cloak.
+
+<Tip>
+The proof itself reveals nothing, which is why it is safe to sit on a public chain forever. Even with the proof in hand, no one can work backwards to your notes. That is what "zero-knowledge" means in practice.
+</Tip>
+
+## Why this isn't "trust us"
+
+The Cloak program accepts nothing without a valid proof — not from you, not from Cloak's own infrastructure, not from anyone. There is no override, no allowlist, no path where a transaction goes through because the right party asked nicely. The rules are enforced by verification, not reputation. The program itself is upgradeable — how that is governed, and everything else Cloak cannot do, lives on the [Security](/guide/security) page.
+
+That cuts both ways, and honestly so. Cloak can't see your balance, can't spend it, and can't recover it. That's the design. The same proofs that stop a stranger from spending your notes also stop us.
+
+One breadcrumb for the curious: Cloak's proofs are Groth16 proofs, and the pool's data structures use Poseidon hashing. The full construction lives in the [shield pool reference](/protocol/shield-pool).
+
+## Where next
+
+<CardGroup cols={2}>
+  <Card title="How Cloak works" icon="route" href="/guide/how-it-works">
+    The four flows — shield, send, swap, unshield — and what happens in each.
+  </Card>
+  <Card title="Your private balance" icon="coins" href="/guide/private-balance">
+    Notes, the backup file, and what happens if you lose them.
+  </Card>
+</CardGroup>

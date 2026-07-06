@@ -58,6 +58,23 @@ This file is the canonical index for AI coding agents integrating with Cloak.
 - [Claude Code setup](/ai-tools/claude-code): Rules and prompt pack for Claude Code.
 - [Windsurf setup](/ai-tools/windsurf): Rules and prompt pack for Windsurf.
 
+### User Guide (plain-language, non-developer)
+
+- [What is Cloak?](/guide/what-is-cloak): Plain-language positioning — what Cloak does and who it's for.
+- [How Cloak works](/guide/how-it-works): The four user flows — shield, private send, private swap, unshield.
+- [Your private balance and backup file](/guide/private-balance): Custody model — notes, the backup file, loss and recovery semantics.
+- [Fees](/guide/fees): Who pays what per action; free shielding, 0.3% to leave the pool.
+- [Security](/guide/security): Audit status, threat model, what Cloak cannot do, governance.
+- [Compliance and proof of funds](/guide/compliance): Viewing-key selective disclosure, reports, screening.
+- [Verified addresses](/guide/verified-addresses): Canonical program ID and official links (anti-scam).
+- [FAQ](/guide/faq): Honest answers to trust, custody, recovery, fee, and privacy questions.
+- [Glossary](/guide/glossary): Plain-language definitions of Cloak and privacy terms.
+- [Supported wallets and tokens](/guide/wallets-and-tokens): Wallet list and tokens per action.
+- [Your Solana wallet is a public diary](/learn/wallet-public-diary): Why on-chain privacy matters.
+- [Zero-knowledge, without the math](/learn/zero-knowledge-without-the-math): ZK proofs explained plainly.
+- [Privacy is not anonymity](/learn/privacy-is-not-anonymity): Accountable privacy vs hiding.
+- [Prove your funds privately](/learn/prove-your-funds-privately): Selective disclosure in practice.
+
 ## Integration Tips For Agents
 
 - Pick the SDK that matches the host app: TypeScript for web/Node, Rust for server/CLI/program clients.
