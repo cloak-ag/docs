@@ -1,30 +1,65 @@
 ---
 title: "Fee Model"
-description: "How Cloak computes gross, fee, and net amounts across deposits, transfers, and withdrawals"
+description: "How the deployed program computes gross, fee, and net amounts per flow and pool kind"
 icon: "receipt"
 ---
 
-Fees are collected strictly on-chain by the shield-pool program. The relay and SDK do not assess or deduct fees.
+Fees are collected strictly on-chain by the shield-pool program into the mint-scoped treasury
+PDA. No other component assesses or deducts fees.
+
+Fees apply **only to flows that move value out of the pool** (`publicAmount < 0`: withdrawals and
+swaps). Deposits and shield-to-shield transfers charge no fee.
 
 ## Constants
 
-- Fixed fee floor: `0.005 SOL`
-- Variable fee: `gross * 3 / 1000` (0.30%)
-- Total fee: `fixed + variable`
-- Net recipient amount: `gross - fee`
-- Minimum deposit: `10_000_000` lamports
+- SOL pool fixed fee: `5_000_000` lamports (`0.005 SOL`)
+- Variable fee (all pools): `gross * 3 / 1000` (0.30%)
+- SPL pools (USDC/USDT): **variable fee only** — no fixed component, charged in the withdrawn token
+- Minimum deposit (SOL pool only): `10_000_000` lamports (`0.01 SOL`); SPL deposits have no
+  program-enforced minimum
 
-## Worked example
+## Per-flow behavior
 
-For a `1 SOL` (`1_000_000_000` lamports) gross amount:
+- **Deposit (`publicAmount > 0`)**: no fee. The full deposit amount moves into the pool and the
+  output commitments encode the full amount.
+- **Shield-to-shield transfer (`publicAmount = 0`)**: no fee. No external value moves; the output
+  commitments sum to the inputs.
+- **Withdrawal (`publicAmount < 0`)**: the destination receives `net = gross - fee`; the treasury
+  PDA receives `fee`.
+- **Swap (`TransactSwap`, SOL pool only)**: `fee = fixed + variable` is taken from the gross SOL
+  at the first transaction; the remainder (`gross - fee`) is what gets swapped.
+
+## Fee math
+
+SOL pool (withdraw/swap):
+
+```
+fee = 5_000_000 + gross * 3 / 1000
+```
+
+SPL pools (withdraw):
+
+```
+fee = gross * 3 / 1000
+```
+
+## Worked examples
+
+Withdraw `1 SOL` (`1_000_000_000` lamports) gross:
 
 - Fixed: `5_000_000` lamports
 - Variable: `1_000_000_000 * 3 / 1000 = 3_000_000` lamports
-- Fee: `8_000_000` lamports
-- Net: `992_000_000` lamports
+- Fee: `8_000_000` lamports — net to recipient: `992_000_000` lamports
 
-## Where it applies
+Withdraw `100 USDC` (`100_000_000` base units) gross:
 
-- **Deposit (`publicAmount > 0`)**: `gross` is the lamports moved into the pool; the recipient commitment encodes `net`.
-- **Shield-to-shield transfer (`publicAmount = 0`)**: fee is paid out of the input notes; the output commitments sum to `inputs - fee`.
-- **Withdrawal (`publicAmount < 0`)**: the destination receives `net`; the treasury PDA receives `fee`.
+- Variable: `100_000_000 * 3 / 1000 = 300_000` base units (`0.30 USDC`)
+- Fee: `300_000` base units — net to recipient: `99_700_000` base units
+
+<Tip>
+The Cloak app presents this in reverse: the user enters what the recipient should receive, and
+the app grosses up so `net` equals the entered amount. At the program level the invariant is
+always `net = gross - fee`.
+</Tip>
+
+For a user-facing summary with a who-pays table, see [Fees](/guide/fees).
