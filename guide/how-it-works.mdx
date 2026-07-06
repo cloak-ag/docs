@@ -1,0 +1,66 @@
+---
+title: "How Cloak works"
+description: "A plain-language walkthrough of the four flows — shield, private send, private swap, and unshield"
+icon: "route"
+---
+
+Every private action in Cloak is authorized by a Groth16 zero-knowledge proof, generated in your browser in under 3 seconds — the chain verifies the proof, never the details. That is the only cryptography this page needs. Everything else is four flows: money in, two ways to move it, and money out.
+
+## 1. Shield
+
+Shielding moves SOL, USDC, or USDT from your wallet into your private balance. Your wallet signs the transaction and the funds enter the shielded pool for that token — each token has its own pool. In return, your private balance holds notes: private records of value that live only in your browser.
+
+- Minimum 0.01 SOL for SOL. No protocol minimum for USDC or USDT.
+- No protocol fee on deposits.
+- This is the only step where your wallet pays gas — normal Solana network costs, not a Cloak fee.
+
+A chain-watcher sees exactly one thing: your wallet deposited into the pool. That is where the public trail ends.
+
+<Tip>
+After your first shield, download your backup file from Backup & Restore. Your private balance lives only in your browser, and your backup file is the money. See [Private balance](/guide/private-balance).
+</Tip>
+
+## 2. Private send
+
+Send from your private balance to any Solana address or .sol domain. The recipient receives the exact amount you enter, at their address, as a normal balance. On-chain, the funds arrive from the Cloak pool — your wallet never appears as sender. Your wallet signs nothing and pays no gas; the transaction is submitted for you.
+
+Shielded pools are like sealed envelopes in a public mailbox: everyone sees mail, not what's inside. The recipient sees a payment from the pool. A chain-watcher sees a withdrawal from the pool. Neither can link it back to your wallet.
+
+The fee is added on top of the entered amount and deducted from your private balance:
+
+- SOL: 0.005 SOL fixed + 0.3%
+- USDC/USDT: 0.3%, no fixed fee
+
+Full breakdown in [Fees](/guide/fees).
+
+## 3. Private swap
+
+Swap shielded SOL into any Jupiter-verified token — USDC, USDT, ZEC, and BONK by default, or search the full list. Cloak routes the swap through Jupiter for the best price. The output lands at the recipient address you choose as a normal public token balance; the link back to your funding wallet stays hidden.
+
+- Input is SOL only, minimum 0.01 SOL.
+- Fee: 0.005 SOL fixed + 0.3% of the SOL swapped. Jupiter's price impact and slippage are separate from Cloak's fee.
+
+## 4. Unshield
+
+Unshielding is a private send with your own wallet address as the recipient — same mechanics, same fee. There is no separate withdraw screen in the app: enter your own address in Send, and the funds arrive from the pool with no on-chain link to the wallet that funded them.
+
+One honest caveat: once funds leave the pool, they are public again from that point on. Cloak hides the link between deposit and withdrawal; it does not hide what you do afterward.
+
+## Getting the most privacy
+
+Privacy strength grows with pool activity. Three habits make yours stronger:
+
+- **Activity is cover.** Each token has its own pool, and the more deposits and withdrawals a pool sees, the harder correlation becomes — for everyone in it.
+- **Let time pass.** Funds already shielded are more private than shield-and-send in one step: separating the deposit and the send in time makes correlation much harder for a chain-watcher.
+- **Avoid distinctive amounts.** Withdrawing an unusual exact amount right after an identical deposit weakens your privacy. Common amounts and patience strengthen it.
+
+## Where next
+
+<CardGroup cols={2}>
+  <Card title="Fees" icon="coins" href="/guide/fees">
+    The full who-pays table — every flow, every fee, collected on-chain by the program.
+  </Card>
+  <Card title="Private balance" icon="wallet" href="/guide/private-balance">
+    Notes, the backup file, and why the backup file is the money.
+  </Card>
+</CardGroup>

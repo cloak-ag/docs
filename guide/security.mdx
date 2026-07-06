@@ -1,0 +1,68 @@
+---
+title: "Security"
+description: "Cloak's audit status, on-chain protections, threat model, and the limits we publish on purpose"
+icon: "shield-halved"
+---
+
+Security claims are cheap. This page sticks to what is verified: how the pool protects your funds, who can see what, and — because honesty is the register here — what Cloak cannot do.
+
+## The audit
+
+Cloak's shield-pool program has undergone an external security assessment by Certora. The full report is being prepared for publication and will be linked here.
+
+{/* TODO(audit-url): link published Certora report */}
+
+That is the whole claim. When the report is public, it will be on this page.
+
+## What protects your funds
+
+- **Proof verification on every state change.** Nothing moves in the pool unless a zero-knowledge proof checks out on-chain — the chain verifies the math is right without ever seeing the details.
+- **Double-spend protection.** Spending a note publishes a nullifier: a marker that the note is used, without revealing which note it was. The same funds can never be spent twice.
+- **Root-history validation.** The program only accepts proofs built against a recent, recognized state of the pool (the last 100 Merkle roots). Proofs against stale or fabricated states are rejected.
+- **Per-token pool isolation.** SOL, USDC, and USDT each have their own pool and their own tree. A problem in one pool cannot spill into another.
+- **Pre-broadcast screening.** Every transaction is screened against sanctions and high-risk lists before it is broadcast. Flagged transactions are blocked, with a support path — you never notice this on the happy path.
+
+## Who sees what
+
+Privacy isn't hiding — it's choosing who gets the receipt. Here is what each actor around the pool can and cannot do.
+
+| Actor | Can | Cannot |
+| --- | --- | --- |
+| **A chain-watcher** (anyone reading the public ledger) | See deposits going into the pool and withdrawals coming out of it | Link a specific withdrawal back to a specific deposit |
+| **Other pool users** | Share the pool with you | See anything about you — not your notes, your balance, or your history |
+| **Cloak's own infrastructure** | Submit transactions on your behalf — a property of the system, and the reason your wallet pays no gas and never appears as sender | Hold your keys or funds, see your balance without your viewing key, or move anything without a valid proof |
+| **A thief with your backup file** | Restore your full private balance on their own device and withdraw everything — the file is the money | Be stopped by Cloak; there is no freeze or recovery path |
+
+<Tip>
+Your backup file is the money. Anyone holding it can spend your private balance, and no one — including Cloak — can reverse that. Store it like cash. See [Private balance](/guide/private-balance) for how backup and restore work.
+</Tip>
+
+## What Cloak cannot do
+
+Most protocols tell you what they can do. Here is the other half.
+
+- **Cloak cannot recover a lost private balance.** No backup file means no funds — by design, not by policy.
+- **Cloak cannot spend, freeze, or seize your funds.** No custodial path exists.
+- **Cloak cannot hide what you do after leaving the pool.** Withdraw to a KYC'd exchange account or a doxxed address, and that withdrawal is public from that point on.
+- **Cloak cannot un-link your past.** Transactions you made before shielding stay public forever.
+- **Cloak cannot make a shallow pool deep.** Privacy strength grows with pool activity; if very few similar deposits exist, timing and amount correlation gets easier for a chain-watcher.
+- **Cloak cannot protect a compromised device.** Malware in your browser, or a leaked backup file, defeats everything above.
+
+## Governance
+
+The Cloak program is upgradeable. The upgrade authority is held by the Cloak team and is planned to move under a Squads multisig. We say this plainly because an upgradeable program you know about is safer than an "immutable" one that quietly isn't — upgradeability is how fixes ship.
+
+## Reporting an issue
+
+There is no public bug bounty or dedicated security inbox yet, and we won't pretend otherwise. If you find a vulnerability, report privately to the team — through Discord or [contact@cloak.ag](mailto:contact@cloak.ag) — before any public disclosure.
+
+## Where next
+
+<CardGroup cols={2}>
+  <Card title="Compliance" icon="scale-balanced" href="/guide/compliance">
+    Privacy you can prove: viewing keys, exportable reports, and how screening works.
+  </Card>
+  <Card title="Private balance" icon="file-shield" href="/guide/private-balance">
+    Notes, the backup file, and exactly what happens if you lose either.
+  </Card>
+</CardGroup>

@@ -124,6 +124,34 @@ For Rust integrations:
 - `/ai-tools/windsurf`
   - Purpose: Windsurf rules and prompts.
 
+### User Guide (plain-language, non-developer)
+
+Use these when answering end-user questions (custody, fees, recovery, compliance) rather than
+integration questions. They are authoritative for user-facing wording.
+
+- `/guide/what-is-cloak`
+  - Purpose: plain-language positioning and live capability list.
+- `/guide/how-it-works`
+  - Purpose: the four user flows (shield, private send, private swap, unshield) without protocol internals.
+- `/guide/private-balance`
+  - Purpose: canonical custody model — private balance, notes, backup file, loss/recovery semantics.
+- `/guide/fees`
+  - Purpose: user-facing who-pays fee table (free shielding; SOL 0.005 + 0.3%; SPL 0.3% on the way out).
+- `/guide/security`
+  - Purpose: audit status, named threat model, "what Cloak cannot do", governance honesty.
+- `/guide/compliance`
+  - Purpose: viewing-key selective disclosure, compliance reports, Range screening.
+- `/guide/verified-addresses`
+  - Purpose: canonical program ID + official domains (anti-scam reference).
+- `/guide/faq`
+  - Purpose: honest user FAQ (trust, custody, recovery, fees, privacy depth).
+- `/guide/glossary`
+  - Purpose: plain-language term definitions matching app vocabulary.
+- `/guide/wallets-and-tokens`
+  - Purpose: supported wallets and tokens-per-action tables.
+- `/learn/wallet-public-diary`, `/learn/zero-knowledge-without-the-math`, `/learn/privacy-is-not-anonymity`, `/learn/prove-your-funds-privately`
+  - Purpose: conceptual explainers (problem-first privacy, plain ZK, accountable privacy, proof of funds).
+
 ---
 
 ## 4) High-signal runtime contracts

@@ -1,0 +1,54 @@
+---
+title: "Your Solana wallet is a public diary"
+description: "Why every Solana address is a permanent, public financial record — and what shielding changes"
+icon: "book-open"
+---
+
+Imagine your bank statement were a public webpage. Every salary deposit. Every rent payment. Every subscription, every late-night purchase, every transfer to a friend — timestamped, itemized, linked to your name, and permanent. Anyone could open it. You would never know who looked.
+
+On Solana, that page exists. It is your wallet address. Paste it into any explorer and the whole diary is there: every payment you have ever sent or received, every balance you hold, every counterparty you have ever touched — readable by anyone, forever, with no login and no trace that they looked.
+
+This is not a flaw in the chain. A public ledger is what makes it verifiable — nobody has to trust a bank's private database. But the same openness means your financial life is published by default, and most people only notice after someone has read theirs.
+
+## Three ways the diary gets read
+
+### Your salary, in front of your colleagues
+
+Your employer pays you on-chain. The payment lands at your address — and now every colleague who has seen that address can follow what you do with your salary. What you saved. What you spent it on. What you are still holding. The person who runs payroll does not even have to be curious; the explorer does the work for anyone who is.
+
+### One payment, your whole history
+
+You pay a merchant once. With a card payment, they learn one number: what you paid. On-chain, they learn your address — and with it your entire balance, everything you bought before, and everything you do after. A single purchase hands over the financial equivalent of your full statement.
+
+### A business that leaks its own books
+
+A business pays a supplier from its treasury address. That one transfer publishes the relationship. A competitor watching the address can reconstruct the vendor list, the volumes, the payment cadence — when contracts renew, when spending spikes, when a new partner appears. No breach required; it is all on the receipt.
+
+## Privacy is not disappearing
+
+Notice that nobody in these stories is hiding anything. A salary is not a secret from the employer. A purchase is not a secret from the merchant. A payment is not a secret from the supplier. The problem is that on a public chain, everyone else is included by default.
+
+Privacy is not vanishing from the record. It is deciding what others can infer about you.
+
+<Tip>
+Privacy isn't hiding — it's choosing who gets the receipt.
+</Tip>
+
+That is how the rest of your financial life already works. Your bank knows your balance; the stranger behind you in line does not. The goal on-chain is the same arrangement — not less accountability, but an end to broadcasting by default.
+
+## What shielding changes
+
+When you shield funds, they move from your public address into a shielded pool — and inside the pool, they carry no readable history. Shielded pools are like sealed envelopes in a public mailbox: everyone sees mail, not what's inside. When you pay someone from your private balance, the payment arrives from the pool, and your wallet never appears as the sender — the link back to your diary stays hidden. The chain verifies that every payment is valid without ever seeing whose it is, and that is all the cryptography you need for now. An honest limit: shielding is forward-looking. Everything your address did before you shielded stays public, because nothing can rewrite a public ledger. For the full list of limits, see [Security](/guide/security).
+
+Your diary does not disappear. It gets a private page.
+
+## Where next
+
+<CardGroup cols={2}>
+  <Card title="How Cloak works" icon="route" href="/guide/how-it-works">
+    The four flows — shield, private send, private swap, unshield — in plain language.
+  </Card>
+  <Card title="What is Cloak" icon="circle-info" href="/guide/what-is-cloak">
+    What is live on Solana mainnet today, and who it is for.
+  </Card>
+</CardGroup>
