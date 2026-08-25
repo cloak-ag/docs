@@ -32,9 +32,14 @@ The result carries the post-tx Merkle tree and any ALTs used — thread them int
 |---|---|
 | Program ID | `zh1eLd6rSphLejbFfJEneUwzHRfMKxgzrgkfwA6qRkW` |
 | Relay URL | `https://api.cloak.ag` |
-| Circuits base URL | `https://storage.googleapis.com/cloak-circuits/circuits/0.1.0` |
+| Circuits base URL | `https://storage.googleapis.com/cloak-circuits/circuits/0.2.0` (ceremony bundle — the only one the program accepts) |
 | Minimum SOL deposit | `10_000_000` lamports (0.01 SOL) |
+| Minimum SPL deposit | `1_000_000` base units (1.00 USDC / USDT) |
 | Max inputs / outputs | 2 / 2 (fixed circuit arity) |
+
+<Warning>
+Since the 2026-08-24 mainnet release the program only verifies proofs built from the `0.2.0` ceremony artifacts. If the crate revision you pin still has `CIRCUITS_BASE_URL` at `circuits/0.1.0`, pass the `0.2.0` base explicitly to `ensure_circuit_artifacts_at(cache_dir, base_url)` and clear any `0.1.0` cache — proofs from the old bundle fail on-chain.
+</Warning>
 
 ## Install
 

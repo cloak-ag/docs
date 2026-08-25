@@ -51,6 +51,7 @@ This file is the canonical index for AI coding agents integrating with Cloak.
 - [Fee Model](/protocol/fee-model): Constants, formula, and per-flow breakdown for the on-chain fee.
 - [Circuits Package](/packages/circuits): Proof circuit build and hosting pipeline.
 - [Security](/operations/security): Trust boundaries and security controls.
+- [Release notes 2026-08](/releases/2026-08-mainnet): Mainnet release facts — artifact and verifying-key hashes, per-pool fees and minimums, SDK 0.2.0.
 
 ### AI Tooling
 
@@ -63,7 +64,7 @@ This file is the canonical index for AI coding agents integrating with Cloak.
 - [What is Cloak?](/guide/what-is-cloak): Plain-language positioning — what Cloak does and who it's for.
 - [How Cloak works](/guide/how-it-works): The four user flows — shield, private send, private swap, unshield.
 - [Your private balance and backup file](/guide/private-balance): Custody model — UTXOs, the backup file, loss and recovery semantics.
-- [Fees](/guide/fees): Who pays what per action; free shielding, 0.3% to leave the pool.
+- [Fees](/guide/fees): Who pays what per action; free shielding, 0.3% plus a fixed fee (0.005 SOL or 0.45 USDC/USDT) to leave the pool.
 - [Payment links](/guide/payment-links): Single-use bearer links — pay without the recipient's address, or get paid without revealing yours.
 - [Security](/guide/security): Audit status, threat model, what Cloak cannot do, governance.
 - [Compliance and proof of funds](/guide/compliance): Viewing-key selective disclosure, reports, screening.
@@ -79,7 +80,8 @@ This file is the canonical index for AI coding agents integrating with Cloak.
 ## Integration Tips For Agents
 
 - Pick the SDK that matches the host app: TypeScript for web/Node, Rust for server/CLI/program clients.
-- Use SDK defaults for program, relay, and circuits in standard integrations.
+- Use SDK defaults for program, relay, and circuits in standard integrations. The only accepted circuits bundle is `circuits/0.2.0` (ceremony); never hand-write a `0.1.0` URL.
+- Fees are enforced on-chain from each pool's `PoolConfig`: SOL 0.005 fixed + 0.3%; USDC/USDT 0.45 fixed + 0.3%; withdrawals and swaps only. Minimum deposit 0.01 SOL / 1.00 USDC / 1.00 USDT.
 - Keep tx amounts as `bigint` (TS) or `u64` / `i64` (Rust) end-to-end — no float math.
 - Treat stale-root failures as retryable (both SDK transaction paths already do this by default).
 - Never log private keys, viewing keys (`nk`), seed material, or raw note payloads.

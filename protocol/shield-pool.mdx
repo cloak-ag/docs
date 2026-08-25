@@ -8,6 +8,15 @@ icon: "microchip"
 
 - `zh1eLd6rSphLejbFfJEneUwzHRfMKxgzrgkfwA6qRkW`
 
+## Deployed artifact (since 2026-08-24)
+
+- SBF ELF sha256 `d0f68613a08d7e0913aea67d95f04598bc070911a0e84fedd43cc6bfa18e6cf6` (239,032 bytes)
+- Built from `cloak-ag/programs` commit `7b0ab7cadca07aea483f4633eef3e7a0f03718de` (audited source
+  commit `68b0d92fb23151c1455d446545e00d446f9505ca`, contract version
+  `cloak-shield-pool/post-audit-v3/variant-ii`)
+- Upgrade authority: Squads multisig vault `F6HWeX5i2KjYQag6wCtxzQXeGewv6vXZihZR3EWdRL7s` (3-of-4, 1-hour time lock)
+- Verification recipe and circuit hashes: [Release notes 2026-08](/releases/2026-08-mainnet)
+
 ## Instruction surface
 
 - `0`: `Transact` (deposit, withdraw, shielded transfer)
@@ -36,14 +45,19 @@ This matches the transaction circuit constraints.
 
 ## Fees and amount semantics
 
-- `FIXED_FEE_LAMPORTS = 5_000_000` (0.005 SOL floor)
-- Variable fee: `amount * 3 / 1000` (0.3%)
-- `MIN_DEPOSIT_LAMPORTS = 10_000_000` (0.01 SOL)
+Fees are read from each pool's on-chain `PoolConfig` (fixed amount + variable ratio); the
+values below are the deployed defaults.
 
-SOL withdrawal and swap math:
+- `FIXED_FEE_LAMPORTS = 5_000_000` (0.005 SOL, SOL pool)
+- `DEFAULT_SPL_FIXED_FEE_RAW_UNITS = 450_000` (0.45 USDC / USDT, SPL pools)
+- Variable fee: `amount * 3 / 1000` (0.3%, all pools)
+- `MIN_DEPOSIT_LAMPORTS = 10_000_000` (0.01 SOL)
+- `MIN_DEPOSIT_SPL_BASE_UNITS = 1_000_000` (1.00 USDC / USDT)
+
+Withdrawal and swap math:
 
 - `gross = abs(publicAmount)`
-- `fee = 5_000_000 + gross * 3 / 1000`
+- `fee = fixed + gross * 3 / 1000` (`fixed` = `5_000_000` lamports or `450_000` base units)
 - `net = gross - fee`
 
 The program enforces sufficient withdrawal amount so `net > 0`.
@@ -64,7 +78,7 @@ Mint-scoped PDAs:
 
 ### `Transact`
 
-- Verifies 256-byte Groth16 proof against transaction verifier key.
+- Verifies 256-byte Groth16 proof against the embedded transaction verifying key (ceremony `cloak-transaction-0.2.0`, sha256 `d65073d44064ed3be10d79e52d60a06d6be6d6c01afcd5ce52cdfcfc97c5585d`).
 - Validates root exists in root history ring.
 - Creates nullifier PDAs for non-zero input nullifiers (double-spend protection).
 - Appends non-zero output commitments to Merkle tree.
@@ -72,7 +86,8 @@ Mint-scoped PDAs:
   - positive: deposit from payer to pool
   - negative: withdrawal from pool to recipient + fee to treasury
   - zero: pure shield transfer (no external SOL movement)
-- Deposit path can require risk-oracle quote accounts when configured.
+- Deposits carry a signed risk quote bound to the deposit, checked on-chain.
+- Withdrawals and swaps carry a signed withdraw authorization when a withdraw authorizer is set on the pool.
 
 ### `TransactSwap`
 

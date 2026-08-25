@@ -46,5 +46,5 @@ When updating docs, prioritize these sources:
 
 ## Notes
 
-- Keep program IDs and fee constants aligned across SDK/program/relay docs.
+- Fees are collected on-chain by the program only; take fee constants and minimums from `programs/shield-pool/src/constants.rs` (and the deployed `PoolConfig`), never from relay or SDK code. Never describe fees as relay fees.
 - Prefer documenting implemented behavior over planned behavior.

@@ -36,13 +36,15 @@ Both SDKs speak the same protocol and produce the same 264-byte public inputs. M
 |---|---|
 | Program ID | `zh1eLd6rSphLejbFfJEneUwzHRfMKxgzrgkfwA6qRkW` |
 | Default relay URL | `https://api.cloak.ag` |
-| Circuits base URL | `https://storage.googleapis.com/cloak-circuits/circuits/0.1.0` |
+| Circuits base URL | `https://storage.googleapis.com/cloak-circuits/circuits/0.2.0` (ceremony bundle; artifacts are hash-verified before proving) |
 | Merkle tree height | 32 |
 | Circuit arity | 2 inputs / 2 outputs |
 | Proof format | 256-byte Groth16 (pinocchio) |
 | Public inputs | 264 bytes |
 
 The **relay URL** points at Cloak's hosted submission endpoint that the SDK uses to land transactions on-chain. The default is correct for mainnet — only override `relayUrl` if you're targeting a different deployment (e.g. devnet).
+
+The **circuits bundle** `0.2.0` is the output of the trusted-setup ceremony that keys the deployed program. The older `0.1.0` artifacts are no longer accepted on-chain. Hashes and the verification recipe are in [Release notes 2026-08](/releases/2026-08-mainnet).
 
 ## Shared concepts
 
@@ -60,7 +62,7 @@ Start here for web3.js and Solana Kit integrations:
 - [Code examples](/sdk/examples) — send, swap, payroll, history.
 - [API reference](/sdk/api-reference) — full `CloakSDK` class surface.
 
-Install:
+Install (current release: `@cloak.dev/sdk` 0.2.0):
 
 ```bash
 npm install @cloak.dev/sdk @solana/web3.js

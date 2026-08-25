@@ -17,6 +17,13 @@ story — audit status, threat model, and what Cloak cannot do — see [Security
 - Viewing-key registration uses one-time nonce challenge + Ed25519 signature.
 - Identifier canonicalization prevents mismatched key mapping.
 
+## Program provenance
+
+- Deployed bytecode sha256 `d0f68613a08d7e0913aea67d95f04598bc070911a0e84fedd43cc6bfa18e6cf6` (239,032 bytes), built from independently audited source.
+- Verifying key from the `cloak-transaction-0.2.0` trusted-setup ceremony (sha256 `d65073d44064ed3be10d79e52d60a06d6be6d6c01afcd5ce52cdfcfc97c5585d`).
+- Upgrade authority: Squads multisig `F6HWeX5i2KjYQag6wCtxzQXeGewv6vXZihZR3EWdRL7s` (3-of-4, 1-hour time lock).
+- Hashes and the verification recipe: [Release notes 2026-08](/releases/2026-08-mainnet).
+
 ## On-chain protections
 
 - Root membership checks against ring-buffered root history.

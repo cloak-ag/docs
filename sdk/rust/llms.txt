@@ -52,10 +52,10 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 3. Balance identity enforced by preflight: `sum(inputs) + external_amount == sum(outputs)`.
 4. Amounts are `u64` (or `i64` for `external_amount`). Internal balance check uses `i128` to avoid overflow.
 5. Public inputs are a 264-byte blob; the orchestrator builds it — never hand-pack.
-6. Fees (shared with the TS SDK):
-   - Fixed: `5_000_000` lamports.
-   - Variable: `3 / 1000` of gross (for withdrawal/swap).
-   - Minimum SOL deposit: `10_000_000` lamports.
+6. Fees (enforced on-chain by the program from each pool's `PoolConfig`; shared with the TS SDK):
+   - SOL pool: fixed `5_000_000` lamports + `3 / 1000` of gross (withdrawal/swap).
+   - SPL pools (USDC/USDT): fixed `450_000` base units (0.45) + `3 / 1000` of gross, in the withdrawn token.
+   - Minimum deposit: `10_000_000` lamports (SOL); `1_000_000` base units (USDC/USDT).
 7. Swaps (`opts.swap = Some(SwapOptions {...})`) require `opts.relay_url`. `submit_direct` rejects them with `Error::Config`.
 8. Direct **SPL withdraw** is rejected — set `opts.relay_url` for SPL withdrawals.
 9. `RootNotFound` and `StaleProofState` are retryable and are handled by the outer retry loop automatically.
@@ -76,7 +76,7 @@ use cloak_sdk::constants::{
     ENVELOPE_VERSION,            // u8 = 0x02
     DISCRIMINATOR_TRANSACT,      // u8 = 0x00
     DISCRIMINATOR_TRANSACT_SWAP, // u8 = 0x01
-    CIRCUITS_BASE_URL,           // &str, pinned GCS path
+    CIRCUITS_BASE_URL,           // &str, pinned GCS path — the program accepts only `circuits/0.2.0`; if your pinned crate still says 0.1.0, pass the 0.2.0 base to `ensure_circuit_artifacts_at`
 };
 use cloak_sdk::core::chain_note::CHAIN_NOTE_TAG; // u64 = 2
 ```

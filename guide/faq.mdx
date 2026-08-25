@@ -9,7 +9,7 @@ Honest answers, worst cases first. If your question isn't here, start with [What
 <AccordionGroup>
 
 <Accordion title="Has Cloak been audited?">
-Cloak's shield-pool program has undergone an external security assessment. The full report is being prepared for publication and will be linked here. {/* TODO(audit-url): link the published audit report */} Our full threat model — including what Cloak cannot do — is at [Security](/guide/security).
+Yes. Cloak's shield-pool program has been independently audited, and the program live on mainnet is built from the audited source — the [Security](/guide/security#verify-it-yourself) page lists the artifact hashes and how to check them yourself. The full report is being prepared for publication and will be linked here. {/* TODO(audit-url): link the published audit report */} Our full threat model — including what Cloak cannot do — is at [Security](/guide/security).
 </Accordion>
 
 <Accordion title="Can Cloak freeze, seize, or spend my funds?">
@@ -37,7 +37,7 @@ Cloak is built to be private by default, auditable when required. Every transact
 </Accordion>
 
 <Accordion title="What does it cost?">
-Shielding is free; sending SOL to a public address costs 0.005 SOL fixed plus 0.3%, while USDC and USDT pay 0.3% only, with no fixed fee. A private swap costs 0.005 SOL plus 0.3% of the SOL swapped, and shielded-to-shielded transfers are free at the protocol level. Fees are collected on-chain by the program — nothing else charges you; the full table is at [Fees](/guide/fees).
+Shielding is free; sending SOL to a public address costs 0.005 SOL fixed plus 0.3%, while USDC and USDT pay 0.45 fixed plus 0.3%. A private swap costs 0.005 SOL plus 0.3% of the SOL swapped, and shielded-to-shielded transfers are free at the protocol level. Fees are collected on-chain by the program — nothing else charges you; the full table is at [Fees](/guide/fees).
 </Accordion>
 
 <Accordion title="Why is there no fee to shield or to receive?">
@@ -49,7 +49,7 @@ You can shield and send SOL, USDC, and USDT, each in its own shielded pool; swap
 </Accordion>
 
 <Accordion title="Is there a minimum amount?">
-Yes for SOL: 0.01 SOL to shield and 0.01 SOL to swap. There is no protocol minimum for USDC or USDT.
+Yes: 0.01 SOL to shield SOL or to swap, and 1.00 USDC or 1.00 USDT to shield a stablecoin.
 </Accordion>
 
 <Accordion title="Who pays the gas?">
@@ -57,7 +57,7 @@ You do only when shielding — your wallet signs the deposit and pays normal net
 </Accordion>
 
 <Accordion title="Can the Cloak program change?">
-The Cloak program is upgradeable. The upgrade authority is held by the Cloak team and is planned to move under a Squads multisig. We say this plainly because an upgradeable program you know about is safer than an "immutable" one that quietly isn't — upgradeability is how fixes ship.
+The Cloak program is upgradeable. Its upgrade authority is a Squads multisig (3 of 4 signers, with a 1-hour time lock), so no single key can change the program. We say this plainly because an upgradeable program you know about is safer than an "immutable" one that quietly isn't — upgradeability is how fixes ship.
 </Accordion>
 
 <Accordion title="Is my transaction private immediately?">
