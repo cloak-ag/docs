@@ -12,7 +12,7 @@ The active runtime path is UTXO transactions through:
 - `swapWithChange` / `swapUtxo` for swap flows
 - SDK-managed submit and status lifecycle
 
-Note-model and UTXO-model methods are both part of v1, with UTXO-first integrations recommended for most apps.
+The UTXO free functions are the only transaction path in 0.2.0. The note-model client class was removed; `transact` / `transfer` / `partialWithdraw` / `fullWithdraw` / `swapWithChange` replace it.
 
 ## Commitments and Merkle tree
 
@@ -56,9 +56,9 @@ For SOL withdrawals/swaps:
 
 For SPL (USDC/USDT) withdrawals:
 
-- `fee` = `gross * 3 / 1000` only — no fixed component, charged in the withdrawn token
+- `fee` = `450_000 + floor(gross * 3 / 1000)` in token base units (0.45 token fixed plus 0.3%), charged in the withdrawn token
 
-Minimum deposit: `10_000_000` lamports (`0.01 SOL`, SOL pool only). See [Fee Model](/protocol/fee-model).
+Minimum deposit: `10_000_000` lamports (`0.01 SOL`) for the SOL pool, `1_000_000` base units (`1.00 token`) for USDC/USDT. See [Fee Model](/protocol/fee-model).
 
 ## Proof data shapes
 

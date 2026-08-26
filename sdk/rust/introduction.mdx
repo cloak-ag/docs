@@ -32,15 +32,37 @@ The result carries the post-tx Merkle tree and any ALTs used — thread them int
 |---|---|
 | Program ID | `zh1eLd6rSphLejbFfJEneUwzHRfMKxgzrgkfwA6qRkW` |
 | Relay URL | `https://api.cloak.ag` |
-| Circuits base URL | `https://storage.googleapis.com/cloak-circuits/circuits/0.1.0` |
+| Circuits base URL | `https://storage.googleapis.com/cloak-circuits/circuits/0.1.0` (compiled-in default, **not usable against the deployed program**, see below) |
 | Minimum SOL deposit | `10_000_000` lamports (0.01 SOL) |
 | Max inputs / outputs | 2 / 2 (fixed circuit arity) |
+| Crate version | cloak-sdk 0.1.0 (git only, no published tags) |
+
+<Warning>
+**The crate's compiled-in circuits base is stale.** `CIRCUITS_BASE_URL` in `cloak-sdk` still points at the `0.1.0` bundle. The deployed program embeds the `0.2.0` ceremony verifying key, so a proof built from `0.1.0` artifacts fails Groth16 verification and the transaction reverts with `0x1010` (`ProofInvalid`). The correct bundle base is `https://storage.googleapis.com/cloak-circuits/circuits/0.2.0`.
+
+`TransactOptions` carries no circuits field and `transact()` resolves artifacts through the constant, so the base cannot be overridden per call. Until the crate is updated, seed the artifact cache once before your first `transact()`:
+
+```rust
+use cloak_sdk::utils::proof_generation::{default_cache_dir, ensure_circuit_artifacts_at};
+
+ensure_circuit_artifacts_at(
+    default_cache_dir()?,
+    "https://storage.googleapis.com/cloak-circuits/circuits/0.2.0",
+)
+.await?;
+```
+
+`transact()` reuses whatever already exists in the cache directory, so it will not re-download the `0.1.0` artifacts.
+</Warning>
 
 ## Install
 
 ```toml
 [dependencies]
-cloak-sdk = { git = "https://github.com/cloak-ag/rustsdk" }
+# cloak-sdk 0.1.0. Distributed by git only, and the repository publishes no
+# tags, so a rev is the only way to pin. main has already moved once with a
+# package rename and a full API rewrite, so do not track it unpinned.
+cloak-sdk = { git = "https://github.com/cloak-ag/rustsdk", rev = "29b749d729f33d15e9bc7449b24783c94f5fb3a7" }
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 ```
 
@@ -82,7 +104,7 @@ async fn main() -> anyhow::Result<()> {
 
 A few intentional choices shape how the crate reads:
 
-- **Engine-first, no stateful façade.** The TS SDK's `CloakSDK` class is a wallet-aware façade over the same engine; the Rust crate exposes the engine directly. Build your own wallet, scanner, or compliance report on top — `TransactResult` gives you the commitments, indices, and post-tx tree to do it.
+- **Engine-first, no stateful façade.** The TS SDK ships optional stateful helpers such as `UtxoWallet` and `SimpleWallet` for local note tracking and input selection; the Rust crate exposes the engine directly and leaves that shape to you. Build your own wallet, scanner, or compliance report on top — `TransactResult` gives you the commitments, indices, and post-tx tree to do it.
 - **`TransactOptions` as the one knob.** Parameters (inputs, outputs, external_amount, recipient) and submission config (rpc, payer, relay_url, risk checks) live on one struct. `..Default::default()` + struct-update syntax keeps call sites readable.
 - **`RpcProvider` is a trait.** Production wraps `solana-rpc-client::nonblocking::RpcClient` via `SolanaRpc`; tests inject `MockRpc`. Same shape, no cfg-gated code paths.
 - **Focused Solana crates.** Depends on `solana-keypair`, `solana-pubkey`, `solana-transaction`, `solana-rpc-client`, etc. — not the `solana-sdk` umbrella. Keeps the dep graph predictable and compile times reasonable.

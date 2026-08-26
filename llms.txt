@@ -40,7 +40,7 @@ This file is the canonical index for AI coding agents integrating with Cloak.
 - [Introduction](/sdk/rust/introduction): Scope, install, minimal setup, TS→Rust mental model.
 - [Quickstart](/sdk/rust/quickstart): First SOL deposit end-to-end with `TransactOptions`.
 - [Core concepts](/sdk/rust/core-concepts): How Rust types map to protocol primitives.
-- [API reference](/sdk/rust/api-reference): `TransactOptions`, `TransactResult`, `Relay`, and helper types.
+- [API reference](/sdk/rust/api-reference): `TransactOptions`, `TransactResult`, and helper types.
 - [Error handling](/sdk/rust/error-handling): `Error` enum variants and retry semantics.
 - [Rust SDK LLM reference](/sdk/rust/llms.txt): Dense AI-oriented reference for the `cloak-sdk` crate.
 
@@ -79,7 +79,7 @@ This file is the canonical index for AI coding agents integrating with Cloak.
 ## Integration Tips For Agents
 
 - Pick the SDK that matches the host app: TypeScript for web/Node, Rust for server/CLI/program clients.
-- Use SDK defaults for program, relay, and circuits in standard integrations.
+- Use SDK defaults for program and circuits in standard integrations. `relayUrl` has no default and must be passed on every flow.
 - Keep tx amounts as `bigint` (TS) or `u64` / `i64` (Rust) end-to-end — no float math.
 - Treat stale-root failures as retryable (both SDK transaction paths already do this by default).
 - Never log private keys, viewing keys (`nk`), seed material, or raw note payloads.

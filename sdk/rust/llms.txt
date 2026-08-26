@@ -23,12 +23,14 @@ Protocol-level shared concepts (same as the TypeScript SDK):
 ## 1. Crate
 
 - Name: `cloak-sdk`
-- Edition: 2024 (Rust 1.80+)
+- Version: `0.1.0`
+- Edition: 2024 (Rust 1.85+, which is what edition 2024 requires)
 - Install:
 
 ```toml
 [dependencies]
-cloak-sdk = { git = "https://github.com/cloak-ag/rustsdk" }
+# cloak-sdk 0.1.0, git only, no published tags. `main` moves, so pin a rev.
+cloak-sdk = { git = "https://github.com/cloak-ag/rustsdk", rev = "29b749d729f33d15e9bc7449b24783c94f5fb3a7" }
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 ```
 
@@ -76,7 +78,9 @@ use cloak_sdk::constants::{
     ENVELOPE_VERSION,            // u8 = 0x02
     DISCRIMINATOR_TRANSACT,      // u8 = 0x00
     DISCRIMINATOR_TRANSACT_SWAP, // u8 = 0x01
-    CIRCUITS_BASE_URL,           // &str, pinned GCS path
+    CIRCUITS_BASE_URL,           // &str, pinned to circuits/0.1.0 (see the warning
+                                 // on /sdk/rust/introduction: the deployed program
+                                 // verifies against circuits/0.2.0)
 };
 use cloak_sdk::core::chain_note::CHAIN_NOTE_TAG; // u64 = 2
 ```
@@ -192,29 +196,17 @@ Tests use `rpc::test_support::MockRpc` (scripted responses, captured sends).
 
 ---
 
-## 7. Relay
+## 7. Submission endpoint
+
+Set `opts.relay_url` to Cloak's hosted submission endpoint and `transact()` handles submission
+for you:
 
 ```rust
-use cloak_sdk::services::relay::{
-    Relay, CommitmentsQuery, RangeQuoteQuery,
-    TransactRequest, TransactSwapRequest,
-    build_transact_request, build_transact_swap_request,
-    build_merkle_tree_from_relay,
-    fetch_risk_quote, wait_for_swap_completion,
-    SWAP_STATUS_DEFAULT_MAX_ATTEMPTS, SWAP_STATUS_DEFAULT_DELAY_MS,
-};
-
-let relay = Relay::new("https://api.cloak.ag");
-
-relay.commitments(&query).await?;                // GET /commitments
-relay.merkle_root(&mint).await?;                  // GET /merkle-root
-relay.transact(&body).await?;                     // POST /transact
-relay.transact_swap(&body).await?;                // POST /transact_swap  → { request_id, ... }
-relay.status(&request_id).await?;                 // GET /status/{id}
-relay.viewing_key_challenge(&user).await?;        // POST /viewing-key/challenge → { nonce, message }
-relay.viewing_key_register(&body).await?;         // POST /viewing-key/register
-relay.range_quote(&query).await?;                 // GET /range-quote → RiskQuote
+opts.relay_url = Some("https://api.cloak.ag".to_string());
 ```
+
+That is the whole integration surface. Everything below it is an internal contract and is not
+supported for direct use: build against `transact()` and the program.
 
 ---
 
@@ -352,7 +344,7 @@ What the engine deliberately leaves to consumers:
 
 - **Wallet / UTXO-set management.** Pick any storage (sled, sqlite, memory). The engine returns commitments, indices, siblings, and the post-tx Merkle tree on each call so you can persist what you need.
 - **Chain scanner / compliance reports.** `get_account_data` + `get_signatures_for_address` via your `RpcProvider` are all you need; trial-decrypt chain notes with `ChainNote::decrypt(nk, candidates)` and classify by discriminator.
-- **High-level wallet façades.** The TS `CloakSDK` class is an ergonomic wrapper on top of the engine; build your own shape that matches your app's lifecycle.
+- **High-level wallet façades.** The TS SDK ships optional stateful helpers (`UtxoWallet`, `SimpleWallet`) over the same engine; build your own shape that matches your app's lifecycle.
 
 Alternate providers not currently wired through the crate:
 
@@ -380,7 +372,6 @@ When docs differ from code, trust the implementation:
 - Public API: `rustsdk/src/lib.rs`
 - Orchestrator: `rustsdk/src/core/transact.rs`
 - Option/result types: `rustsdk/src/core/transact/{options,result,flow,envelope,proof}.rs`
-- Relay typed surface: `rustsdk/src/services/relay.rs`
 - RPC trait + impl: `rustsdk/src/rpc.rs`
 - Instruction builders: `rustsdk/src/solana/instructions.rs`
 - ALT creation: `rustsdk/src/solana/alt.rs`

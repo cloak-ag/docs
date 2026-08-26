@@ -4,7 +4,7 @@ description: "Current public API"
 icon: "code"
 ---
 
-The Rust SDK exposes the **engine layer** directly. — every flow goes through `transact()` with a shaped `TransactOptions`.
+The Rust SDK exposes the **engine layer** directly: every flow goes through `transact()` with a shaped `TransactOptions`.
 
 ## Entrypoint: `transact`
 
@@ -14,7 +14,7 @@ use cloak_sdk::core::transact::{transact, TransactOptions, TransactResult};
 pub async fn transact(opts: TransactOptions) -> Result<TransactResult>;
 ```
 
-One function, every flow. The `TransactOptions.swap` field routes to `/transact_swap`; the sign of `external_amount` classifies deposit/transfer/withdraw.
+One function, every flow. The `TransactOptions.swap` field selects the swap path; the sign of `external_amount` classifies deposit/transfer/withdraw.
 
 ## `TransactOptions`
 
@@ -27,7 +27,7 @@ pub struct TransactOptions {
     pub mint: Option<Pubkey>,
     pub recipient: Option<Pubkey>,
 
-    // Relay + submission
+    // Submission
     pub relay_url: Option<String>,
     pub max_root_retries: Option<u32>,
     pub relayer: Option<Pubkey>,
@@ -73,6 +73,10 @@ TransactOptions {
 }
 ```
 
+Point `opts.relay_url` at Cloak's hosted submission endpoint (`https://api.cloak.ag`) and the
+engine handles submission for you. Everything below that layer is an internal contract and is
+not a supported integration surface: build against `transact()` and the program.
+
 ## `TransactResult`
 
 ```rust
@@ -103,7 +107,7 @@ pub struct SwapOptions {
 }
 ```
 
-Set `opts.swap = Some(swap)` to route through `/transact_swap`. Direct-path swap is rejected (relay owns DEX account wiring).
+Set `opts.swap = Some(swap)` to run the flow as a private swap. Direct-path swap is rejected.
 
 ## UTXO primitives
 
@@ -139,28 +143,6 @@ async fn get_slot(&self) -> Result<u64>;
 ```
 
 Tests use `rpc::test_support::MockRpc` with scripted responses.
-
-## Relay
-
-```rust
-use cloak_sdk::services::relay::{
-    Relay, CommitmentsQuery, build_merkle_tree_from_relay,
-    TransactRequest, TransactSwapRequest,
-    fetch_risk_quote, wait_for_swap_completion,
-};
-
-let relay = Relay::new("https://api.cloak.ag");
-
-// High-level endpoints (typed responses):
-relay.commitments(&query).await?;       // GET /commitments
-relay.merkle_root(&mint).await?;         // GET /merkle-root
-relay.transact(&body).await?;            // POST /transact
-relay.transact_swap(&body).await?;       // POST /transact_swap
-relay.status(&request_id).await?;        // GET /status/{id}
-relay.viewing_key_challenge(&user).await?;
-relay.viewing_key_register(&body).await?;
-relay.range_quote(&query).await?;        // GET /range-quote
-```
 
 ## Instruction builders
 
@@ -225,8 +207,8 @@ use cloak_sdk::constants::{
     ENVELOPE_VERSION,              // 0x02
     DISCRIMINATOR_TRANSACT,        // 0x00
     DISCRIMINATOR_TRANSACT_SWAP,   // 0x01
-    CIRCUITS_BASE_URL,
-};
+    CIRCUITS_BASE_URL,             // pinned to circuits/0.1.0, see the warning
+};                                 // on /sdk/rust/introduction
 use cloak_sdk::core::chain_note::CHAIN_NOTE_TAG; // 2
 ```
 

@@ -1,0 +1,217 @@
+---
+title: "Shielded transfers"
+description: "Pay someone privately without the money ever leaving the pool. The recipient receives a shielded note, not liquid SOL. Opt in to recipient discovery and their wallet finds it on its own; leave it out and delivery is a bearer handoff you pass off-chain."
+icon: "shuffle"
+---
+
+A **shielded transfer** moves value from one person to another **without it ever leaving the pool**. Nothing becomes public: the recipient ends up owning a shielded **note** — a private balance inside the pool, the same kind of note the sender holds — not liquid SOL in a wallet. Under the hood it's the SDK's `transfer(...)`: the same instruction as a deposit or withdrawal, but with the amount crossing the pool's edge set to **zero** (`externalAmount === 0`).
+
+The one thing that surprises everyone: a shielded transfer is a **bearer instrument** — whoever holds the note's secrets can spend it, like cash — **not an address you send to**. You don't type in a Solana address and watch it appear in their wallet. Delivery of those secrets is a separate step from the transfer itself, and you choose how it happens: opt in to recipient discovery and the SDK publishes them, sealed to the recipient, on chain; leave it out and you hand them over off-chain yourself. The walkthrough below makes it concrete before we get to the mechanics.
+
+<Note>
+This is **not** the consumer app's [private send](/guide/private-send), which delivers **liquid SOL to a public Solana address** (that's a withdrawal). A shielded transfer keeps the recipient *inside* the pool. It's an SDK-level capability; no first-party web UI exposes it yet.
+</Note>
+
+## Walkthrough: Alice pays Bob 0.06 SOL, privately
+
+Alice and Bob each have **two separate identities** — this distinction is the whole ballgame:
+
+| Identity | Looks like | What it's for |
+|---|---|---|
+| **Solana wallet** | `3uNc…` (base58) | holds public SOL; signs transactions |
+| **Cloak pubkey** | `0x1f03…` | owns shielded **notes**; what a transfer is addressed to |
+| **Cloak viewing public key** | 32-byte X25519 | lets a sender address a discovery envelope to you |
+
+The Cloak pubkey (a note's `owner_pubkey`) is derived from a private spending key — a completely different key from your Solana wallet, and just a plain number that lives inside the pool's cryptographic math. Keep those two apart and everything else follows.
+
+<img
+  src="/images/private-send-flow.svg"
+  alt="Shielded transfer: you deposit into the pool, then send — the lamports stay in the pool and only note ownership moves to the recipient; you then hand the recipient the note's secrets off-chain, and they only touch the chain if they later withdraw"
+  style={{ width: "100%", borderRadius: 12, border: "1px solid var(--mint-border)" }}
+/>
+
+Say Alice already holds a **0.10 SOL note** in the pool (her private balance). Here's the whole flow:
+
+**1 · Bob shares his Cloak pubkey** with Alice, over any off-chain channel (a DM, a QR). Just the pubkey — it's safe to share and can't be used to spend or trace him. He shares his **Cloak viewing public key** at the same time (`deriveViewingKeyFromNk(bobNk).publicKey`), which is what lets Alice address a discovery envelope to him. It is also a *public* key: sharing it grants no ability to spend.
+
+**2 · Alice calls `transfer`.** She spends her 0.10 note and creates two new notes: **0.06 owned by Bob's Cloak pubkey**, and **0.04 change owned by herself**. Because `externalAmount === 0`, the pool's lamports don't move at all — only *who owns what* changes:
+
+| | Alice (shielded) | Bob (shielded) | Bob's wallet |
+|---|---|---|---|
+| Alice holds a note | 0.10 | 0.00 | 0.00 |
+| **after `transfer`** | **0.04** | **0.06** | 0.00 |
+| after Bob withdraws | 0.04 | 0.00 | **~0.0548** |
+
+Value moved **between two private balances** — Alice `0.10 → 0.04`, Bob `0.00 → 0.06` — while the pool total and every public wallet stayed flat. (Bob's `~0.0548` is his 0.06 note minus the [exit fee](/guide/fees), charged only when value leaves the pool at withdraw.)
+
+**3 · Bob finds it himself, if Alice opted in.** Because Alice passed Bob's viewing public key as `recipientViewingPublicKey`, the send published a sealed envelope on chain carrying the note's amount and *blinding*, addressed to Bob. Bob calls `scanRecipientDeliveryNotes` holding nothing but his own keys and it comes back. If Alice had *not* passed that key, Bob would find **nothing**: the blinding would never have reached the chain, and there'd be no trail from the note to him. ([The full reason.](#how-the-recipient-gets-the-secrets))
+
+**4 · Fallback, only when Alice skipped the envelope: Alice hands Bob the note's secrets** — the amount + *blinding* (a secret random value Alice picked when building the note), effectively the note object — off-chain. *Now* Bob attaches his own key and the note is spendable by him.
+
+**5 · Bob withdraws** to any wallet he likes. His 0.06 private balance becomes ~0.0548 public SOL (minus the exit fee). **Only this last step moves SOL out of the pool.**
+
+That's the entire mechanic: **ownership moves on-chain in step 2, and delivery rides along on chain in the sealed envelope.** Skip the envelope and delivery falls back to the off-chain handoff in step 4; a transfer with neither is a note Bob owns but can't use.
+
+## How the recipient gets the secrets
+
+To *spend* a note you need its **full secrets** — `(amount, owner_pubkey, blinding, mint)` — because spending means recomputing the commitment and proving ownership in zero knowledge. The recipient supplies `owner_pubkey` (it's their key), but the **`blinding` is fresh randomness the *sender* rolls in**. It is not part of the commitment the chain stores, and it reaches the recipient on chain only through the sealed delivery envelope described below.
+
+So receiving takes **one up-front exchange**. Before the send, the recipient shares two things: their **Cloak pubkey** (the note's `owner_pubkey`) and their **public viewing key**, `deriveViewingKeyFromNk(nk).publicKey`. The sender passes the second as `recipientViewingPublicKey` in the `transfer(...)` options. The SDK then seals `{amount, blinding}` of the recipient's note into a 112-byte envelope (X25519 + XSalsa20-Poly1305) and it is published on chain. The recipient finds and opens it with their `nk` alone, via `scanRecipientDeliveryNotes({ connection, programId, viewingKeyNk, ownerUtxoPublicKey })`, which trial-opens every carrier and keeps the ones whose recomputed Poseidon commitment matches. No second hand-off.
+
+When the sender **omits** `recipientViewingPublicKey`, the blinding never reaches the chain and the note secrets have to be handed over out of band instead:
+
+1. **Before — recipient → sender:** the recipient's **Cloak pubkey**, so the sender can lock the note to it.
+2. **After — sender → recipient:** the **note secrets**, so the recipient can actually spend it.
+
+<Warning>
+**Recipient discovery is opt-in.** Bob derives a **viewing public key** from his own `nk` (`deriveViewingKeyFromNk(bobNk).publicKey`, a 32-byte X25519 key) and shares that *public* key along with his Cloak pubkey. Alice passes it as `recipientViewingPublicKey` on the send, and Bob then finds the note himself with `scanRecipientDeliveryNotes({ connection, programId, viewingKeyNk: bobNk, ownerUtxoPublicKey: bob.publicKey })`, holding nothing but his own keys. Omit `recipientViewingPublicKey` and the note stays undiscoverable on chain, so the secrets still have to be handed over out of band.
+
+`nk` itself is derived from the recipient's spending key (`getNkFromUtxoPrivateKey`) and opens every envelope addressed to them, so it must never leave the recipient. The recipient derives; the recipient shares only the public half.
+</Warning>
+
+**Scope and limits**, all worth knowing before you rely on it:
+
+- The envelope is attached only on a **shield-to-shield send** (`externalAmount === 0` with no external `recipient`). Deposits and withdrawals carry none.
+- It always describes **output 0**, and it is skipped when output 0 belongs to the spender (change, or a send-to-self). `transfer()` puts the recipient's note at output 0, so the documented API satisfies this for you.
+- The carrier's declared commitment is **not** covered by the envelope's Poly1305 tag. Pass `ownerUtxoPublicKey` to `scanRecipientDeliveryNotes` and trust the `commitmentVerified` flag on the returned note rather than the memo.
+
+### The on-chain "chain note" is not a delivery channel
+
+Every transfer posts a small encrypted **chain note**, which is easy to mistake for delivery — it isn't. It's an AES-256-GCM envelope sealed under a key derived from the **sender's own** viewing key plus the output commitment, so opening it takes both, and the recipient has neither. Its contents are `{ timestamp, noteSalt, outAmount0, outPubkey0, isSendToSelfKey0 }`, which *does* include the recipient note's **amount and Cloak pubkey**, but **not the `blinding`**. Even if it did, the envelope isn't addressed to the recipient in the first place. It's a **self-scan / compliance** record for the party who wrote it, not a channel that delivers a spendable note to anyone else. (See [viewing keys & compliance](/architecture/viewing-keys-compliance).)
+
+The recipient-addressed **delivery envelope (CLKD1)** described above is the separate artifact that *does* deliver. Don't confuse the two: the chain note is sender-keyed and compliance-facing; the delivery envelope is recipient-keyed and is the actual delivery channel.
+
+## Who can spend the note — and the catch
+
+Ownership is cryptographic, so the note is safe in a strong sense and stuck in a subtle one.
+
+**Only the owner's key can spend it — not even the sender.** Spending requires proving, in zero knowledge, that you hold the **private key** behind the note's `owner_pubkey`. Alice *built* Bob's note and knows its amount and blinding, yet she **still cannot spend it** — she doesn't have Bob's private key, and the secrets alone aren't enough. Owning a note's data ≠ being able to spend it; the ownership check is a separate cryptographic gate. An attacker who learns everything except the private key gets nowhere.
+
+**The catch: no clawback.** The flip side of that safety is that a raw shielded transfer has **no refund path**. If the sender never hands over the secrets, the note is **stranded** — the recipient can't spend it (no secrets) and the sender can't either (no key). This is exactly why [payment links](/guide/payment-links) use an **ephemeral key the sender controls**: an unclaimed link stays reclaimable, where a raw send-to-a-Cloak-pubkey does not.
+
+## Relationship to payment links
+
+A shielded transfer and a [payment link](/guide/payment-links) are the **same bearer mechanic** with different key ownership:
+
+- **Shielded transfer** — the note is locked to the **recipient's own** Cloak key. The recipient must exist and share their Cloak pubkey and viewing public key up front: one off-chain exchange, after which the sealed envelope carries the secrets on chain.
+- **Payment link** — the sender generates a **throwaway key**, funds a note to it, and packages the whole claim into a single link handed off-chain. The recipient needs no Cloak identity and gives nothing up front — whoever holds the link claims it: one off-chain handoff.
+
+Payment links stay the productized version of the same primitive, and they still need nothing at all from the recipient up front — no Cloak identity, no viewing key. That's why the app ships them rather than a raw "send to a shielded address" button.
+
+## Under the hood
+
+If the walkthrough is enough, skip this. If you want the machinery:
+
+**Value lives as notes.** A note is a set of secrets `(amount, owner_pubkey, blinding, mint)`; only its **commitment** — a Poseidon hash over those fields — goes on-chain, as a leaf in the pool's Merkle tree. The preimage is secret, so the chain sees an opaque hash, not "5 SOL owned by X." Fresh `blinding` per note means equal amounts don't produce equal commitments.
+
+**Ownership is a key, not an account.** `owner_pubkey = Poseidon([spending_privkey], KEYPAIR_DOMAIN_TAG)` — that's the "Cloak pubkey." To spend, you prove in zero knowledge that you know the spending key behind the pubkey baked into the commitment.
+
+**Nullifiers stop double-spends.** Spending a note publishes its nullifier (derived from the note + your spending key). The program records every nullifier and rejects repeats — and a nullifier is **unlinkable to its commitment**, so nobody can tell which leaf it spent.
+
+**One instruction does everything.** Deposit, transfer, and withdraw are all the same `Transact` instruction — a Groth16 proof plus public inputs, **2-in / 2-out** (pad an unused input with a zero note; all-zero outputs are dropped before the tree append). The proof establishes that the inputs are in the tree, you own them, the nullifiers are correct, the outputs are well-formed, and **conservation** holds:
+
+```
+sum(inputs) = sum(outputs) + public_amount
+```
+
+`public_amount` is the entire taxonomy — it's the circuit's name for the same knob the SDK exposes as `externalAmount` (the amount crossing the pool's boundary):
+
+| `public_amount` | Flow | Lamports |
+|---|---|---|
+| `> 0` | deposit / shield | flow **into** the pool |
+| `< 0` | withdraw / unshield | flow **out** to a wallet |
+| `= 0` | **shielded transfer** | **nothing moves** |
+
+So Alice's 0.06 transfer out of her 0.10 note is:
+
+```
+inputs:  [ Alice's 0.10 note ]                 → nullified
+outputs: [ Bob's 0.06 note, Alice's 0.04 change ]
+public_amount = 0        # 0.10 = 0.06 + 0.04 + 0  ✓  nothing leaves the pool
+```
+
+One commitment nullified, two appended, `public_amount = 0`. An observer sees two nullifiers, two opaque commitments, and a zero public amount — so **the amount doesn't even leak**, and sender and recipient aren't linkable.
+
+## Example: end to end
+
+Bob shares two public values once, up front. After that the SDK delivers: the send seals the note's secrets to Bob's viewing key and publishes them on chain, and Bob's scan picks them up.
+
+```ts
+import {
+  NATIVE_SOL_MINT,
+  deriveViewingKeyFromNk,
+  generateUtxoKeypair,
+  getNkFromUtxoPrivateKey,
+  scanRecipientDeliveryNotes,
+  transfer,
+  fullWithdraw,
+} from "@cloak.dev/sdk";
+
+// ── Recipient (Bob), once ────────────────────────────────────────────
+// Bob has a Cloak keypair and shares TWO public values with the sender.
+const bob = await generateUtxoKeypair();
+const bobNk = getNkFromUtxoPrivateKey(bob.privateKey);   // stays with Bob, never shared
+const bobPubkey = bob.publicKey;                          // ← handoff #1a: Bob → Alice
+const bobViewingPublicKey = deriveViewingKeyFromNk(bobNk).publicKey; // ← handoff #1b: Bob → Alice
+
+// ── Sender (Alice) ───────────────────────────────────────────────────
+// Alice holds a funded note `aliceNote` in the pool and moves 0.06 SOL of it
+// to Bob. externalAmount is 0, so nothing leaves the pool — only ownership.
+await transfer(
+  [aliceNote],              // input note(s) Alice owns
+  bobPubkey,                // recipient's Cloak pubkey — NOT a Solana wallet
+  60_000_000n,             // 0.06 SOL
+  {
+    connection, programId, relayUrl,
+    depositorKeypair: aliceWallet,
+    walletPublicKey: aliceWallet.publicKey,
+    chainNoteViewingKeyNk: getNkFromUtxoPrivateKey(alice.privateKey), // Alice's OWN nk
+    recipientViewingPublicKey: bobViewingPublicKey,  // opt in to recipient discovery
+  },
+);
+
+// ── Recipient (Bob) discovers and claims ─────────────────────────────
+// Bob scans with nothing but his own keys and finds the note Alice sent him.
+const { notes } = await scanRecipientDeliveryNotes({
+  connection,
+  programId,
+  viewingKeyNk: bobNk,
+  ownerUtxoPublicKey: bob.publicKey,   // authenticates the carrier's declared commitment
+});
+const delivered = notes.find((n) => n.commitmentVerified && n.amount === 60_000_000n);
+if (!delivered) throw new Error("no delivered note found");
+
+const claimable = {
+  amount: delivered.amount,
+  blinding: delivered.blinding,
+  keypair: bob,
+  mintAddress: NATIVE_SOL_MINT,
+};
+await fullWithdraw([claimable], bobWallet.publicKey, {   // ← funds land at bobWallet (any address)
+  connection, programId, relayUrl,
+  depositorKeypair: feePayer,             // a signer for the withdraw path
+  walletPublicKey: feePayer.publicKey,
+  chainNoteViewingKeyNk: bobNk,           // Bob's OWN nk
+});
+```
+
+<Note>
+Drop `recipientViewingPublicKey` and you are back on the **bearer** path: Alice must read the recipient note out of `transfer`'s `outputUtxos` (the one at index 0) and hand Bob its amount and blinding off-chain herself. Without either the envelope or that hand-off, the note is orphaned — Bob owns a commitment he has no secrets for, and no scan will surface it.
+</Note>
+
+## Where next
+
+<CardGroup cols={2}>
+  <Card title="UTXO Transactions" icon="vault" href="/sdk/utxo-transactions">
+    The `transfer` / `transact` API, `externalAmount` semantics, and fees.
+  </Card>
+  <Card title="Payment links" icon="link" href="/guide/payment-links">
+    The productized version that needs nothing from the recipient up front, with a refund path.
+  </Card>
+  <Card title="Moving value out of your private balance" icon="paper-plane" href="/guide/private-send">
+    The consumer view — the two ways value leaves the pool (send / withdraw), and where this fits.
+  </Card>
+  <Card title="Viewing keys & compliance" icon="key" href="/architecture/viewing-keys-compliance">
+    What the self-scan really is, and how it powers compliance.
+  </Card>
+</CardGroup>

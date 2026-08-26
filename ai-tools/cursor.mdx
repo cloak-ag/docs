@@ -43,11 +43,11 @@ This project integrates `@cloak.dev/sdk`.
 ## Fixed integration constants
 
 - Program ID: `zh1eLd6rSphLejbFfJEneUwzHRfMKxgzrgkfwA6qRkW`
-- Circuit base URL: `https://storage.googleapis.com/cloak-circuits/circuits/0.1.0`
+- Circuit base URL: `https://storage.googleapis.com/cloak-circuits/circuits/0.2.0` (prefer the exported `DEFAULT_CIRCUITS_URL` constant over hardcoding the string)
 
 ## SDK capability coverage (must evaluate all)
 
-1. `CloakSDK` note API
+1. Note API free functions (`generateNoteFromWallet`, `parseNote`, `serializeNote`, `exportNote`)
 2. UTXO primitives + transaction API
 3. scanner/compliance API
 4. viewing-key + metadata encryption API
@@ -58,14 +58,14 @@ This project integrates `@cloak.dev/sdk`.
 
 - UTXO path is primary for new integrations.
 - Amounts are `bigint` in tx logic.
-- Enforce viewing-key registration before protocol actions.
+- Viewing-key registration is enforced inside the SDK transaction flows (`transact`, `transfer`, `partialWithdraw`, `fullWithdraw`, `swapWithChange`); do not add an app-level registration step and do not disable it. Call the exported `registerViewingKey` only for standalone compliance or history scanning.
 - Keep history cache-first with explicit rescan.
 
 ## Safety
 
 - Never log private keys, viewing keys (`nk`), seed material, or raw note payloads.
 - Transaction signatures are public and can be logged for support/debugging.
-- Use SDK defaults for program, relay, and circuits. Do not expose these as user-facing config.
+- Use SDK defaults for program and circuits. Do not expose those as user-facing config. The relay has no SDK default: pass `relayUrl` on every call, read from the `CLOAK_RELAY_URL` env var.
 - Rely on SDK stale-root retries by default; add extra app-level retry/backoff only when explicitly required.
 
 ## Reference docs

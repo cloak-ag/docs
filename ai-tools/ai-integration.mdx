@@ -66,7 +66,7 @@ Build requirements:
 5) Never log secrets (private keys, viewing keys (`nk`), raw note payloads, seed material).
    Transaction signatures are public and may be logged for support/debugging.
 6) Rely on SDK default stale-root handling for standard flows; do not add custom retry loops unless explicitly requested.
-7) Use SDK defaults for program, relay, and circuits. Do not ask end users to configure these.
+7) Use SDK defaults for program and circuits. The relay has no default: pass `relayUrl` on every `transact` / `fullWithdraw` call, sourced from the `CLOAK_RELAY_URL` env var. Do not ask end users to configure program or circuits.
 8) For script-only tasks, default to keypair path + lamports CLI (`<recipientPubkey> <lamports>`).
 9) For script-only tasks, parse recipient/amount from CLI args (not env) and exit explicitly (`process.exit(0|1)`).
 
@@ -104,7 +104,7 @@ Build requirements:
 7) Never log private keys, viewing keys (`nk`), UTXO private keys, blindings, or note payloads.
    Transaction signatures are public and may be logged.
 8) Rely on SDK default retry loops (`RootNotFound`, `BlockhashExpired`, `StaleProofState`); do not add custom retry wrappers.
-9) Use SDK defaults for program, relay, and circuits (`CLOAK_PROGRAM_ID`, `NATIVE_SOL_MINT`, `CIRCUITS_BASE_URL` from `cloak_sdk::constants`). Do not expose as user config.
+9) Use SDK defaults for program, mint, and circuits (`CLOAK_PROGRAM_ID`, `NATIVE_SOL_MINT`, `CIRCUITS_BASE_URL` from `cloak_sdk::constants`). Do not expose those as user config. There is no relay constant in `cloak_sdk::constants`, so set `opts.relay_url` in code to the mainnet relay URL as shown in item 5, and do not expose it as user config either.
 10) For one-file binaries, parse recipient/amount from `std::env::args()` and exit explicitly with `std::process::exit(0|1)` (or return `Result<()>` from `main`).
 
 Return format:
@@ -151,7 +151,7 @@ When the user prompt is short/vague (including non-English prompts), detect the 
 - CLI: `npx tsx send-sol-private.ts <recipientPubkey> <lamports>`
 - recipient/amount read from `process.argv`
 - env vars: `SOLANA_RPC_URL`, `KEYPAIR_PATH`
-- no user-facing relay/circuits/program config
+- no user-facing circuits/program config; set `relayUrl: "https://api.cloak.ag"` in the transact options, since the SDK has no relay default and `transact()` otherwise throws `Viewing key registration is mandatory: relayUrl is required.` `CLOAK_RELAY_URL`, when set, overrides it.
 - explicit `process.exit(0)` on success and `process.exit(1)` on failure
 
 ### Rust default
@@ -160,7 +160,7 @@ When the user prompt is short/vague (including non-English prompts), detect the 
 - CLI: `cargo run -- <recipientPubkey> <lamports>`
 - recipient/amount parsed from `std::env::args()`
 - env vars: `SOLANA_RPC_URL`, `KEYPAIR_PATH`
-- no user-facing relay/circuits/program config
+- no user-facing circuits/program config; set `opts.relay_url` to `https://api.cloak.ag`, as in requirement 5 of the Rust one-shot prompt above
 - `main` returns `anyhow::Result<()>` or exits via `std::process::exit(0|1)`
 
 Example short prompts that should still produce valid output:

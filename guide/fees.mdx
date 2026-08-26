@@ -4,7 +4,7 @@ description: "The complete cost of using Cloak — who pays what, and when"
 icon: "coins"
 ---
 
-Getting in is free, and staying in is free. Leaving costs 0.3% — plus a 0.005 SOL fixed fee when what's leaving is SOL.
+Getting in is free, and staying in is free. Leaving costs 0.3% plus a fixed fee: 0.005 SOL for SOL, 0.45 tokens for USDC and USDT.
 
 ## The who-pays table
 
@@ -13,7 +13,7 @@ Getting in is free, and staying in is free. Leaving costs 0.3% — plus a 0.005 
 | Shield (deposit) | **Free** | Your wallet signs & pays network gas |
 | Shielded→shielded transfer (funds stay inside the pool; available via the SDK) | **Free** | Submitted for you; no gas from your wallet |
 | Private send to an address — SOL | **0.005 SOL fixed + 0.3%** | Submitted for you; no gas from your wallet |
-| Private send to an address — USDC/USDT | **0.3% only (no fixed fee)** | Submitted for you; no gas from your wallet |
+| Private send to an address — USDC/USDT | **0.45 USDC/USDT fixed + 0.3%** | Submitted for you; no gas from your wallet |
 | Withdraw to your own wallet | same as private send | same |
 | Private swap (SOL input) | **0.005 SOL fixed + 0.3%** of the SOL swapped (Jupiter price impact/slippage separate) | Submitted for you; no gas from your wallet |
 | [Payment link](/guide/payment-links) | Free to create; the standard send fee applies once, at claim | Claim is submitted for the recipient; no gas from their wallet |
@@ -31,14 +31,14 @@ Getting in is free, and staying in is free. Leaving costs 0.3% — plus a 0.005 
 </Accordion>
 
 <Tip>
-  Other Solana privacy protocols charge a flat 1% on every withdrawal. Cloak charges 0.3% — plus a 0.005 SOL fixed fee for SOL.
+  Other Solana privacy protocols charge a flat 1% on every withdrawal. Cloak charges 0.3% plus a fixed fee of 0.005 SOL (SOL) or 0.45 tokens (USDC/USDT).
 </Tip>
 
 ## Two worked examples
 
 **Send 1 SOL.** The recipient receives exactly 1 SOL. The fee is 0.005 SOL fixed + 0.003 SOL (0.3% of 1 SOL), so your private balance decreases by 1.008 SOL.
 
-**Send 100 USDC.** The recipient receives exactly 100 USDC. The fee is 0.30 USDC (0.3%, no fixed fee), so your private balance decreases by 100.30 USDC.
+**Send 100 USDC.** The recipient receives exactly 100 USDC. The fee is 0.45 USDC fixed + 0.30 USDC (0.3% of 100), so your private balance decreases by 100.75 USDC.
 
 ## Where next
 

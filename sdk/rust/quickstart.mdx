@@ -6,10 +6,23 @@ icon: "rocket"
 
 This walks through the smallest useful integration: a single-output SOL deposit submitted directly (user signs).
 
+<Warning>
+  **This crate cannot currently produce a proof the deployed program will accept.**
+  `cloak-sdk` pins its circuit artifacts to `circuits/0.1.0` (`CIRCUITS_BASE_URL` in
+  `src/constants.rs`, with no override on `TransactOptions`), while the program at
+  `zh1eLd6rSphLejbFfJEneUwzHRfMKxgzrgkfwA6qRkW` verifies against the 0.2.0 verifying key.
+  Any proof from this crate is rejected with `0x1010` (`ProofInvalid`) on every cluster
+  running that program build, mainnet included. The transaction fails atomically, so the
+  deposit is not lost, but the fee is spent and there is no working integration until the
+  crate is republished against `circuits/0.2.0`. For anything you intend to land on chain
+  today, use the TypeScript SDK (`@cloak.dev/sdk@0.2.0`), or seed the artifact cache with the
+  0.2.0 bundle as shown in the [Rust SDK introduction](/sdk/rust/introduction).
+</Warning>
+
 ## Prerequisites
 
-- Rust 1.80+ (edition 2024)
-- A funded Solana keypair (mainnet or a local validator)
+- Rust 1.85+ (edition 2024 requires 1.85.0 or newer)
+- A funded Solana keypair (see the warning above before you choose a cluster)
 - A Solana RPC endpoint
 
 ## Project setup
@@ -22,7 +35,9 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-cloak-sdk = { git = "https://github.com/cloak-ag/rustsdk" }
+# cloak-sdk 0.1.0, git only. `main` moves, so pin a rev. Note the `version`
+# above is this example crate's own version, not the SDK's.
+cloak-sdk = { git = "https://github.com/cloak-ag/rustsdk", rev = "29b749d729f33d15e9bc7449b24783c94f5fb3a7" }
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 anyhow = "1"
 solana-keypair = "3.1"
@@ -46,7 +61,7 @@ use solana_keypair::Keypair;
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     // ---- 1. Wire up RPC + payer -----------------------------------------
-    let rpc = Arc::new(SolanaRpc::new("https://api.mainnet-beta.solana.com"));
+    let rpc = Arc::new(SolanaRpc::new("<your RPC endpoint>")); // see the warning above
     let payer = Arc::new(Keypair::new()); // replace with a funded keypair
 
     // ---- 2. Create the output UTXO --------------------------------------
@@ -93,7 +108,7 @@ async fn main() -> anyhow::Result<()> {
 2. **Viewing-key registration** (skipped by default — flip `require_viewing_key` to enable): challenge + register with the payer signing the message.
 3. **Merkle fetch**: pulled the on-chain tree state via RPC and the commitment set via `/commitments`, falling back to a frontier proof if needed.
 4. **Circuit input packing**: 90 decimal-string signals, in the exact order the circom transaction circuit consumes.
-5. **Proof generation**: ark-circom + ark-groth16 emitted a 256-byte proof. Artifacts (wasm + zkey) cache under `~/Library/Caches/cloak-sdk/circuits/0.1.0/` on macOS, `~/.cache/cloak-sdk/circuits/0.1.0/` on Linux.
+5. **Proof generation**: ark-circom + ark-groth16 emitted a 256-byte proof. Artifacts (wasm + zkey) cache under `~/Library/Caches/cloak-sdk/circuits/0.1.0/` on macOS, `~/.cache/cloak-sdk/circuits/0.1.0/` on Linux. That pinned `0.1.0` version is the constraint described in the warning at the top of this page; the directory name is derived from the constant and does not change even after you seed it with the 0.2.0 bundle.
 6. **Chain-note encryption**: a single compact v2 note bound to the primary output commitment, encrypted under HKDF-derived AES-256-GCM.
 7. **Direct submission**: compiled a v0 transaction, signed with the payer, auto-created an ephemeral ALT if the tx exceeded 1232 bytes, retried on blockhash expiry and transient transport errors.
 8. **Commitment reconciliation**: best-effort poll against `/commitments` to fill `output_indices`.

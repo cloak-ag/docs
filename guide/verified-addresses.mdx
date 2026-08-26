@@ -25,8 +25,26 @@ This is the only Cloak program — if a site, token, or DM points you anywhere e
 | GitHub | [github.com/cloak-ag](https://github.com/cloak-ag) |
 | npm | [`@cloak.dev/sdk`](https://www.npmjs.com/package/@cloak.dev/sdk) |
 | X | [@cloak_ag](https://x.com/cloak_ag) |
+| Discord | [discord.gg/hdkrhrgfER](https://discord.gg/hdkrhrgfER) |
+| Email | [contact@cloak.ag](mailto:contact@cloak.ag) |
 
 If a link is not on this list, treat it as untrusted — including mirror sites, "official" community admins, and handles that differ from the real ones by a single character.
+
+## The pool mints
+
+Each shielded pool accepts exactly one mint, hard-coded in the program. `initialize` rejects any
+other mint outright, so a counterfeit token can never open a Cloak pool. Check a token against
+this list before you shield it:
+
+| Pool | Mint |
+| --- | --- |
+| USDC | `EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v` |
+| USDT | `Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB` |
+| SOL | `So11111111111111111111111111111111111111112` (the SOL pool's mint identity inside the program; you shield native SOL, you do not send this token) |
+
+The USDC and USDT rows are the ones worth checking by hand, because those are the tokens someone
+can hand you a counterfeit of. Verifying the program ID does not protect you from a fake USDC:
+that transaction would call the real program with the wrong mint.
 
 ## How to verify before you interact
 

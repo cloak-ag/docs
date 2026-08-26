@@ -8,8 +8,9 @@ Cloak ships two first-party SDKs targeting the same on-chain protocol. Pick the 
 
 <CardGroup cols={2}>
 <Card title="TypeScript SDK" icon="js" href="/sdk/quickstart">
-  `@cloak.dev/sdk` — browser + Node.js SDK with a high-level `CloakSDK` class,
-  wallet-adapter integration, built-in scanner and note storage.
+  `@cloak.dev/sdk` is the browser and Node.js SDK. It is built on free functions
+  (`transact`, `transfer`, `partialWithdraw`, `fullWithdraw`, `swapWithChange`),
+  with wallet-adapter integration, a built-in scanner and note storage.
   Integrates with `@solana/web3.js` and `@solana/kit`.
 </Card>
 
@@ -35,14 +36,14 @@ Both SDKs speak the same protocol and produce the same 264-byte public inputs. M
 | Setting | Value |
 |---|---|
 | Program ID | `zh1eLd6rSphLejbFfJEneUwzHRfMKxgzrgkfwA6qRkW` |
-| Default relay URL | `https://api.cloak.ag` |
-| Circuits base URL | `https://storage.googleapis.com/cloak-circuits/circuits/0.1.0` |
+| Relay URL | No default. Pass `relayUrl` or set `CLOAK_RELAY_URL`. Production is `https://api.cloak.ag` |
+| Circuits base URL | `https://storage.googleapis.com/cloak-circuits/circuits/0.2.0` |
 | Merkle tree height | 32 |
 | Circuit arity | 2 inputs / 2 outputs |
 | Proof format | 256-byte Groth16 (pinocchio) |
 | Public inputs | 264 bytes |
 
-The **relay URL** points at Cloak's hosted submission endpoint that the SDK uses to land transactions on-chain. The default is correct for mainnet — only override `relayUrl` if you're targeting a different deployment (e.g. devnet).
+`relayUrl` is never defaulted. Pass it on every `transact` call, including shield, send and withdraw, and on the swap helpers. On Node you can instead set `CLOAK_RELAY_URL` in the process environment; in a browser bundle pass the option explicitly. Omitting it raises an error rather than falling back to any deployment. For mainnet the value is `https://api.cloak.ag`.
 
 ## Shared concepts
 
@@ -58,7 +59,7 @@ Start here for web3.js and Solana Kit integrations:
 
 - [Quickstart](/sdk/quickstart) — minimal end-to-end SOL send.
 - [Code examples](/sdk/examples) — send, swap, payroll, history.
-- [API reference](/sdk/api-reference) — full `CloakSDK` class surface.
+- [API reference](/sdk/api-reference) — the full exported surface: functions, classes, and constants.
 
 Install:
 
@@ -72,7 +73,7 @@ Start here for server-side and CLI integrations:
 
 - [Introduction](/sdk/rust/introduction) — install, minimal setup, and scope.
 - [Quickstart](/sdk/rust/quickstart) — first direct-path deposit.
-- [API reference](/sdk/rust/api-reference) — `TransactOptions`, `TransactResult`, `Relay`, and related types.
+- [API reference](/sdk/rust/api-reference) — `TransactOptions`, `TransactResult`, and related types.
 
 Install:
 

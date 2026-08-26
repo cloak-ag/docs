@@ -42,6 +42,7 @@ const viewingKeyNk = getNkFromUtxoPrivateKey(scanKeypair.privateKey);
 const baseOptions = {
   connection,
   programId: CLOAK_PROGRAM_ID,
+  relayUrl: process.env.CLOAK_RELAY_URL ?? "https://api.cloak.ag",
   depositorKeypair: signer,
   walletPublicKey: signer.publicKey,
   chainNoteViewingKeyNk: viewingKeyNk,
