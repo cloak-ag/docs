@@ -19,7 +19,7 @@ Use this file as your primary SDK briefing and only fall back to the friendlier 
 ## 1. Package
 
 - Name: `@cloak.dev/sdk`
-- Version: `0.1.x`
+- Version: `0.2.0`
 - Runtime: Node `>=18` and modern browsers. ESM and CJS both shipped (`dist/index.js`, `dist/index.cjs`).
 - Types: `dist/index.d.ts`
 - Program ID (default, mainnet): `zh1eLd6rSphLejbFfJEneUwzHRfMKxgzrgkfwA6qRkW`
@@ -50,10 +50,11 @@ npm install @solana/spl-token @solana/kit
    `inputSum + externalAmount === outputSum`.
 4. Amounts in UTXO flows are ALWAYS `bigint`. Never cast to `number` inside transaction logic.
 5. Public inputs for the transact/withdraw-swap proofs are 264-byte payloads; do not hand-pack them.
-6. On-chain fee model (enforced by the program):
-   - SOL: `fixed 0.005 SOL` + `0.3 %` variable fee. See `calculateSolFeeBreakdown`.
-   - SPL: `fixed_fee_token = FIXED_FEE_LAMPORTS * (tokenPerSolPrice)` converted via the Q64.64 quote, plus `0.3 %` variable fee. See `calculateSplFeeBreakdown`.
-   - Fees only apply on withdrawal/swap paths. Deposits pay zero protocol fee.
+6. On-chain fee model (enforced by the program from each pool's `PoolConfig`; `transact` reads the live config before building a fee-bearing proof):
+   - SOL: `fixed 0.005 SOL` (`5_000_000` lamports) + `0.3 %` variable fee.
+   - SPL (USDC/USDT): `fixed 0.45` (`450_000` base units) + `0.3 %` variable fee, charged in the withdrawn token.
+   - Fees only apply on withdrawal/swap paths. Deposits and shield-to-shield transfers pay zero protocol fee.
+   - Minimum deposit: `10_000_000` lamports (SOL), `1_000_000` base units (USDC/USDT).
 7. Viewing-key registration is required before scanner/compliance flows can decrypt chain notes; for pure deposit/withdraw flows you can pass `enforceViewingKeyRegistration: false` to `TransactOptions`.
 8. Merkle root freshness: treat `RootNotFound` / stale-root errors as retryable. SDK transaction paths already retry these by default; use `preflightCheck` / `waitForRoot` only for advanced/operator flows.
 9. Never log secrets: spend keys, viewing keys (`nk`), UTXO private keys, blindings, signed messages, note payloads.
@@ -69,14 +70,15 @@ npm install @solana/spl-token @solana/kit
 import {
   CLOAK_PROGRAM_ID,           // PublicKey, mainnet + devnet
   NATIVE_SOL_MINT,            // PublicKey, So111...112
-  DEFAULT_CIRCUITS_URL,       // GCS base URL, pinned
+  DEFAULT_TRANSACTION_CIRCUITS_URL, // ".../cloak-circuits/circuits/0.2.0" (ceremony bundle)
+  TRANSACTION_CIRCUITS_VERSION,     // "0.2.0"
+  resolveCircuitsBase,              // explicit arg → CLOAK_CIRCUITS_PATH / CLOAK_CIRCUITS env → pinned default
   MERKLE_TREE_HEIGHT,         // 32
-  FIXED_FEE_LAMPORTS,         // 5_000_000n
-  MIN_DEPOSIT_LAMPORTS,       // 10_000_000n
-  VARIABLE_FEE_NUMERATOR,     // 3n
-  VARIABLE_FEE_DENOMINATOR,   // 1000n
-  Q64_64_ONE,                 // 1n << 64n
-  LAMPORTS_PER_SOL,           // 1_000_000_000n
+  FIXED_FEE_LAMPORTS,         // 5_000_000
+  MIN_DEPOSIT_LAMPORTS,       // 10_000_000
+  VARIABLE_FEE_NUMERATOR,     // 3
+  VARIABLE_FEE_DENOMINATOR,   // 1000
+  LAMPORTS_PER_SOL,           // 1_000_000_000
   SIGN_IN_MESSAGE,            // wallet-based viewing-key derivation message
   VERSION,                    // SDK version string
 } from "@cloak.dev/sdk";
@@ -294,7 +296,8 @@ function computeExtDataHash(recipient: PublicKey | null, relayerFee: bigint, rel
 function computeChainNoteHash(publicAmount: bigint, extDataHash: bigint, noteTimestamp: bigint, noteCommitment: bigint): Promise<bigint>;
 
 function setCircuitsPath(next: string): void;
-function getCircuitsPath(): string;
+function getCircuitsPath(): string | null;
+function resolveCircuitsBase(explicit?: string): string; // explicit → CLOAK_CIRCUITS_PATH / CLOAK_CIRCUITS → pinned 0.2.0 default
 
 function fetchRiskQuoteInstruction(
   riskQuoteUrl: string,
@@ -302,7 +305,8 @@ function fetchRiskQuoteInstruction(
   options?: { recipient?: PublicKey; amount?: bigint; token?: PublicKey },
 ): Promise<TransactionInstruction>;
 
-const DEFAULT_TRANSACTION_CIRCUITS_URL: string;
+const DEFAULT_TRANSACTION_CIRCUITS_URL: string | null; // ".../cloak-circuits/circuits/0.2.0" in 0.2.0
+const TRANSACTION_CIRCUITS_VERSION: "0.2.0";
 ```
 
 Key `TransactOptions` fields (most used):
@@ -567,15 +571,21 @@ function verifyAllCircuits(circuitsPath: string): Promise<CircuitVerificationRes
 
 function areCircuitsAvailable(circuitsPath: string): Promise<boolean>;
 function getDefaultCircuitsPath(): Promise<string>;
+function assertTransactionCircuitIntegrity(circuitsPath: string | null, prefetched?: { wasm: Uint8Array; zkey: Uint8Array }): Promise<void>;
+function loadVerifiedCircuitArtifacts(circuitsPath: string | null, circuit: "transaction" | "withdraw_regular" | "withdraw_swap"): Promise<VerifiedCircuitArtifacts>;
 
-const DEFAULT_CIRCUITS_URL: string;
+const DEFAULT_CIRCUITS_URL: string | null; // legacy withdraw_* bundle; null (unpublished) in 0.2.0
 const EXPECTED_CIRCUIT_HASHES: {
   withdraw_regular_wasm: string;
   withdraw_regular_zkey: string;
   withdraw_swap_wasm: string;
   withdraw_swap_zkey: string;
+  transaction_wasm: string; // 02ec02e954ae3932827ad9de51afa597ca95569aa97fec8410879c937a58aa2b
+  transaction_zkey: string; // 9da7db8cb1370fc497d36a0365f1f107ab0b0c13ca66fa9f0287e5f96ee68d25
 };
 ```
+
+The `transaction` circuit (used by `transact`, `transfer`, `partialWithdraw`, `fullWithdraw`, `swapUtxo`, `swapWithChange`) is frozen by the `cloak-transaction-0.2.0` trusted-setup ceremony. The SDK checks every artifact it loads against these digests and refuses to prove against anything else; the program rejects proofs from the older `0.1.0` bundle.
 
 ### 5.10 Wallet helpers
 
@@ -594,30 +604,27 @@ function keypairToAdapter(keypair: Keypair): WalletAdapter;
 
 ### 5.11 Fees
 
+Fees are enforced on-chain by the program from each pool's `PoolConfig`; `transact` reads the live
+config before building a fee-bearing proof, so you do not compute the fee yourself. The helpers
+below use the deployed SOL-pool defaults (`5_000_000` lamports fixed + `3 / 1000`):
+
 ```ts
-// SOL:
-function calculateSolFeeBreakdown(grossAmountLamports: bigint): SolFeeBreakdown;
-function calculateSolFeeLamports(grossAmountLamports: bigint): bigint;
-function calculateSolNetAmountLamports(grossAmountLamports: bigint): bigint;
+const FIXED_FEE_LAMPORTS: number;      // 5_000_000
+const MIN_DEPOSIT_LAMPORTS: number;    // 10_000_000
+const VARIABLE_FEE_NUMERATOR: number;  // 3
+const VARIABLE_FEE_DENOMINATOR: number;// 1000
+const VARIABLE_FEE_RATE: number;       // 0.003
+
+function calculateFee(amountLamports: number): number;          // fixed + variable
+function calculateFeeBigint(amountLamports: bigint): bigint;    // same, bigint
 function isWithdrawAmountSufficient(amountLamports: bigint): boolean;
-
-// SPL (Q64.64 priced):
-function tokenPerSolBaseUnitsToQ64(priceTokenPerSolBaseUnits: bigint): bigint;
-function q64ToTokenPerSolBaseUnits(priceTokenPerSolQ64: bigint): bigint;
-
-function calculateSplFixedFeeTokenAmount(priceTokenPerSolQ64: bigint): bigint;
-function calculateSplFeeBreakdown(grossAmountToken: bigint, priceTokenPerSolQ64: bigint): SplFeeBreakdown;
-function calculateSplFeeTokenAmount(grossAmountToken: bigint, priceTokenPerSolQ64: bigint): bigint;
-function calculateSplNetAmountToken(grossAmountToken: bigint, priceTokenPerSolQ64: bigint): bigint;
-function isSplWithdrawAmountSufficient(grossAmountToken: bigint, priceTokenPerSolQ64: bigint): boolean;
-
-// Legacy helpers:
-function calculateFee(amountLamports: number): number;
-function calculateFeeBigint(amountLamports: bigint): bigint;
 function getDistributableAmount(amountLamports: number): number;
 function formatAmount(lamports: number, decimals?: number): string;
 function parseAmount(sol: string): number;
 ```
+
+SPL pools (USDC/USDT) charge `450_000` base units fixed (0.45) + `3 / 1000` variable in the
+withdrawn token; minimum SPL deposit is `1_000_000` base units (1.00). See `/protocol/fee-model`.
 
 ### 5.12 Errors
 
@@ -906,26 +913,22 @@ Only use direct registration helpers for custom/operator pipelines.
 ### 6.9 Fee math (SOL + SPL)
 
 ```ts
-import {
-  calculateSolFeeBreakdown, calculateSolFeeLamports, calculateSolNetAmountLamports,
-  calculateSplFeeBreakdown, calculateSplFeeTokenAmount, calculateSplNetAmountToken,
-  calculateSplFixedFeeTokenAmount, tokenPerSolBaseUnitsToQ64,
-} from "@cloak.dev/sdk";
+import { calculateFeeBigint, isWithdrawAmountSufficient } from "@cloak.dev/sdk";
 
-// SOL, 1.0 SOL gross
+// SOL, 1.0 SOL gross → fee = 5_000_000 + 3_000_000 = 8_000_000 lamports, net 992_000_000
 const solGross = 1_000_000_000n;
-const solBreakdown = calculateSolFeeBreakdown(solGross);
-const solFee  = calculateSolFeeLamports(solGross);     // fixed + variable
-const solNet  = calculateSolNetAmountLamports(solGross);
+const solFee = calculateFeeBigint(solGross);
+const solNet = solGross - solFee;
+isWithdrawAmountSufficient(solGross); // true
 
-// USDC, 82.000000 USDC gross, price = 160 USDC / SOL (base units)
-const priceQ64 = tokenPerSolBaseUnitsToQ64(160_000_000n);
-const usdcGross = 82_000_000n;
-const splBreakdown = calculateSplFeeBreakdown(usdcGross, priceQ64);
-const splFixed = calculateSplFixedFeeTokenAmount(priceQ64);
-const splFee   = calculateSplFeeTokenAmount(usdcGross, priceQ64);
-const splNet   = calculateSplNetAmountToken(usdcGross, priceQ64);
+// USDC, 100.000000 USDC gross (program rule, charged on-chain from the pool's PoolConfig):
+// fee = 450_000 + 100_000_000 * 3 / 1000 = 750_000 base units (0.75 USDC), net 99_250_000
+const usdcGross = 100_000_000n;
+const usdcFee = 450_000n + (usdcGross * 3n) / 1000n;
+const usdcNet = usdcGross - usdcFee;
 ```
+
+The program computes and deducts the fee; these numbers are for display. Never describe them as relay or SDK fees.
 
 ### 6.10 Metadata encryption (dual envelope)
 
@@ -1044,5 +1047,6 @@ When generating Cloak integration code, produce a file-by-file plan that:
 
 ## 10. Version pinning note
 
-- The circuit hashes in `EXPECTED_CIRCUIT_HASHES` are the canonical integrity pins for `withdraw_regular` and `withdraw_swap`. When bumping `DEFAULT_CIRCUITS_URL`, always verify with `verifyAllCircuits(path)` before shipping.
+- The `transaction` circuit digests (`EXPECTED_CIRCUIT_HASHES.transaction_*`) are the ceremony pins; `DEFAULT_TRANSACTION_CIRCUITS_URL` is derived from `TRANSACTION_CIRCUITS_VERSION` (`0.2.0`) in `src/config/circuit-release.ts` so URL and digests cannot drift. Never hand-write a circuits URL; use `resolveCircuitsBase()`.
+- The legacy `withdraw_regular` / `withdraw_swap` digests are kept for `CloakSDK`'s older paths; that bundle is unpublished (`DEFAULT_CIRCUITS_URL === null`) and callers on those paths must supply their own base via `setCircuitsPath`.
 - The SDK currently targets program `zh1eLd6rSphLejbFfJEneUwzHRfMKxgzrgkfwA6qRkW`. Set `programId` explicitly in non-default deployments.

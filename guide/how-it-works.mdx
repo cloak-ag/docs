@@ -10,7 +10,7 @@ Every private action in Cloak is authorized by a Groth16 zero-knowledge proof, g
 
 Shielding moves SOL, USDC, or USDT from your wallet into your private balance. Your wallet signs the transaction and the funds enter the shielded pool for that token — each token has its own pool. In return, your private balance holds UTXOs: encrypted private notes of value that only you hold.
 
-- Minimum 0.01 SOL for SOL. No protocol minimum for USDC or USDT.
+- Minimum 0.01 SOL for SOL; 1.00 USDC or 1.00 USDT for stablecoins.
 - No protocol fee on deposits.
 - This is the only step where your wallet pays gas — normal Solana network costs, not a Cloak fee.
 
@@ -29,7 +29,7 @@ Shielded pools are like sealed envelopes in a public mailbox: everyone sees mail
 The fee is added on top of the entered amount and deducted from your private balance:
 
 - SOL: 0.005 SOL fixed + 0.3%
-- USDC/USDT: 0.3%, no fixed fee
+- USDC/USDT: 0.45 fixed + 0.3%
 
 Full breakdown in [Fees](/guide/fees).
 

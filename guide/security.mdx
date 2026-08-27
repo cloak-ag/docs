@@ -8,11 +8,36 @@ Security claims are cheap. This page sticks to what is verified: how the pool pr
 
 ## The audit
 
-Cloak's shield-pool program has undergone an external security assessment. The full report is being prepared for publication and will be linked here.
+Cloak's shield-pool program has been independently audited. The program live on mainnet since 2026-08-24 is built from the audited source, its proofs are checked against a verifying key produced by a public multi-party trusted-setup ceremony, and upgrades sit behind a multisig with a time lock. The full report is being prepared for publication and will be linked here.
 
 {/* TODO(audit-url): link the published audit report */}
 
-That is the whole claim. When the report is public, it will be on this page.
+That is the whole claim. Everything below it that can be checked, you can check yourself.
+
+## Verify it yourself
+
+| | |
+|---|---|
+| Program ID | `zh1eLd6rSphLejbFfJEneUwzHRfMKxgzrgkfwA6qRkW` (unchanged since launch) |
+| Deployed bytecode | sha256 `d0f68613a08d7e0913aea67d95f04598bc070911a0e84fedd43cc6bfa18e6cf6` (239,032 bytes) |
+| Verifying key | ceremony `cloak-transaction-0.2.0` (6 contributors plus a public final beacon); sha256 `d65073d44064ed3be10d79e52d60a06d6be6d6c01afcd5ce52cdfcfc97c5585d` (`transaction.vkey.bin`), `deb40e7b94eae17db2975d23dcf26c26db2a36a4f02d14a25830dee3e88fb93c` (`transaction.vkey.json`) |
+| Proving artifacts | `https://storage.googleapis.com/cloak-circuits/circuits/0.2.0/` — zkey `9da7db8cb1370fc497d36a0365f1f107ab0b0c13ca66fa9f0287e5f96ee68d25`, wasm `02ec02e954ae3932827ad9de51afa597ca95569aa97fec8410879c937a58aa2b` |
+| Upgrade authority | Squads multisig `F6HWeX5i2KjYQag6wCtxzQXeGewv6vXZihZR3EWdRL7s` (3-of-4, 1-hour time lock) |
+
+```bash
+# 1. Hash the deployed program
+solana program dump -u m zh1eLd6rSphLejbFfJEneUwzHRfMKxgzrgkfwA6qRkW /tmp/cloak.so \
+  && head -c 239032 /tmp/cloak.so | shasum -a 256
+
+# 2. Hash the proving artifacts
+B=https://storage.googleapis.com/cloak-circuits/circuits/0.2.0
+curl -sL $B/transaction_final.zkey          | shasum -a 256
+curl -sL $B/transaction_js/transaction.wasm | shasum -a 256
+
+# 3. Compare with the table above
+```
+
+The SDK performs the same digest check before every proof. The full list is in [Release notes 2026-08](/releases/2026-08-mainnet).
 
 ## What protects your funds
 
@@ -20,7 +45,7 @@ That is the whole claim. When the report is public, it will be on this page.
 - **Double-spend protection.** Spending a UTXO publishes a nullifier: a marker that it has been used, without revealing which UTXO it was. The same funds can never be spent twice.
 - **Root-history validation.** The program only accepts proofs built against a recent, recognized state of the pool (the last 100 Merkle roots). Proofs against stale or fabricated states are rejected.
 - **Per-token pool isolation.** SOL, USDC, and USDT each have their own pool and their own tree. A problem in one pool cannot spill into another.
-- **Pre-broadcast screening.** Every transaction is screened against sanctions and high-risk lists before it is broadcast. Flagged transactions are blocked, with a support path — you never notice this on the happy path.
+- **Screening.** Deposits are screened against sanctions and high-risk lists on-chain: a signed risk assessment is bound to each deposit and checked by the program. Withdrawals and swaps are screened before they are authorized. Flagged transactions are blocked, with a support path — you never notice this on the happy path.
 
 ## Who sees what
 
@@ -50,7 +75,7 @@ Most protocols tell you what they can do. Here is the other half.
 
 ## Governance
 
-The Cloak program is upgradeable. The upgrade authority is held by the Cloak team and is planned to move under a Squads multisig. We say this plainly because an upgradeable program you know about is safer than an "immutable" one that quietly isn't — upgradeability is how fixes ship.
+The Cloak program is upgradeable. Its upgrade authority is the Squads multisig `F6HWeX5i2KjYQag6wCtxzQXeGewv6vXZihZR3EWdRL7s` (3 of 4 signers, with a 1-hour time lock), so no single key can change the program and every upgrade is visible before it lands. We say this plainly because an upgradeable program you know about is safer than an "immutable" one that quietly isn't — upgradeability is how fixes ship.
 
 ## Reporting an issue
 

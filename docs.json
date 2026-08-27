@@ -106,6 +106,12 @@
             ]
           },
           {
+            "group": "Releases",
+            "pages": [
+              "releases/2026-08-mainnet"
+            ]
+          },
+          {
             "group": "Development",
             "pages": [
               "development/devnet"

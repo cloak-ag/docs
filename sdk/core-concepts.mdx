@@ -45,20 +45,22 @@ The SDK includes retry paths that:
 
 ## Fee model: gross, fee, net
 
-Fees apply only when value leaves the pool (`externalAmount < 0`); deposits and
-shielded→shielded transfers are fee-free.
+Fees are enforced on-chain by the program from a per-pool `PoolConfig`; the SDK reads the live
+config before building a fee-bearing proof. Fees apply only when value leaves the pool
+(`externalAmount < 0`); deposits and shielded→shielded transfers are fee-free.
 
 For SOL withdrawals/swaps:
 
 - `gross` = absolute public withdrawal amount
-- `fee` = `5_000_000` lamports fixed + `gross * 3 / 1000`
+- `fee` = `5_000_000` lamports fixed (0.005 SOL) + `gross * 3 / 1000`
 - `net` = `gross - fee`
 
 For SPL (USDC/USDT) withdrawals:
 
-- `fee` = `gross * 3 / 1000` only — no fixed component, charged in the withdrawn token
+- `fee` = `450_000` base units fixed (0.45 USDC/USDT) + `gross * 3 / 1000`, charged in the withdrawn token
 
-Minimum deposit: `10_000_000` lamports (`0.01 SOL`, SOL pool only). See [Fee Model](/protocol/fee-model).
+Minimum deposit: `10_000_000` lamports (`0.01 SOL`) on the SOL pool; `1_000_000` base units
+(`1.00`) on the USDC and USDT pools. See [Fee Model](/protocol/fee-model).
 
 ## Proof data shapes
 

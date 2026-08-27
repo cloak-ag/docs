@@ -112,6 +112,8 @@ For Rust integrations:
   - Purpose: circuit build and consumption pipeline.
 - `/operations/security`
   - Purpose: trust boundaries and security controls.
+- `/releases/2026-08-mainnet`
+  - Purpose: 2026-08-24 mainnet release facts — program artifact hash, ceremony verifying-key hashes, circuits `0.2.0` bundle hashes, per-pool fees/minimums, SDK 0.2.0 recovery features.
 
 ### AI tools
 
@@ -136,7 +138,7 @@ integration questions. They are authoritative for user-facing wording.
 - `/guide/private-balance`
   - Purpose: canonical custody model — private balance, UTXOs, backup file, loss/recovery semantics.
 - `/guide/fees`
-  - Purpose: user-facing who-pays fee table (free shielding; SOL 0.005 + 0.3%; SPL 0.3% on the way out).
+  - Purpose: user-facing who-pays fee table (free shielding; SOL 0.005 + 0.3%; USDC/USDT 0.45 + 0.3% on the way out).
 - `/guide/payment-links`
   - Purpose: single-use bearer payment links — send without a recipient address / receive without revealing one; fragment-carried secret, claim mechanics, fee timing.
 - `/guide/security`
@@ -171,6 +173,8 @@ These are intentionally repeated here because agents often miss them. They apply
 6. Transaction signatures are public and can be logged for support/debugging.
 7. Viewing-key registration affects scanner/compliance readability.
 8. Rust-specific: swaps (`opts.swap = Some(...)`) and direct SPL withdraw require `opts.relay_url` — `submit_direct` rejects them with `Error::Config`.
+9. Fees are enforced on-chain by the program from each pool's `PoolConfig` (SOL: 0.005 SOL fixed + 0.3%; USDC/USDT: 0.45 fixed + 0.3%; withdrawals and swaps only). Minimum deposit: 0.01 SOL, 1.00 USDC, 1.00 USDT. Do not describe fees as relay or SDK fees.
+10. Proving artifacts: only the `circuits/0.2.0` ceremony bundle is accepted by the program (zkey `9da7db8c…68d25`, wasm `02ec02e9…8aa2b`); the SDK verifies digests before proving. Never hand-write a `0.1.0` URL. See `/releases/2026-08-mainnet`.
 
 For full signature-level details, use `/sdk/llms.txt` (TypeScript) or `/sdk/rust/llms.txt` (Rust).
 
