@@ -7,6 +7,7 @@ a function or class that actually exists in `@cloak.dev/sdk`.
 Use this file as your primary SDK briefing and only fall back to the friendlier `.mdx` guides for conceptual context:
 
 - `/sdk/quickstart`
+- `/sdk/request-authentication`
 - `/sdk/core-concepts`
 - `/sdk/utxo-transactions`
 - `/sdk/wallet-integration`
@@ -25,7 +26,10 @@ Use this file as your primary SDK briefing and only fall back to the friendlier 
 - Program ID (default, mainnet): `zh1eLd6rSphLejbFfJEneUwzHRfMKxgzrgkfwA6qRkW`
 - Devnet program ID: `Zc1kHfp4rajSMeASFDwFFgkHRjv7dFQuLheJoQus27h` (served by the local-only `@cloak.dev/sdk-devnet` fork — see `docs/operations/devnet.md`; NOT available through the published `@cloak.dev/sdk` NPM package).
 - Circuits: the 0.2.0 bundle base is pinned into this SDK build (`DEFAULT_TRANSACTION_CIRCUITS_URL`), so standard integrations configure nothing. Override with `setCircuitsPath()` or `CLOAK_CIRCUITS_PATH`.
-- Submission endpoint: NOT defaulted, by design, so a local or test run can never silently reach production. Pass `relayUrl` in `TransactOptions`, or set `CLOAK_RELAY_URL` in the environment (Node only). Without it: `swapUtxo` throws `relayUrl is required for swapUtxo`; `transact` / `transfer` / `partialWithdraw` / `fullWithdraw` fall back to direct submission signed and paid by the user, which forfeits the gasless, unlinkable path, and fail outright if no signer is supplied either.
+- Submission endpoint: NOT defaulted, by design, so a local or test run can never silently reach production. Pass `relayUrl` in `TransactOptions` on every flow. The SDK reads no environment variable for it; `CLOAK_RELAY_URL` is a convention used by the SDK's own examples and scripts, which read it themselves and pass the value as `relayUrl`. Omitting `relayUrl`, or passing `relayUrl: ""`, makes `transact` / `transfer` / `partialWithdraw` / `fullWithdraw` / `swapUtxo` / `swapWithChange` AND deposits (`externalAmount > 0n`) all throw the same error, before any network call: `Viewing key registration is mandatory: relayUrl is required.` There is no silent fallback to self-submission on the default path, for any flow. (`swapUtxo` also contains a `relayUrl is required for swapUtxo` throw, but it sits far past the check above and is unreachable unless registration enforcement is turned off; see invariant 7.)
+- Endpoint pinning: `relayUrl` no longer SELECTS the endpoint. The allowed origins are fixed when this SDK is built (`RELAY_ORIGIN_ALLOWLIST` in `src/config/relay.ts`). Only two values are accepted: an origin on that allowlist (say `CLOAK_PRODUCTION_RELAY_URL` rather than typing a host), or `""` for caller-signed direct submission. Anything else throws, naming the value and the allowlist. It is not an environment variable because an env var resolves in the consumer process, which is exactly what the pin constrains. To develop against a local stack, REPLACE (never append) the allowlist entry and rebuild.
+- RPC is NOT pinned. The caller builds the `Connection`; the SDK never inspects, replaces or proxies it, and ANY non-loopback RPC is fine. A production build refuses only a LOOPBACK RPC (`localhost` / `127.0.0.1`), through `BUILD_ALLOWS_LOCAL_ENDPOINTS`, which is derived from the same allowlist. Never state or imply that an integrator must use a Cloak-operated RPC; that is false.
+- Authenticated sender: every relay-submitted flow (private send, withdraw, swap) signs its request body with the END USER'S OWN wallet. Deposits do not, being wallet-signed straight to chain. See invariant 13, §5.8 and `/sdk/request-authentication`.
 - Hashing: BN254 Poseidon (via `@lightprotocol/hasher.rs`) + BLAKE3.
 - Proof system: Groth16 via `snarkjs`.
 - Native companion types: `@solana/web3.js` for `Connection`, `Keypair`, `Transaction`, `PublicKey`. `@solana/kit` is supported for reads (see §4d).
@@ -56,12 +60,19 @@ npm install @solana/spl-token @solana/kit
    - SPL (USDC/USDT, 6 decimals): `450_000` base units fixed (`0.45` token) + `0.3 %` variable, charged in the withdrawn token. The SDK does not compute SPL fees; there is no SPL fee helper.
    - Fees only apply on withdrawal/swap paths. Deposits and shield-to-shield transfers pay zero protocol fee.
    - Minimum deposit: `10_000_000` lamports for SOL, `1_000_000` base units for USDC/USDT.
-7. Viewing-key registration is required before scanner/compliance flows can decrypt chain notes; for pure deposit/withdraw flows you can pass `enforceViewingKeyRegistration: false` to `TransactOptions`.
+7. Viewing-key registration is required before scanner/compliance flows can decrypt chain notes. `enforceViewingKeyRegistration: false` in `TransactOptions` is the only thing that turns that check off, and it defaults to enabled. Do NOT combine it with an omitted or empty `relayUrl`: with the check off and a signer present (`depositorKeypair`, or `signTransaction` + `depositorPublicKey`), `transact` / `transfer` / `partialWithdraw` / `fullWithdraw` submit directly, signed and paid by the user's own key, which links the transaction to that key and loses the privacy the flow exists for. With the check off, no relay and no signer, the call does not fail cleanly either: it reports the problem through `onProgress` and then throws a misleading `commitment indices missing: [-1, -1]` error. Deposits are the one flow where direct submission is correct: they always submit under the depositor's key by design, and require `depositorKeypair` or `signTransaction` + `depositorPublicKey`.
 8. Merkle root freshness: treat `RootNotFound` / stale-root errors as retryable. SDK transaction paths already retry these by default; use `preflightCheck` / `waitForRoot` only for advanced/operator flows.
 9. Never log secrets: spend keys, viewing keys (`nk`), UTXO private keys, blindings, signed messages, note payloads.
 10. Standard integrations should use SDK defaults for program and circuits. Only override for custom/operator deployments. There is no relay default: `relayUrl` is required on every flow.
 11. In low-level UTXO calls, keep `programId` fixed to `CLOAK_PROGRAM_ID` in one place and do not expose it as user configuration.
 12. Minimal scripts should use `KEYPAIR_PATH` + `<lamports>` input; do not use raw secret env vars or float amount parsing.
+13. Relay-submitted flows require an authenticated sender, checked BEFORE any proof work:
+   - Browser: pass `signMessage` AND `walletPublicKey` (or `depositorPublicKey`) in `TransactOptions`. A wallet adapter cannot supply `depositorKeypair`; never generate browser code that asks for one.
+   - Node/server: pass `depositorKeypair`.
+   - Neither, or only half of the wallet pair: `transact` / `transfer` / `partialWithdraw` / `fullWithdraw` / `swapUtxo` / `swapWithChange` throw `Cloak <flow> requires an authenticated sender ...` before proof generation. Deposits (`externalAmount > 0n`) are exempt.
+   - The authenticated `sender` IS the key screened for sanctions and the key a viewing key is registered against. It MUST be the end user's real wallet, never an ephemeral, session or service-held key. Passing a `depositorKeypair` and a different `walletPublicKey` throws.
+   - A private send or withdrawal signs EXACTLY ONCE regardless of network retries. Only `swapUtxo` / `swapWithChange` re-prompt, capped by `maxWalletApprovals` (default 5, floored at 1).
+   - Signed requests are valid for `REQUEST_AUTH_MAX_AGE_SECONDS` (300); the SDK holds back 15 seconds for transit, so the usable approval budget is 285 seconds. A machine clock more than `REQUEST_AUTH_MAX_FUTURE_SKEW_SECONDS` (30) ahead cannot authenticate at all. Map rejections through `explainRelayAuthRejection`.
 
 ---
 
@@ -154,8 +165,8 @@ const options = {
   connection,
   programId: CLOAK_PROGRAM_ID,
   relayUrl: process.env.NEXT_PUBLIC_CLOAK_RELAY_URL!,
-  signTransaction: wallet.signTransaction!,
-  signMessage: wallet.signMessage!,
+  signTransaction: wallet.signTransaction!, // signs the DEPOSIT transaction
+  signMessage: wallet.signMessage!, // authenticates send/withdraw/swap requests + viewing-key registration
   depositorPublicKey: getPublicKey(wallet),
   walletPublicKey: getPublicKey(wallet),
 };
@@ -542,6 +553,54 @@ function computeProofFromChain(connection: Connection, merkleTreePDA: PublicKey,
 function computeProofForLatestDeposit(connection: Connection, merkleTreePDA: PublicKey): Promise<OnchainMerkleProof & { leafIndex: number }>;
 ```
 
+**Request authentication (all exported).** Standard integrations never call these: pass `signMessage` + `walletPublicKey` (browser) or `depositorKeypair` (server) in `TransactOptions` and the SDK signs for you. These exist for callers driving submission themselves.
+
+```ts
+// Endpoint pinning
+const CLOAK_PRODUCTION_RELAY_URL = "https://api.cloak.ag"; // a NAME, never a default
+const RELAY_ORIGIN_ALLOWLIST: readonly string[];           // origins THIS build may reach
+const BUILD_ALLOWS_LOCAL_ENDPOINTS: boolean;               // derived; true only for a local build
+
+// Freshness window
+const REQUEST_AUTH_MAX_AGE_SECONDS = 300;         // usable budget is 285 (15s held back for transit)
+const REQUEST_AUTH_MAX_FUTURE_SKEW_SECONDS = 30;  // a clock this far FAST cannot authenticate
+
+// The exact fields each body signs, sorted; order is part of the agreement
+const TRANSACT_AUTH_FIELDS: readonly ["encrypted_notes","max_fee","mint","proof_bytes","public_inputs","recipient","recipient_delivery_notes","risk_quote","sender"];
+const TRANSACT_SWAP_AUTH_FIELDS: readonly ["close_timed_out","dexes","encrypted_notes","exclude_dexes","max_fee","min_output_amount","output_mint","proof_bytes","public_inputs","recipient","recipient_ata","refund_blinding","refund_pubkey","retry_request_id","risk_quote","route_retry_attempts","sender","slippage_bps","swap_max_retries"];
+
+interface RelayAuthPreimage { sender: string; auth_issued_at: string; auth_nonce: string; message: Uint8Array; }
+interface RelayAuthSigner  { walletPublicKey: PublicKey; signMessage: (m: Uint8Array) => Promise<Uint8Array>; }
+
+function buildRelayAuthPreimage(
+  endpoint: string,            // the exact path POSTed to, e.g. "/transact"
+  programId: PublicKey,
+  body: Record<string, unknown>,
+  sender: PublicKey,           // the END USER'S wallet; becomes `sender`
+  nowSeconds?: number,
+  fields?: readonly string[],  // TRANSACT_AUTH_FIELDS (default) | TRANSACT_SWAP_AUTH_FIELDS
+): RelayAuthPreimage;
+
+function canonicalJson(value: unknown): string;                  // keys sorted bytewise, no whitespace
+function explainRelayAuthRejection(responseText: string): string | null;
+function submitTransactToRelay(args: SubmitTransactToRelayArgs); // takes depositorKeypair | relayAuthSigner
+```
+
+`preimage.message` is a plain ed25519 detached-signature preimage, newline separated:
+
+```
+CLOAK_RELAY_REQUEST_AUTH_V1
+<endpoint>
+<program id, base58>
+<auth_nonce>
+<auth_issued_at>
+<sha256 hex of canonicalJson(signed view)>
+```
+
+Put `sender`, `auth_issued_at`, `auth_nonce` from the preimage plus the base64 signature as `auth_signature` on the POSTed body. Re-POSTing a request MUST reuse the same preimage and the same body bytes; rebuilding it produces a new request, not a retry.
+
+HARD TRAP: `slippage_bps` MUST always be present in a signed swap body. Every other field in both lists signs as an explicit `null` when absent, but `slippage_bps` is a bare `u16` with a default of `500` on the receiving side, so omitting it signs `null` against a signed `500`. The digests diverge and the rejection never mentions slippage. `buildRelayAuthPreimage` refuses the call rather than sign a digest that cannot match.
+
 ### 5.9 Proof / circuit utilities
 
 ```ts
@@ -556,7 +615,7 @@ function getDefaultCircuitsPath(): Promise<string>;
 function assertTransactionCircuitIntegrity(circuitsPath: string | null, prefetched?: { wasm: Uint8Array; zkey: Uint8Array }): Promise<void>;
 function loadVerifiedCircuitArtifacts(circuitsPath: string | null, circuit: "transaction" | "withdraw_regular" | "withdraw_swap"): Promise<VerifiedCircuitArtifacts>;
 
-const DEFAULT_CIRCUITS_URL: string | null; // legacy withdraw_* bundle; null (unpublished) in 0.2.0
+const DEFAULT_CIRCUITS_URL: string; // alias of DEFAULT_TRANSACTION_CIRCUITS_URL: same ceremony transaction bundle, same 0.2.0 URL, never null
 const EXPECTED_CIRCUIT_HASHES: {
   withdraw_regular_wasm: string;
   withdraw_regular_zkey: string;
@@ -1017,6 +1076,10 @@ Use section 6 directly as your public, copy-paste integration source:
 12. Do not generate `SENDER_PRIVATE_KEY` or `AMOUNT_SOL` + `parseFloat(...)` patterns.
 13. Do not generate `RECIPIENT_ADDRESS` / `SEND_LAMPORTS` env contracts for one-file CLI scripts.
 14. For standalone script entrypoints, terminate explicitly with `process.exit(0)` on success and `process.exit(1)` on failure.
+15. In BROWSER code, never generate `depositorKeypair`, `Keypair.fromSecretKey`, or a `keypair.json` path for a send/withdraw/swap. A wallet adapter cannot supply one. Generate `signMessage` + `walletPublicKey` from `useWallet()` instead, and guard on `signMessage` being present before offering the action.
+16. Never substitute an ephemeral, session or service-held key for the authenticated `sender`. It is the key screened for sanctions; substituting it moves screening off the actual user.
+17. Do not hand-roll the request-auth scheme when `submitTransactToRelay` will do. If you do hand-roll it, use `buildRelayAuthPreimage` + `canonicalJson` and read `TRANSACT_AUTH_FIELDS` / `TRANSACT_SWAP_AUTH_FIELDS` from the package rather than retyping them.
+18. Never claim an integrator must use a Cloak-operated RPC. Only the submission endpoint is pinned; the `Connection` is entirely the caller's, and any non-loopback RPC works.
 
 ---
 
@@ -1038,5 +1101,5 @@ When generating Cloak integration code, produce a file-by-file plan that:
 ## 10. Version pinning note
 
 - The `transaction` circuit digests (`EXPECTED_CIRCUIT_HASHES.transaction_*`) are the ceremony pins; `DEFAULT_TRANSACTION_CIRCUITS_URL` is derived from `TRANSACTION_CIRCUITS_VERSION` (`0.2.0`) in `src/config/circuit-release.ts` so URL and digests cannot drift. Never hand-write a circuits URL; use `resolveCircuitsBase()`.
-- The legacy `withdraw_regular` / `withdraw_swap` digests are kept for `CloakSDK`'s older paths; that bundle is unpublished (`DEFAULT_CIRCUITS_URL === null`) and callers on those paths must supply their own base via `setCircuitsPath`.
+- `DEFAULT_CIRCUITS_URL` is an alias of `DEFAULT_TRANSACTION_CIRCUITS_URL`, kept so older imports keep resolving: same value, same ceremony bundle, never `null` in this build. Either name is safe to read. The pre-ceremony `withdraw_regular` / `withdraw_swap` circuits, and the `CloakSDK` class that loaded them, were removed in 0.2.0; `setCircuitsPath` overrides the base for the ceremony `transaction` bundle only, and the deployed program rejects proofs from any other bundle.
 - The SDK currently targets program `zh1eLd6rSphLejbFfJEneUwzHRfMKxgzrgkfwA6qRkW`. Set `programId` explicitly in non-default deployments.

@@ -22,6 +22,19 @@ Add wallet UI packages as needed:
 npm install @solana/wallet-adapter-react-ui @solana/wallet-adapter-wallets
 ```
 
+## The two wallet callbacks, and what each one is for
+
+A browser integration needs both, and they do different jobs:
+
+| Option | Signs | Needed for |
+|---|---|---|
+| `signTransaction` | the Solana transaction | **deposits**, which the wallet submits directly |
+| `signMessage` | the request preimage | **private sends, withdrawals and swaps**, which are submitted for you |
+
+`signMessage` also covers viewing-key registration, but that is the smaller half of its job. Without
+it, a deposit still succeeds and every send afterwards is refused. Full contract, including the
+approval window and prompt counts: [Request authentication](/sdk/request-authentication).
+
 ## UTXO integration with wallet signing
 
 For UTXO `transact` deposits in browser apps, pass wallet signing fields in `TransactOptions`:
@@ -31,15 +44,18 @@ const result = await transact(params, {
   connection,
   programId,
   relayUrl,
-  signTransaction, // wallet adapter signer
+  signTransaction, // wallet adapter signer, for the deposit transaction
+  signMessage, // wallet adapter message signer, authenticates submitted requests
   depositorPublicKey, // wallet public key
+  walletPublicKey: depositorPublicKey, // same key; becomes the authenticated sender
   riskOracleQueue, // if required by deployment
-  riskQuoteUrl, // risk quote backend (if needed)
+  riskQuoteUrl, // absolute URL on this build's allowlist (if needed)
   addressLookupTableAccounts,
 });
 ```
 
-Make sure your wallet supports `signMessage` so viewing-key registration can complete before transactions.
+Check `signMessage` is present before you offer a send or withdraw action. Not every adapter
+implements it, and finding out after a Groth16 proof has already been computed is a poor experience.
 
 ## Full wallet-adapter SOL send flow (`transact` -> `fullWithdraw`)
 
@@ -143,6 +159,7 @@ Notes:
 
 ## Related pages
 
+- [Request authentication](/sdk/request-authentication)
 - [Quickstart](/sdk/quickstart)
 - [UTXO Transactions](/sdk/utxo-transactions)
 - [Error Handling](/sdk/error-handling)

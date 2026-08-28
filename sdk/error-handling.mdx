@@ -22,6 +22,32 @@ import { CloakError } from "@cloak.dev/sdk";
 
 Most app flows should treat `retryable === true` as backoff-eligible.
 
+## `Unauthorized` and bare `401` on a send, withdraw or swap
+
+Every request Cloak submits for you carries a signed sender, and every way that can go wrong arrives
+as the same opaque rejection. `explainRelayAuthRejection` turns one into user-facing prose, and
+returns `null` for anything that is not an authentication rejection, so it is safe to call
+unconditionally:
+
+```typescript
+import { explainRelayAuthRejection, fullWithdraw, parseError } from "@cloak.dev/sdk";
+
+try {
+  await fullWithdraw(inputUtxos, recipient, options);
+} catch (error) {
+  const hint = explainRelayAuthRejection(String(error));
+  // Non-null examples: a wallet approval that sat past the 285-second budget, a machine
+  // clock more than 30 seconds fast, a body that changed after it was signed, a wallet
+  // with no viewing key registered yet.
+  showError(hint ?? parseError(error).message);
+}
+```
+
+Two of the causes are not a bug in your code at all: an approval dialog left waiting, and a wrong
+clock on the user's machine. Both are recoverable by retrying, and in both cases nothing was
+submitted. The full contract, including how to supply a signer at all, is in
+[Request authentication](/sdk/request-authentication).
+
 ## Stale Merkle root (`0x1001`)
 
 Use helpers for RootNotFound detection:

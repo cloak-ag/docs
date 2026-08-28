@@ -73,6 +73,7 @@
             "group": "TypeScript SDK",
             "pages": [
               "sdk/quickstart",
+              "sdk/request-authentication",
               "sdk/examples",
               "sdk/kit-integration",
               "sdk/core-concepts",

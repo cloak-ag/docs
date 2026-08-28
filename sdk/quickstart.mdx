@@ -6,6 +6,14 @@ icon: "rocket"
 
 Use this page when you want the smallest possible end-to-end Cloak integration.
 
+<Warning>
+**This snippet is the server-side path.** It uses `depositorKeypair`, which a browser wallet adapter
+cannot supply. Deposits work either way, but the withdrawal below is submitted for you and needs an
+**authenticated sender**, so in a browser you pass `signMessage` plus `walletPublicKey` instead. Read
+[Request authentication](/sdk/request-authentication) before you port this to a frontend; skipping it
+is what produces a `401` on the first send after a deposit that looked fine.
+</Warning>
+
 This snippet covers:
 
 - shielded SOL deposit

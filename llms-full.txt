@@ -32,8 +32,9 @@ For TypeScript integrations:
 2. `/llms-full.txt`
 3. `/sdk/llms.txt`
 4. `/sdk/quickstart`
-5. `/sdk/utxo-transactions`
-6. `/sdk/wallet-integration`
+5. `/sdk/request-authentication`
+6. `/sdk/utxo-transactions`
+7. `/sdk/wallet-integration`
 
 For Rust integrations:
 
@@ -68,6 +69,8 @@ For Rust integrations:
 
 - `/sdk/quickstart`
   - Purpose: smallest end-to-end example for deposit plus send/withdraw.
+- `/sdk/request-authentication`
+  - Purpose: how a private send, withdrawal or swap authenticates its sender, from a wallet adapter or a server keypair; the approval window, wallet prompt counts, and the build-time endpoint pin.
 - `/sdk/examples`
   - Purpose: concise examples for send, swap, payroll-like flows, compliance history.
 - `/sdk/kit-integration`
@@ -77,7 +80,7 @@ For Rust integrations:
 - `/sdk/utxo-transactions`
   - Purpose: production transaction APIs and runtime semantics.
 - `/sdk/wallet-integration`
-  - Purpose: wallet-adapter patterns and signing behavior.
+  - Purpose: wallet-adapter patterns, the two signing callbacks, and signing behavior.
 - `/sdk/error-handling`
   - Purpose: error categories, retries, and troubleshooting guidance.
 - `/sdk/api-reference`
@@ -175,6 +178,8 @@ These are intentionally repeated here because agents often miss them. They apply
 8. Rust-specific: swaps (`opts.swap = Some(...)`) and direct SPL withdraw require `opts.relay_url` — `submit_direct` rejects them with `Error::Config`.
 9. Fees are enforced on-chain by the program from each pool's `PoolConfig` (SOL: 0.005 SOL fixed + 0.3%; USDC/USDT: 0.45 fixed + 0.3%; withdrawals and swaps only). Minimum deposit: 0.01 SOL, 1.00 USDC, 1.00 USDT. Do not describe fees as relay or SDK fees.
 10. Proving artifacts: only the `circuits/0.2.0` ceremony bundle is accepted by the program (zkey `9da7db8c…68d25`, wasm `02ec02e9…8aa2b`); the SDK verifies digests before proving. Never hand-write a `0.1.0` URL. See `/releases/2026-08-mainnet`.
+11. Private sends, withdrawals and swaps are submitted on the caller's behalf and each request carries an authenticated sender; deposits are wallet-signed straight to chain and carry none. Browser: pass `signMessage` + `walletPublicKey`. Server: pass `depositorKeypair`. With neither, the call throws before proof generation. Never generate `depositorKeypair` in browser send/withdraw code (a wallet adapter cannot supply one), and never substitute an ephemeral or service key for the sender: it is the key screened for sanctions. A send or withdrawal prompts once; only swaps re-prompt, capped by `maxWalletApprovals` (default 5). See `/sdk/request-authentication`.
+12. Only the submission endpoint is pinned, at SDK build time. The RPC is the caller's own `Connection` and any non-loopback RPC is fine; a production build refuses only a loopback RPC. Never tell an integrator they must use a Cloak-operated RPC.
 
 For full signature-level details, use `/sdk/llms.txt` (TypeScript) or `/sdk/rust/llms.txt` (Rust).
 

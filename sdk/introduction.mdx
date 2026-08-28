@@ -36,14 +36,25 @@ Both SDKs speak the same protocol and produce the same 264-byte public inputs. M
 | Setting | Value |
 |---|---|
 | Program ID | `zh1eLd6rSphLejbFfJEneUwzHRfMKxgzrgkfwA6qRkW` |
-| Relay URL | No default. Pass `relayUrl` or set `CLOAK_RELAY_URL`; on mainnet the value is `https://api.cloak.ag` |
+| Relay URL | No default. Pass `relayUrl` on every call; on mainnet the value is `https://api.cloak.ag` |
 | Circuits base URL | `https://storage.googleapis.com/cloak-circuits/circuits/0.2.0` (ceremony bundle; artifacts are hash-verified before proving) |
 | Merkle tree height | 32 |
 | Circuit arity | 2 inputs / 2 outputs |
 | Proof format | 256-byte Groth16 (pinocchio) |
 | Public inputs | 264 bytes |
 
-`relayUrl` is never defaulted. Pass it on every `transact` call, including shield, send and withdraw, and on the swap helpers. On Node you can instead set `CLOAK_RELAY_URL` in the process environment; in a browser bundle pass the option explicitly. Omitting it raises an error rather than falling back to any deployment. For mainnet the value is `https://api.cloak.ag`.
+The requirement is identical in a browser bundle and on Node: `relayUrl` is an option you pass, on every `transact` call, including shield, send and withdraw, and on the swap helpers. The SDK reads no environment variable for it, so exporting `CLOAK_RELAY_URL` in a Node process does nothing by itself; read that variable in your own code and pass the value as `relayUrl` if you like the convention. Omitting the option, or passing an empty string, throws `Viewing key registration is mandatory: relayUrl is required.` before the call touches the network. Every flow behaves that way, deposits included, and nothing falls back to another deployment.
+
+<Warning>
+`enforceViewingKeyRegistration: false` is the one option that changes this outcome, and it opens a
+privacy hazard. With enforcement off and no `relayUrl`, a transfer or withdrawal that carries a
+signer (`depositorKeypair`, or `signTransaction` plus `depositorPublicKey`) is signed and submitted
+by that signer instead of throwing: your own wallet broadcasts it, which publicly links the
+transfer or withdrawal to you. Leave the option at its default of `true` unless you have deliberately
+accepted that trade for a specific call. Deposits are the exception that is not a hazard: a deposit
+is always signed by the depositor and submitted directly, by design, because the funding wallet is
+public on the way in either way.
+</Warning>
 
 The **circuits bundle** `0.2.0` is the output of the trusted-setup ceremony that keys the deployed program. The older `0.1.0` artifacts are no longer accepted on-chain. Hashes and the verification recipe are in [Release notes 2026-08](/releases/2026-08-mainnet).
 

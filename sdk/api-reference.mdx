@@ -26,7 +26,9 @@ flow: positive shields (deposit), negative withdraws, zero is a shielded transfe
 Every one of these takes a `TransactOptions` object. `connection`, `programId` and `relayUrl`
 are required on all flows; supply either `depositorKeypair` (programmatic) or the wallet
 callbacks `signTransaction` / `signMessage` plus `walletPublicKey` (browser). `relayUrl` has
-no default, so pass it explicitly or set `CLOAK_RELAY_URL` on Node.
+no default and is not read from the environment, so pass it explicitly on every call. Every flow
+except a deposit needs an authenticated sender and throws before proof generation without one:
+see [Request authentication](/sdk/request-authentication).
 
 UTXO primitives:
 
@@ -140,6 +142,35 @@ parseAmount(sol: string)
 These values cover the native SOL pool. SPL pools (USDC and USDT) charge a fixed 0.45 token,
 450,000 raw units at 6 decimals, plus the same 0.3 percent variable fee. The program reads the
 effective values from the `pool_config` PDA; the SDK does not compute SPL fees.
+
+## Request authentication and endpoint pinning
+
+Private sends, withdrawals and swaps carry a signed sender. Standard integrations only pass
+`signMessage` + `walletPublicKey` (browser) or `depositorKeypair` (server) in `TransactOptions` and
+never touch these; they exist for callers driving submission themselves.
+
+```typescript
+buildRelayAuthPreimage(endpoint, programId, body, sender, nowSeconds?, fields?): RelayAuthPreimage
+canonicalJson(value: unknown): string
+explainRelayAuthRejection(responseText: string): string | null
+submitTransactToRelay(args: SubmitTransactToRelayArgs)
+
+RelayAuthPreimage; // { sender, auth_issued_at, auth_nonce, message }
+RelayAuthSigner; // { walletPublicKey, signMessage }, the end user's own wallet
+
+TRANSACT_AUTH_FIELDS; // 9 fields, sorted; order is part of the agreement
+TRANSACT_SWAP_AUTH_FIELDS; // 19 fields, sorted; `slippage_bps` must always be present
+
+REQUEST_AUTH_MAX_AGE_SECONDS; // 300 (285 usable after the SDK's transit margin)
+REQUEST_AUTH_MAX_FUTURE_SKEW_SECONDS; // 30
+
+CLOAK_PRODUCTION_RELAY_URL; // name of the production endpoint, never a default
+RELAY_ORIGIN_ALLOWLIST; // origins this build may reach; pinned at build time
+BUILD_ALLOWS_LOCAL_ENDPOINTS; // derived: true only for a local build
+```
+
+`maxWalletApprovals` on `TransactOptions` caps wallet dialogs for one swap (default `5`). Sends and
+withdrawals sign exactly once. Full contract: [Request authentication](/sdk/request-authentication).
 
 ## Error utilities
 

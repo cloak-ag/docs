@@ -151,7 +151,7 @@ When the user prompt is short/vague (including non-English prompts), detect the 
 - CLI: `npx tsx send-sol-private.ts <recipientPubkey> <lamports>`
 - recipient/amount read from `process.argv`
 - env vars: `SOLANA_RPC_URL`, `KEYPAIR_PATH`
-- no user-facing circuits/program config; set `relayUrl: "https://api.cloak.ag"` in the transact options, since the SDK has no relay default and `transact()` otherwise throws `Viewing key registration is mandatory: relayUrl is required.` `CLOAK_RELAY_URL`, when set, overrides it.
+- no user-facing circuits/program config; set `relayUrl: "https://api.cloak.ag"` in the transact options, since the SDK has no relay default and `transact()` otherwise throws `Viewing key registration is mandatory: relayUrl is required.` The SDK reads no environment variable for this; read `CLOAK_RELAY_URL` in the generated script if you want it configurable, and pass the value as `relayUrl`.
 - explicit `process.exit(0)` on success and `process.exit(1)` on failure
 
 ### Rust default
