@@ -1,35 +1,24 @@
 ---
-title: "Cloak SDKs"
-description: "Pick your language — Cloak ships first-party SDKs for TypeScript and Rust"
+title: "Cloak SDK"
+description: "The first-party TypeScript SDK for Cloak, for browsers, Node.js and backend services"
 icon: "shield-halved"
 ---
 
-Cloak ships two first-party SDKs targeting the same on-chain protocol. Pick the one that matches your stack:
+`@cloak.dev/sdk` is the first-party SDK for the Cloak protocol. It is built on free functions
+(`transact`, `transfer`, `partialWithdraw`, `fullWithdraw`, `swapWithChange`), with wallet-adapter
+integration, a built-in scanner and note storage, and it works with both `@solana/web3.js` and
+`@solana/kit`.
 
-<CardGroup cols={2}>
-<Card title="TypeScript SDK" icon="js" href="/sdk/quickstart">
-  `@cloak.dev/sdk` is the browser and Node.js SDK. It is built on free functions
-  (`transact`, `transfer`, `partialWithdraw`, `fullWithdraw`, `swapWithChange`),
-  with wallet-adapter integration, a built-in scanner and note storage.
-  Integrates with `@solana/web3.js` and `@solana/kit`.
-</Card>
+One package covers every host: a web frontend or browser wallet, a Next.js or Node.js backend, and
+long-running server-side services. Proving, note handling and submission are the same everywhere;
+what changes is who signs. In a browser that is a connected wallet adapter, on a server it is a
+keypair you hold.
 
-<Card title="Rust SDK" icon="rust" href="/sdk/rust/introduction">
-  `cloak-sdk` — engine-first Rust crate. One `transact()` entrypoint,
-  one `TransactOptions` struct, full protocol pipeline end-to-end.
-</Card>
-</CardGroup>
+Install (current release: `@cloak.dev/sdk` 0.2.0):
 
-## Which one should I use?
-
-| If you're building… | Use |
-|---|---|
-| A web frontend or browser wallet | TypeScript |
-| A Next.js / Node.js backend | TypeScript |
-| A Rust backend, service, or CLI | Rust |
-| A Solana program client | Rust |
-
-Both SDKs speak the same protocol and produce the same 264-byte public inputs. Migrating between them is straightforward once you understand the shared primitives.
+```bash
+npm install @cloak.dev/sdk @solana/web3.js
+```
 
 ## Shared runtime values
 
@@ -63,42 +52,19 @@ is always signed by the depositor and submitted directly, by design, because the
 public on the way in either way.
 </Warning>
 
-The **circuits bundle** `0.2.0` is the output of the trusted-setup ceremony that keys the deployed program. The older `0.1.0` artifacts are no longer accepted on-chain. Hashes and the verification recipe are in [Release notes 2026-08](/releases/2026-08-mainnet).
+The **circuits bundle** `0.2.0` is the output of the trusted-setup ceremony that keys the deployed program, and it is the only bundle the program accepts. Hashes and the verification recipe are in [Release notes 2026-08](/releases/2026-08-mainnet).
 
-## Shared concepts
+## Concepts to know first
 
-Before you write code, skim the language-agnostic primer:
+Before you write code, skim the protocol primer:
 
-- [Core concepts](/sdk/core-concepts) — commitments, Merkle tree, nullifiers, fees, stale-root retries, viewing keys.
-- [Transaction flows](/platform/transaction-flows) — how deposit/transfer/withdraw/swap actually hit the chain.
-- [Viewing keys and compliance](/architecture/viewing-keys-compliance) — the chain-note compliance rail.
+- [Core concepts](/sdk/core-concepts): commitments, Merkle tree, nullifiers, fees, stale-root retries, viewing keys.
+- [Transaction flows](/platform/transaction-flows): how deposit/transfer/withdraw/swap actually hit the chain.
+- [Viewing keys and compliance](/architecture/viewing-keys-compliance): the chain-note compliance rail.
 
-## TypeScript SDK
+## Start building
 
-Start here for web3.js and Solana Kit integrations:
-
-- [Quickstart](/sdk/quickstart) — minimal end-to-end SOL send.
+- [Quickstart](/sdk/quickstart): minimal end-to-end SOL send.
 - [Request authentication](/sdk/request-authentication) covers the signed sender that every flow except deposit carries, wired from a browser wallet adapter or from a server keypair. Read it before your first private send.
-- [Code examples](/sdk/examples) — send, swap, payroll, history. The snippets sign with a server keypair; a browser wallet signs the way request authentication describes.
-- [API reference](/sdk/api-reference) — the full exported surface: functions, classes, and constants.
-
-Install (current release: `@cloak.dev/sdk` 0.2.0):
-
-```bash
-npm install @cloak.dev/sdk @solana/web3.js
-```
-
-## Rust SDK
-
-Start here for server-side and CLI integrations:
-
-- [Introduction](/sdk/rust/introduction) — install, minimal setup, and scope.
-- [Quickstart](/sdk/rust/quickstart) — first direct-path deposit.
-- [API reference](/sdk/rust/api-reference) — `TransactOptions`, `TransactResult`, and related types.
-
-Install:
-
-```toml
-[dependencies]
-cloak-sdk = { git = "https://github.com/cloak-ag/rustsdk" }
-```
+- [Code examples](/sdk/examples): send, swap, payroll, history. The snippets sign with a server keypair; a browser wallet signs the way request authentication describes.
+- [API reference](/sdk/api-reference): the full exported surface, functions, classes and constants.

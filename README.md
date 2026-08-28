@@ -1,6 +1,6 @@
 # Documentation
 
-This folder contains the Mintlify docs site for Cloak: the user guide and explainers, the TypeScript and Rust SDKs, the platform and on-chain program docs, circuits, and the AI tooling setup pages.
+This folder contains the Mintlify docs site for Cloak: the user guide and explainers, the SDK, the platform and on-chain program docs, circuits, and the AI tooling setup pages.
 
 ## Local development
 
@@ -22,7 +22,7 @@ mint dev
 
 - `guide/` user-facing guide (what-is-cloak, how-it-works, private balance, private send, fees, payment links, security, compliance, verified addresses, FAQ, glossary, wallets and tokens)
 - `learn/` plain-language explainers (privacy, zero-knowledge, proof of funds)
-- `sdk/` SDK guides and API references (TypeScript and Rust)
+- `sdk/` SDK guides and API references
 - `platform/` architecture components and transaction flows
 - `protocol/` on-chain architecture and Shield Pool docs
 - `architecture/` viewing-key and compliance model docs

@@ -78,6 +78,16 @@ const deposited = await transact(
   },
 );
 
+// Persist the deposit note before the withdrawal below can run. The deposit is
+// confirmed on chain by this line, but its blinding exists only in this
+// process, so a withdrawal that throws (the 401 in the warning above is the
+// usual one) exits with the SOL shielded and nothing left anywhere that can
+// spend it. Same process is not the same as one atomic step.
+const depositNotes = deposited.outputUtxos.filter((utxo) => utxo.amount > 0n);
+for (const [i, note] of depositNotes.entries()) {
+  writeFileSync(`deposit-${deposited.signature}-${i}.note`, serializeUtxo(note));
+}
+
 const recipient = Keypair.generate().publicKey;
 
 const withdrawOptions = {
@@ -121,8 +131,11 @@ if (withdrawEverything) {
 <Warning>
 Every call that leaves value shielded returns `outputUtxos`, and those notes are your own money.
 Nothing on chain carries a note's blinding, so a note you drop cannot be rescanned or recovered by
-anyone, including us. The deposit note above gets away with it only because this script spends it in
-the same run; split the two steps and you must store it too. `serializeUtxo` gives you the 128-byte
+anyone, including us. That is why the snippet writes down the deposit note as well as the change
+note, even though it spends the deposit a few lines later: the deposit is confirmed on chain before
+the withdrawal runs, so a withdrawal that throws would leave that SOL shielded with only a dead
+process able to spend it. Same run is not the same as one atomic step. `serializeUtxo` gives you the
+128-byte
 encoding that `deserializeUtxo` turns back into a spendable note, and files are just the simplest
 possible sink for it. Pick a real one before you have users: [where your notes live between
 sessions](/sdk/wallet-integration#where-your-notes-live-between-sessions).

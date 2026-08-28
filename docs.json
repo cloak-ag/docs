@@ -70,7 +70,7 @@
             ]
           },
           {
-            "group": "TypeScript SDK",
+            "group": "SDK",
             "pages": [
               "sdk/quickstart",
               "sdk/request-authentication",
@@ -82,16 +82,6 @@
               "sdk/wallet-integration",
               "sdk/error-handling",
               "sdk/api-reference"
-            ]
-          },
-          {
-            "group": "Rust SDK",
-            "pages": [
-              "sdk/rust/introduction",
-              "sdk/rust/quickstart",
-              "sdk/rust/core-concepts",
-              "sdk/rust/api-reference",
-              "sdk/rust/error-handling"
             ]
           },
           {

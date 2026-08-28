@@ -1,13 +1,13 @@
 # Cloak Documentation
 
-This file is the canonical index for AI coding agents integrating with Cloak.
+This file is the canonical index for AI coding agents integrating with Cloak. Integrations are built
+on the TypeScript SDK `@cloak.dev/sdk`, in the browser, in Node, and in server-side scripts alike.
 
 ## AI Entrypoints
 
 - [AI integration](/ai-tools/ai-integration): Read order and one-shot prompt templates.
 - [LLM full export](/llms-full.txt): Single-file context pack for AI agents.
 - [TypeScript SDK LLM reference](/sdk/llms.txt): Exhaustive `@cloak.dev/sdk` contract map and runtime invariants.
-- [Rust SDK LLM reference](/sdk/rust/llms.txt): Exhaustive `cloak-sdk` (Rust crate) contract map and runtime invariants.
 - [Well-known alias](/.well-known/llms.txt): Compatibility path for tools that probe `.well-known`.
 
 ## Documentation
@@ -15,7 +15,7 @@ This file is the canonical index for AI coding agents integrating with Cloak.
 ### Getting Started
 
 - [Platform Overview](/platform/overview): How Cloak fits together across SDK, programs, and circuits.
-- [Cloak SDKs](/sdk/introduction): Language picker — pick TypeScript or Rust.
+- [Cloak SDK](/sdk/introduction): Overview of `@cloak.dev/sdk`, shared runtime values, and where to start.
 
 ### Platform
 
@@ -35,15 +35,6 @@ This file is the canonical index for AI coding agents integrating with Cloak.
 - [Error handling](/sdk/error-handling): Retry categories and diagnostics strategy.
 - [API reference](/sdk/api-reference): Public exports and key type signatures.
 - [TypeScript SDK LLM reference](/sdk/llms.txt): Deep AI-oriented export map for all runtime surfaces.
-
-### Rust SDK (`cloak-sdk`)
-
-- [Introduction](/sdk/rust/introduction): Scope, install, minimal setup, TS→Rust mental model.
-- [Quickstart](/sdk/rust/quickstart): First SOL deposit end-to-end with `TransactOptions`.
-- [Core concepts](/sdk/rust/core-concepts): How Rust types map to protocol primitives.
-- [API reference](/sdk/rust/api-reference): `TransactOptions`, `TransactResult`, and helper types.
-- [Error handling](/sdk/rust/error-handling): `Error` enum variants and retry semantics.
-- [Rust SDK LLM reference](/sdk/rust/llms.txt): Dense AI-oriented reference for the `cloak-sdk` crate.
 
 ### Protocol and Runtime
 
@@ -80,10 +71,10 @@ This file is the canonical index for AI coding agents integrating with Cloak.
 
 ## Integration Tips For Agents
 
-- Pick the SDK that matches the host app: TypeScript for web/Node, Rust for server/CLI/program clients.
-- Use SDK defaults for program and circuits in standard integrations; the only accepted circuits bundle is `circuits/0.2.0` (ceremony), so never hand-write a `0.1.0` URL. `relayUrl` has no default and must be passed on every flow; see the submission-endpoint bullets below for the only two values it accepts.
+- Build every integration on the TypeScript SDK `@cloak.dev/sdk`: it is the SDK for web frontends, Node backends, and server-side scripts and CLIs.
+- Use SDK defaults for program and circuits in standard integrations: the only accepted circuits bundle is `circuits/0.2.0` (ceremony) and the SDK fills it in, so never hand-write a circuits URL or pin an older bundle. `relayUrl` is the opposite case: it has no default, the SDK reads no environment variable for it, and it must be passed on every flow, deposits included. Standard integrations pass the allowlisted production origin, named with `CLOAK_PRODUCTION_RELAY_URL` rather than typed as a host; see the submission-endpoint bullets below for the only two values it accepts.
 - Fees are enforced on-chain from each pool's `PoolConfig`: SOL 0.005 fixed + 0.3%; USDC/USDT 0.45 fixed + 0.3%; withdrawals and swaps only. Minimum deposit 0.01 SOL / 1.00 USDC / 1.00 USDT.
-- Keep tx amounts as `bigint` (TS) or `u64` / `i64` (Rust) end-to-end — no float math.
+- Keep tx amounts as `bigint` end-to-end (lamports or the token's smallest unit), never `number`: no float math anywhere in the path.
 - Private sends, withdrawals and swaps are submitted for the caller and carry an authenticated sender; deposits are wallet-signed straight to chain and carry none. In a browser pass `signMessage` + `walletPublicKey`; on a server pass `depositorKeypair`. Neither, and the call throws before proof generation. Never generate `depositorKeypair` for browser send/withdraw code, and never substitute an ephemeral or service key for the sender: it is the key screened for sanctions.
 - A private send or withdrawal prompts the wallet exactly once. Only swaps re-prompt, capped by `maxWalletApprovals` (default 5).
 - Every non-deposit flow returns `result.outputUtxos`, and one of those notes is the caller's own change. The SDK persists nothing for you: `createUtxo` draws the note's `blinding` from `randomFieldElement()` and writes it nowhere on chain, and the chain note carries no blinding either, so a change note that is not written to durable storage before you report success is permanently unspendable by anyone. No rescan, no seed phrase and no support path brings it back. `serializeUtxo` / `deserializeUtxo` is the persistence primitive (a 128-byte encoding carrying amount, private key, blinding, mint and index); `StorageAdapter` methods take `CloakNote` records, a different shape that is not interchangeable with those bytes. `fullWithdraw` reads as the exception because it leaves no change, and it is, but only for one or two input notes: it delegates to `partialWithdraw`, which first merges three or more inputs on chain two at a time, reporting each round through `onProgress` as `Consolidating notes (n remaining)...` and nowhere else. Every merge nullifies its two inputs on chain and mints an intermediate note whose blinding lives only inside that loop, so if a later round or the final withdrawal throws, the call returns nothing to persist and the merged balance is stranded. For a larger note set, consolidate ahead of time with `transfer` or `partialWithdraw` calls whose results you store. Full treatment: [where your notes live between sessions](/sdk/wallet-integration#where-your-notes-live-between-sessions).
@@ -91,35 +82,24 @@ This file is the canonical index for AI coding agents integrating with Cloak.
 - Never present `UtxoWallet.prepareSend` or `SimpleWallet.send` as a send path, even though both are exported. Each builds the recipient output from a freshly generated random keypair, so the recipient cannot spend what it produces, and `SimpleWallet.sync()` throws `Sync not yet implemented`. Use `transfer` for shielded sends and `fullWithdraw` / `partialWithdraw` to exit the pool.
 - Only the submission endpoint is pinned (build-time allowlist). The RPC is the caller's own `Connection`; any non-loopback RPC works. Never tell an integrator they must use a Cloak RPC.
 - In `@cloak.dev/sdk` the pin accepts exactly two values for `relayUrl`: an allowlisted origin (name it with `CLOAK_PRODUCTION_RELAY_URL` rather than typing a host), or `""` for caller-signed direct submission. `""` only carries that meaning when `enforceViewingKeyRegistration: false` is set in the same options; on default options an empty or omitted `relayUrl` throws before any network call, on every flow including deposits. Standard integrations pass the origin, never the pair, which would submit a send or withdrawal under the user's own key and publicly link it.
-- Treat stale-root failures as retryable (both SDK transaction paths already do this by default).
+- Treat stale-root failures as retryable: `transact` and the swap helpers already retry `RootNotFound` internally, bounded by `maxRootRetries` (default 5). Do not wrap them in a retry loop of your own unless app policy explicitly asks for more attempts.
 - Never log private keys, viewing keys (`nk`), seed material, or raw note payloads.
 - Transaction signatures are public and can be logged for support/debugging.
 - For one-shot work, start with `/ai-tools/ai-integration`.
 
-## Minimal Script Contract (TypeScript — for vague/short prompts)
+## Minimal Script Contract (for vague/short prompts)
 
-- MUST generate one keypair-only CLI script for private SOL send using `@cloak.dev/sdk`.
+- MUST generate one keypair-only TypeScript CLI script for private SOL send using `@cloak.dev/sdk`.
 - MUST use CLI shape: `npx tsx send-sol-private.ts <recipientPubkey> <lamports>`.
 - MUST parse recipient/amount from `process.argv` (not env vars).
 - MUST require env vars: `SOLANA_RPC_URL` and `KEYPAIR_PATH` only.
 - MUST use flow: `transact(...)` deposit then `fullWithdraw(...)` send.
-- MUST keep `programId` fixed to `CLOAK_PROGRAM_ID` internally; do not ask users to configure it.
+- MUST keep `programId` fixed to `CLOAK_PROGRAM_ID` and the SOL mint fixed to `NATIVE_SOL_MINT`, both imported from `@cloak.dev/sdk`; do not ask users to configure either.
+- MUST pass `relayUrl: CLOAK_PRODUCTION_RELAY_URL` on every call, the deposit included: the SDK applies no default and reads no environment variable, and an omitted or empty `relayUrl` throws before any network call.
+- MUST pass the keypair loaded from `KEYPAIR_PATH` as `depositorKeypair` so the withdrawal carries an authenticated sender; a script has no wallet `signMessage` path, and with neither the call throws before proof generation. Never substitute an ephemeral or service key: this is the key screened for sanctions.
 - MUST call `process.exit(0)` on success and `process.exit(1)` on failure.
 - MUST persist `result.outputUtxos` durably before reporting success in any flow that leaves change (`transact` with `externalAmount: 0n`, `transfer`, `partialWithdraw`, `swapWithChange`, `swapUtxo`), plus `UtxoSwapResult.refund` for swaps; the deposit-then-`fullWithdraw` flow above needs no storage only because its deposit leaves a single note, and that exemption does not carry over to a wallet's real note set, where `fullWithdraw` merges three or more inputs on chain first.
 - MUST NOT request `SENDER_PRIVATE_KEY` or any raw secret env var.
 - MUST NOT use `RECIPIENT_ADDRESS`/`SEND_LAMPORTS` env vars for the CLI contract.
 - MUST NOT use `AMOUNT_SOL` + float parsing; accept lamports input and keep amount math in `bigint`.
 - MUST NOT add custom stale-root retry loops unless app policy explicitly asks for extra retries beyond SDK defaults.
-
-## Minimal Script Contract (Rust — for vague/short prompts)
-
-- MUST generate one `cargo run`-able binary for private SOL send using the `cloak-sdk` crate.
-- MUST use CLI shape: `cargo run -- <recipientPubkey> <lamports>` (parsed from `std::env::args`).
-- MUST require env vars: `SOLANA_RPC_URL` and `KEYPAIR_PATH` only.
-- MUST use `cloak_sdk::core::transact::transact(opts)` with a deposit shape then a withdraw shape.
-- MUST populate `opts.rpc` (via `SolanaRpc::new(...)`), `opts.payer` (via `Arc<Keypair>`), and `opts.relay_url` for the withdraw.
-- MUST use `CLOAK_PROGRAM_ID` and `NATIVE_SOL_MINT` from `cloak_sdk::constants` — do not expose as config.
-- MUST use `std::process::exit(0)` on success and `std::process::exit(1)` on failure (or return `Result<()>` from `main`).
-- MUST keep amounts as `u64` / `i64`; no float parsing.
-- MUST NOT request private-key bytes via env var; load from the `KEYPAIR_PATH` JSON file.
-- MUST NOT add custom retry loops — the SDK retries RootNotFound/BlockhashExpired/StaleProofState internally.

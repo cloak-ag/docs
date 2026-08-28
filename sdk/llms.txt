@@ -1430,7 +1430,7 @@ balance with nothing to persist (§5.2). This shape stays storage-free only at o
 ```ts
 import {
   NATIVE_SOL_MINT, createUtxo, createZeroUtxo, fullWithdraw,
-  generateUtxoKeypair, getNkFromUtxoPrivateKey, transact,
+  generateUtxoKeypair, getNkFromUtxoPrivateKey, serializeUtxo, transact,
 } from "@cloak.dev/sdk";
 
 const amount = 1_000_000_000n;
@@ -1442,6 +1442,11 @@ const dep = await transact(
   { inputUtxos: [await createZeroUtxo()], outputUtxos: [utxo], externalAmount: amount, depositor: sender.publicKey },
   { connection, programId, relayUrl, depositorKeypair: sender, chainNoteViewingKeyNk: nk },  // NODE ONLY
 );
+
+// Persist before the withdraw. transact returns only after the deposit is confirmed
+// on chain, so a throwing fullWithdraw exits with SOL shielded and the blinding gone.
+// Same rule as the browser form below; the process being short-lived is not a defence.
+await saveNoteBytes(serializeUtxo(dep.outputUtxos[0]));
 
 const wd = await fullWithdraw([dep.outputUtxos[0]], recipient.publicKey, {
   connection, programId, relayUrl,

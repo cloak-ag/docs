@@ -3,6 +3,5 @@
 Canonical AI docs index: `/llms.txt`
 Full AI docs export: `/llms-full.txt`
 Exhaustive TypeScript SDK contract reference: `/sdk/llms.txt`
-Exhaustive Rust SDK contract reference: `/sdk/rust/llms.txt`
 
 Start with `/ai-tools/ai-integration` for one-shot integration prompts.
