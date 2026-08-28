@@ -28,15 +28,96 @@ Most app flows should treat `retryable === true` as backoff-eligible.
 `result.outputUtxos`, and the change note among them is the user's remaining shielded balance. Its
 `blinding` is fresh randomness generated inside the SDK and is written nowhere on chain, so a change
 note whose only copy you dropped is unspendable by anyone, permanently. No rescan brings it back.
-Outputs with `amount === 0n` are padding and can be skipped. `fullWithdraw` leaves nothing shielded,
-so it is the one call with no change note to keep.
+Outputs with `amount === 0n` are padding and can be skipped. `fullWithdraw` leaves nothing shielded
+only when you hand it one or two notes. With three or more it merges on chain first, and a failure
+part-way through those merges destroys a note that never reached you: see
+[When `fullWithdraw` is not exempt](#when-fullwithdraw-is-not-exempt).
 
 This is an error-handling concern because every example below is a `try`/`catch`. The `catch` is the
 failure path; the tail of the `try` is the success path, and that is where the write belongs. A
 `try` block whose tail is empty has already lost the note by the time control reaches the next line.
-`saveNotes` and `saveSwapRefund` in these snippets are your own storage, not SDK exports;
+`saveNotes`, `dropNotes` and `saveSwapRefund` in these snippets are your own storage, not SDK exports;
 [Where your notes live between sessions](/sdk/wallet-integration#where-your-notes-live-between-sessions)
 covers what to build them on.
+
+## When `fullWithdraw` is not exempt
+
+The circuit spends at most two notes per transaction, so both `fullWithdraw` and `partialWithdraw`
+consolidate first when you pass three or more inputs. Each consolidation round is its own on-chain
+transaction: it spends the two smallest notes and creates one merged note whose `blinding` is fresh
+randomness held only inside the call. `onProgress` fires `Consolidating notes (n remaining)...` once
+per round, and that string is the only signal a caller gets that consolidation is happening at all.
+
+Rounds that land are permanent, and the failure is what makes this an error-handling problem. If a
+later round or the final withdrawal throws (stale-root retries exhausted, a rejected wallet approval,
+a submission failure, a closed tab), then the two notes that round consumed are spent, the merged
+commitment is in the tree, and the call returned nothing, so there is no `result.outputUtxos` to
+write down. The merged note's blinding went out of scope with the call.
+
+Be clear-eyed about what recovery is available: none. A viewing-key rescan with `scanTransactions`
+can show you the commitment and its amount, but the on-chain chain note carries neither the blinding
+nor anything that derives it, so the balance stays visible and permanently unspendable. The exemption
+is therefore true for one or two inputs, where no merge happens, and false for three or more.
+
+What you can actually do, in order of usefulness:
+
+<CodeGroup>
+```typescript Consolidate yourself first
+import { createUtxo, fullWithdraw, serializeUtxo, transact } from "@cloak.dev/sdk";
+
+// Each merge is now your transaction: it returns, and you persist, before the next one starts.
+let notes = [...inputUtxos];
+while (notes.length > 2) {
+  notes.sort((a, b) => (a.amount > b.amount ? 1 : a.amount < b.amount ? -1 : 0));
+  const [small1, small2, ...rest] = notes;
+  const merged = await createUtxo(small1.amount + small2.amount, small1.keypair, small1.mintAddress);
+  const result = await transact(
+    { inputUtxos: [small1, small2], outputUtxos: [merged], externalAmount: 0n },
+    { connection, programId, relayUrl, walletPublicKey, signMessage },
+  );
+  // The merged note exists on chain now. Write it before the next round can fail.
+  await saveNotes(result.outputUtxos.filter((utxo) => utxo.amount > 0n).map(serializeUtxo));
+  notes = [result.outputUtxos[0], ...rest];
+}
+
+// Two notes left, so this call performs no merges and the exemption holds.
+await fullWithdraw(notes, recipient, { connection, programId, relayUrl, walletPublicKey, signMessage });
+```
+
+```typescript Reconcile after a throw
+import { fullWithdraw, verifyUtxos } from "@cloak.dev/sdk";
+
+let consolidated = false;
+try {
+  await fullWithdraw(inputUtxos, recipient, {
+    connection,
+    programId,
+    relayUrl,
+    walletPublicKey,
+    signMessage,
+    onProgress: (status) => {
+      if (status.startsWith("Consolidating notes")) consolidated = true;
+    },
+  });
+} catch (error) {
+  if (consolidated) {
+    // Some inputs are spent and one merged note is unreachable. Never retry with `inputUtxos`:
+    // the first merge round preflights the nullifiers and throws `UtxoAlreadySpentError` (0x1020).
+    const { spent, unspent } = await verifyUtxos(inputUtxos, connection, programId);
+    // Anything without a commitment lands in `skipped`, so `spent` entries always have one.
+    await dropNotes(spent.map((utxo) => utxo.commitment!));
+    // Withdraw again from `unspent` only. Whatever `spent` totals went into a merged note you
+    // cannot reach, unless the withdrawal itself landed and only its confirmation failed, so
+    // check the recipient balance before writing that amount off.
+  }
+  throw error;
+}
+```
+
+</CodeGroup>
+
+Consolidating yourself is the only option that prevents the loss rather than measuring it. Prefer it
+in any flow where the user can hold more than two notes.
 
 ## `Unauthorized` and bare `401` on a send, withdraw or swap
 
@@ -60,8 +141,11 @@ try {
 ```
 
 Two of the causes are not a bug in your code at all: an approval dialog left waiting, and a wrong
-clock on the user's machine. Both are recoverable by retrying, and in both cases nothing was
-submitted. The full contract, including how to supply a signer at all, is in
+clock on the user's machine. Both are recoverable by retrying, and nothing was submitted for the
+request that was rejected. That is not the same as nothing having been submitted: with three or more
+inputs the rejection can arrive on a round that follows landed consolidation transactions, so
+reconcile with `verifyUtxos` before retrying rather than reusing `inputUtxos`. The full contract,
+including how to supply a signer at all, is in
 [Request authentication](/sdk/request-authentication).
 
 ## Stale Merkle root (`0x1001`)
@@ -80,11 +164,13 @@ try {
     depositorKeypair,
     walletPublicKey: depositorKeypair.publicKey,
   });
-  // fullWithdraw leaves nothing shielded, so there is no change note to persist here.
-  // Every other flow has one: see the wallet-adapter tab.
+  // With one or two inputs this leaves nothing shielded, so there is no change note to
+  // persist here. With three or more, consolidation runs first and the exemption is off:
+  // see "When fullWithdraw is not exempt". Every other flow has a change note either way.
 } catch (error) {
   if (error instanceof RootNotFoundError || isRootNotFoundError(error)) {
-    // Refresh proof inputs and retry flow
+    // Refresh proof inputs, then reconcile with verifyUtxos before retrying: a stale root on
+    // the final withdrawal can follow consolidation rounds that already landed.
   }
 }
 ```
@@ -249,10 +335,18 @@ if (!result) throw new Error("withdraw did not complete");
 await saveNotes(result.outputUtxos.filter((utxo) => utxo.amount > 0n).map(serializeUtxo));
 ```
 
+This template reuses `inputUtxos` on every attempt, which is safe only while that array holds one or
+two notes. With three or more, attempt 1 can land consolidation transactions before it throws, and
+attempt 2 then spends notes that are already nullified: the first merge round preflights them and
+throws `UtxoAlreadySpentError` instead of retrying. Consolidate down to two notes yourself before
+entering a loop like this, as in
+[When `fullWithdraw` is not exempt](#when-fullwithdraw-is-not-exempt).
+
 Swap `partialWithdraw` for `transact`, `transfer`, `swapUtxo` or `swapWithChange` and the loop is
 unchanged, but the tail still has to run: each of those returns a change note too, and the two swap
-helpers add a `refund` secret. `fullWithdraw` is the only substitution that needs no tail, because
-it leaves nothing shielded.
+helpers add a `refund` secret. `fullWithdraw` is the only substitution that can skip the tail, and
+only when it is given one or two notes, because that is when it leaves nothing shielded and performs
+no merges of its own.
 
 ## Security logging rule
 

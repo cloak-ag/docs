@@ -181,7 +181,7 @@ These are intentionally repeated here because agents often miss them. They apply
 11. Private sends, withdrawals and swaps are submitted on the caller's behalf and each request carries an authenticated sender; deposits are wallet-signed straight to chain and carry none. Browser: pass `signMessage` + `walletPublicKey`. Server: pass `depositorKeypair`. With neither, the call throws before proof generation. Never generate `depositorKeypair` in browser send/withdraw code (a wallet adapter cannot supply one), and never substitute an ephemeral or service key for the sender: it is the key screened for sanctions. A send or withdrawal prompts once; only swaps re-prompt, capped by `maxWalletApprovals` (default 5). See `/sdk/request-authentication`.
 12. Only the submission endpoint is pinned, at SDK build time. The RPC is the caller's own `Connection` and any non-loopback RPC is fine; a production build refuses only a loopback RPC. Never tell an integrator they must use a Cloak-operated RPC.
 13. TypeScript-specific, and the single most misread pair of facts in these docs. `@cloak.dev/sdk` accepts exactly two values for `relayUrl`: an origin on the build-time allowlist (name it with `CLOAK_PRODUCTION_RELAY_URL` instead of typing a host), or `""` for caller-signed direct submission. Both of the following are true, and the second sentence is the condition that reconciles them: (a) omitting `relayUrl`, or passing `""`, throws `Viewing key registration is mandatory: relayUrl is required.` before any network call, on every flow including deposits; (b) `""` only behaves as the direct-submission signal when `enforceViewingKeyRegistration: false` is set in the same `TransactOptions`, because the viewing-key gate defaults ON and runs first. Standard integrations pass the allowlisted origin and nothing else. Never generate the `""` plus `enforceViewingKeyRegistration: false` pairing for a private send, withdrawal or swap: it submits under the end user's own key and publicly links the transaction to them, which is the opposite of what the flow exists for. See `/sdk/llms.txt` §1 and invariant 7.
-14. Persistence is the caller's job, and getting it wrong destroys user funds. Every non-deposit flow (`transfer`, `partialWithdraw`, `fullWithdraw`, `swapWithChange`, `swapUtxo`) returns its new notes on `result.outputUtxos` and then forgets them, and one of those notes is the caller's own change. The change note's `blinding` comes from `randomFieldElement()` inside `createUtxo` and is written nowhere on chain; the on-chain chain note carries an amount and owner pubkey but no blinding. A change note that is not written to durable storage before you report success is therefore permanently unspendable by anyone: no rescan, no seed phrase and no support path recovers it. Never `await` one of these calls and drop the result. In TypeScript `serializeUtxo` / `deserializeUtxo` is the persistence primitive, a 128-byte encoding carrying amount, private key, blinding, mint and index; `StorageAdapter` (`LocalStorageAdapter`, `MemoryStorageAdapter`) stores `CloakNote` records instead, which are a different shape and not interchangeable with those bytes. `UtxoWallet.serialize()` drops each note's `commitment`, so notes restored from it come back from `verifyUtxos` as `skipped` rather than `unspent`, so treat a `skipped` note as unverified rather than as absent. Deposits are the one shape that can be rebuilt from chain, and only when built with `createRecoverableDepositUtxo` plus `chainNoteSalt` / `chainNoteViewingKeyNk`. Canonical page: `/sdk/wallet-integration#where-your-notes-live-between-sessions`.
+14. Persistence is the caller's job, and getting it wrong destroys user funds. Every non-deposit flow (`transfer`, `partialWithdraw`, `fullWithdraw`, `swapWithChange`, `swapUtxo`) returns its new notes on `result.outputUtxos` and then forgets them, and one of those notes is the caller's own change. The change note's `blinding` comes from `randomFieldElement()` inside `createUtxo` and is written nowhere on chain; the on-chain chain note carries an amount and owner pubkey but no blinding. A change note that is not written to durable storage before you report success is therefore permanently unspendable by anyone: no rescan, no seed phrase and no support path recovers it. Never `await` one of these calls and drop the result. `fullWithdraw` is the usual exception, and the exception is conditional, not absolute: it leaves no change note, but it delegates straight to `partialWithdraw`, which for three or more input notes first merges them on chain two at a time until two remain. Each round nullifies its two inputs on chain and mints an intermediate note whose `blinding` also comes from `randomFieldElement()` and exists only inside that loop, and each round is announced solely through `onProgress` as `Consolidating notes (n remaining)...`. If a later round or the final withdrawal throws (stale-root retries exhausted, a failed submission, a closed tab, a rejected wallet approval) the call returns nothing at all, so there is no `result.outputUtxos` to persist and the already-merged balance is stranded exactly as an unpersisted change note would be. Treat `fullWithdraw` as storage-free only for one or two input notes; for a larger set, consolidate first with `transfer` or `partialWithdraw` calls whose results you persist. In TypeScript `serializeUtxo` / `deserializeUtxo` is the persistence primitive, a 128-byte encoding carrying amount, private key, blinding, mint and index; `StorageAdapter` (`LocalStorageAdapter`, `MemoryStorageAdapter`) stores `CloakNote` records instead, which are a different shape and not interchangeable with those bytes. `UtxoWallet.serialize()` drops each note's `commitment`, so notes restored from it come back from `verifyUtxos` as `skipped` rather than `unspent`, so treat a `skipped` note as unverified rather than as absent. Deposits are the one shape that can be rebuilt from chain, and only when built with `createRecoverableDepositUtxo` plus `chainNoteSalt` / `chainNoteViewingKeyNk`. Canonical page: `/sdk/wallet-integration#where-your-notes-live-between-sessions`.
 15. Swaps hand back a second secret. `UtxoSwapResult.refund` is the fallback that reclaims the swap principal if the swap times out before settlement, and it must be persisted with the change note. `discoverSwapRefunds(connection, programId, nk)` can rebuild it later only for swaps that were given an `nk`; for any swap built without one, the returned object is the only copy that will ever exist. An empty `discoverSwapRefunds` result is not proof that nothing is stranded.
 16. `UtxoWallet.prepareSend` and `SimpleWallet.send` are exported but are not send paths, and must never be presented as one. Each builds the recipient output from a freshly generated random keypair, so the recipient cannot spend what it produces; `SimpleWallet.sync()` additionally throws `Sync not yet implemented`. Use `transfer` for shielded sends, and `fullWithdraw` / `partialWithdraw` to exit the pool.
 
@@ -264,10 +264,14 @@ await fullWithdraw(deposited.outputUtxos, recipient, {
 });
 ```
 
-This script spends its deposit in the same process, which is the one shape that needs no storage:
-`fullWithdraw` consumes the whole note and leaves no change. Any flow that leaves change
-(`transfer`, `partialWithdraw`, `swapWithChange`) must write `result.outputUtxos`, plus
-`UtxoSwapResult.refund` for swaps, to durable storage before reporting success. See contract 14.
+This script spends its deposit in the same process and needs no storage, but only because that
+deposit leaves a single note: `fullWithdraw` consumes it whole and leaves no change. The exemption
+is conditional. `fullWithdraw` delegates to `partialWithdraw`, and with three or more input notes
+`partialWithdraw` merges them on chain first, so a failure part-way through consolidation strands
+funds and returns no result to persist. Read contract 14 before reusing this shape against a real
+wallet's note set. Any flow that leaves change (`transfer`, `partialWithdraw`, `swapWithChange`)
+must write `result.outputUtxos`, plus `UtxoSwapResult.refund` for swaps, to durable storage before
+reporting success.
 
 ### Reference snippet (Rust)
 
@@ -289,9 +293,10 @@ async fn main() -> anyhow::Result<()> {
 
     // Deposit. The `Utxo` you build here is the only spendable copy of the note: `transact`
     // returns commitments and leaf indices, never notes, and nothing on chain carries the
-    // blinding. Persist the keypair, amount, mint and the assigned index before moving on.
-    let owner = UtxoKeypair::generate()?;
-    let output = Utxo::new(amount, owner, NATIVE_SOL_MINT)?;
+    // blinding that `Utxo::new` drew at random. The keypair alone cannot spend the note, so
+    // clone it before `transact` takes ownership and persist the whole thing.
+    let output = Utxo::new(amount, UtxoKeypair::generate()?, NATIVE_SOL_MINT)?;
+    let mut note = output.clone(); // the blinding lives only here
     let deposit = transact(TransactOptions {
         inputs: vec![],
         outputs: vec![output],
@@ -302,12 +307,16 @@ async fn main() -> anyhow::Result<()> {
         ..Default::default()
     }).await?;
 
-    // save_deposit_note(&owner, amount, NATIVE_SOL_MINT, deposit.output_indices[0])?;
+    note.index = deposit.output_indices[0]; // `Option<u32>`; store the note even when `None`
+    save_deposit_note(&note)?; // your durable store: keypair, blinding, amount, mint, index
 
-    // Withdraw (full). A full withdrawal leaves no change, so this leg stores nothing new.
+    // Withdraw (full). Both outputs are zero notes, so this leg creates no change and stores
+    // nothing new. That holds because there is exactly one input here. Spending three or more
+    // notes at once costs extra on-chain merge transactions first, and every intermediate note
+    // those produce is yours to persist before the next leg runs.
     let recipient: Pubkey = args_recipient()?;
     let withdraw = transact(TransactOptions {
-        inputs: vec![/* the Utxo with its keypair, index set to deposit.output_indices[0] */],
+        inputs: vec![note],
         outputs: vec![
             Utxo::zero(Some(NATIVE_SOL_MINT), None)?,
             Utxo::zero(Some(NATIVE_SOL_MINT), None)?,
@@ -332,7 +341,7 @@ async fn main() -> anyhow::Result<()> {
 - uses UTXO API (not legacy note API)
 - uses `bigint` for transaction amounts
 - no secret logging
-- persists `result.outputUtxos` (and `UtxoSwapResult.refund` for swaps) before reporting success in any flow that leaves change (`transact` with `externalAmount: 0n`, `transfer`, `partialWithdraw`, `swapWithChange`, `swapUtxo`); only `fullWithdraw` is exempt
+- persists `result.outputUtxos` (and `UtxoSwapResult.refund` for swaps) before reporting success in any flow that leaves change (`transact` with `externalAmount: 0n`, `transfer`, `partialWithdraw`, `swapWithChange`, `swapUtxo`); `fullWithdraw` is exempt only when handed one or two input notes, since with three or more it merges them on chain first and a failure mid-merge returns nothing to persist (contract 14)
 - does not offer `UtxoWallet.prepareSend` or `SimpleWallet.send` as a send path
 - includes progress and user-facing error states
 - uses `KEYPAIR_PATH` + `<recipientPubkey> <lamports>` for minimal CLI scripts
@@ -344,7 +353,7 @@ async fn main() -> anyhow::Result<()> {
 
 - uses `cloak_sdk::core::transact::transact(opts)` as the entrypoint
 - amounts are `u64` / `i64` — no float math
-- saves the whole note durably (keypair, amount, mint, and the leaf index from `result.output_indices`); `transact` returns commitments and indices, never spendable notes, and nothing on chain carries the blinding
+- saves the whole note durably (clone the `Utxo` before `transact` takes ownership, then store keypair, blinding, amount, mint, and the leaf index from `result.output_indices`); `transact` returns commitments and indices, never spendable notes, and nothing on chain carries the blinding, so a record without it is unspendable no matter who holds the keypair
 - threads `cached_merkle_tree` + `address_lookup_table_accounts` between transacts
 - no secret logging; enables `RUST_LOG=cloak_sdk=debug` for troubleshooting only
 - uses SDK defaults for program/circuits (no user-facing config); sets `opts.relay_url` explicitly, since it has no default

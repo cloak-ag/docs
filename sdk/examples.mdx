@@ -192,8 +192,10 @@ async function sendSameMint(args: {
     },
   );
 
-  // A full withdrawal leaves no change, so `saveNotes` writes nothing here. Call it
-  // anyway: the call site should not have to know which flow produced change.
+  // This call is given one note, so it withdraws directly and leaves no change.
+  // That is a property of the input count, not of `fullWithdraw`: hand it three or
+  // more notes and it consolidates on chain first. Call `saveNotes` regardless, so
+  // the call site never has to know which flow produced change.
   saveNotes(withdrawn.outputUtxos);
   return withdrawn;
 }
@@ -329,8 +331,9 @@ export function useSendSameMint(connection: Connection, viewingKeyNk: Uint8Array
         },
       );
 
-      // A full withdrawal leaves no change, so this writes nothing today. It is
-      // here so that swapping in a flow that does produce change stays safe.
+      // One input note here, so there is no change and nothing to write. With three
+      // or more, `fullWithdraw` consolidates on chain first and the exemption stops
+      // holding. Keep the call so any flow swapped in stays safe.
       saveNotes(withdrawn.outputUtxos);
       return withdrawn;
     } catch (error) {

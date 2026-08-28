@@ -50,9 +50,12 @@ it does nothing about what comes back. `transfer`, `transact`, `partialWithdraw`
 notes is your user's own **change**. Its `blinding` is fresh randomness drawn inside `createUtxo`
 and written nowhere on chain, so a change note that is not in durable storage before you report
 success is permanently unspendable by anyone: no rescan, no seed phrase, no support path. Persist
-with `serializeUtxo`, read back with `deserializeUtxo`. `fullWithdraw` is the single exemption,
-because it leaves nothing shielded. Full treatment:
-[where your notes live between sessions](/sdk/wallet-integration#where-your-notes-live-between-sessions).
+with `serializeUtxo`, read back with `deserializeUtxo`. `fullWithdraw` is the one exemption, and only
+when it spends **one or two** notes: handed three or more it merges them on chain first, and a
+failure part way through loses the merged value with no result to persist. Full treatment:
+[where your notes live between sessions](/sdk/wallet-integration#where-your-notes-live-between-sessions)
+and
+[a withdrawal of three or more notes is not exempt](/sdk/wallet-integration#a-withdrawal-of-three-or-more-notes-is-not-exempt).
 </Warning>
 
 ### Browser: `useWallet()`
@@ -135,6 +138,8 @@ would authenticate one person and screen another.
 ```typescript
 import { CLOAK_PROGRAM_ID, CLOAK_PRODUCTION_RELAY_URL, fullWithdraw } from "@cloak.dev/sdk";
 
+// `notes` is one or two notes here, which is the shape that returns nothing to store.
+// Three or more makes this call merge on chain first; merge those yourself instead.
 await fullWithdraw(notes, recipient, {
   connection,
   programId: CLOAK_PROGRAM_ID,
@@ -209,8 +214,9 @@ Two consequences worth designing for:
 import { explainRelayAuthRejection, fullWithdraw } from "@cloak.dev/sdk";
 
 try {
-  // fullWithdraw is used here because it is the one flow with no change note to
-  // bank. Every other flow on this page returns notes you must persist first.
+  // fullWithdraw over one or two notes is used here because that shape is the one
+  // that returns no change note to bank. Every other flow on this page, and
+  // fullWithdraw over three or more notes, produces secrets you must persist first.
   await fullWithdraw(notes, recipient, options);
 } catch (error) {
   const hint = explainRelayAuthRejection(String(error));
@@ -224,11 +230,19 @@ try {
 ## How many wallet prompts to expect
 
 <Note>
-**A private send or a withdrawal signs exactly once**, whatever happens on the network. Stale-root
-retries re-use the same proof and the same signed request, so the user sees one dialog and no more.
+**A private send, or a withdrawal of one or two notes, signs exactly once**, whatever happens on the
+network. Stale-root retries re-use the same proof and the same signed request, so the user sees one
+dialog and no more.
 </Note>
 
-Swaps are the exception, because a swap re-proves on every retry and each new proof is a new request
+A withdrawal of **three or more** notes is the quiet exception. It merges the two smallest notes on
+chain until two remain, each merge is its own submitted request, and each request needs its own
+approval: budget `n - 1` dialogs for `n` input notes. `maxWalletApprovals` does not cap this, it
+applies to swaps only. Read
+[a withdrawal of three or more notes is not exempt](/sdk/wallet-integration#a-withdrawal-of-three-or-more-notes-is-not-exempt)
+before you offer that shape, because a prompt declined mid-merge is exactly where value is lost.
+
+Swaps are the other exception, because a swap re-proves on every retry and each new proof is a new request
 that needs a fresh approval. `maxWalletApprovals` caps how many times one swap may ask:
 
 ```typescript

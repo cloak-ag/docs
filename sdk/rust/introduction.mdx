@@ -111,11 +111,12 @@ async fn main() -> anyhow::Result<()> {
 
 ## Notes are yours to persist
 
-The engine has no wallet and no storage. `Utxo::new` draws a fresh `blinding` from
-`random_field_element()` and keeps it only inside the value it hands back, and the chain
-stores nothing but the Poseidon commitment
+The engine has no wallet and no storage. `Utxo::new(amount, keypair, mint)` takes no blinding
+argument: the per-note `blinding: Fr` it fills in is kept only inside the value it hands back,
+and the chain stores nothing but the Poseidon commitment
 `Poseidon(amount, public_key, blinding, mint_field)`. A note is spendable only by whoever
-holds its `UtxoKeypair.private_key` together with its exact `blinding`.
+holds its `UtxoKeypair.private_key` together with its exact `blinding`, so a stored keypair
+without its blinding is worth exactly what storing nothing is worth.
 
 So, at every call site: clone each output `Utxo` before it moves into
 `TransactOptions.outputs`, write `result.output_indices[i]` into the clone's `index`, and
@@ -130,7 +131,7 @@ withdrawal, or a swap the output that hurts is the **change**, because that is t
 you kept.
 </Warning>
 
-Two details that bite:
+Three details that bite:
 
 - `result.output_indices[i]` is `Option<u32>` and reconciliation is best-effort, so `None`
   is a normal outcome. Store the note with `index: None` and backfill it later by matching
@@ -138,6 +139,13 @@ Two details that bite:
   missing.
 - `UtxoKeypair::from_spend_key(&[u8; 32])` is deterministic, so a keypair can be re-derived.
   The blinding cannot. Deriving keys does not remove the need to persist the note.
+- The circuit takes 2 inputs, so spending three or more notes means merging them first, one
+  `transact()` per round. Each round spends two notes on chain and creates one whose blinding
+  exists only in memory, so store each round's output before starting the next. A sequence that
+  dies halfway has already spent real notes. No user-level operation is exempt from this,
+  including a withdrawal that empties the balance: the emptying call itself has nothing to
+  store, but the rounds that fed it did. See
+  [Errors and note persistence](/sdk/rust/error-handling#errors-and-note-persistence).
 
 `cloak_sdk::storage::note_store::NoteStore` is the trait to implement for this
 (`insert`, `mark_spent`, `unspent_for`, `all`), alongside
@@ -150,6 +158,10 @@ traits and no backend, so pick your own (sled, sqlite, Postgres). Treat the stor
 A few intentional choices shape how the crate reads:
 
 - **Engine-first, no stateful façade.** The TS SDK ships optional stateful helpers such as `UtxoWallet` and `SimpleWallet` for local note tracking and input selection; the Rust crate exposes the engine directly and leaves that shape to you. Build your own wallet, scanner, or compliance report on top — `TransactResult` gives you the commitments, indices, and post-tx tree to do it. The flip side is that [note persistence is entirely yours](#notes-are-yours-to-persist), and an output you fail to store is money nobody can spend.
+
+<Warning>
+Treat those two TS helpers as a sketch of the shape, not a specification to port. `UtxoWallet.prepareSend` ignores its recipient argument and builds the recipient's note under a freshly generated random keypair, and it hardcodes the native SOL mint on both the recipient note and the change, so the recipient cannot spend what they were sent and a non-SOL send is built against the wrong mint. `SimpleWallet.send` delegates to it and inherits both. The TS `transfer` helper has the mirror-image property, correctly: it builds the recipient output with `privateKey === 0n` because the sender does not hold the recipient's key, which means a sender must never count that output into their own balance. Whatever you build in Rust, the recipient's `UtxoKeypair.public_key` has to come from the recipient, and only outputs you can actually spend belong in your balance.
+</Warning>
 - **`TransactOptions` as the one knob.** Parameters (inputs, outputs, external_amount, recipient) and submission config (rpc, payer, relay_url, risk checks) live on one struct. `..Default::default()` + struct-update syntax keeps call sites readable.
 - **`RpcProvider` is a trait.** Production wraps `solana-rpc-client::nonblocking::RpcClient` via `SolanaRpc`; tests inject `MockRpc`. Same shape, no cfg-gated code paths.
 - **Focused Solana crates.** Depends on `solana-keypair`, `solana-pubkey`, `solana-transaction`, `solana-rpc-client`, etc. — not the `solana-sdk` umbrella. Keeps the dep graph predictable and compile times reasonable.

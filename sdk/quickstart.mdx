@@ -94,8 +94,10 @@ const withdrawOptions = {
 const withdrawEverything: boolean = true;
 
 if (withdrawEverything) {
-  // Full withdrawal: sends all spendable value externally, so nothing is left
-  // shielded and there is no change note to keep.
+  // One note in, so this withdraws directly: nothing is left shielded and there is
+  // no change note. That holds for one or two notes only. Given three or more,
+  // `fullWithdraw` merges them on chain first, and a failure part way through
+  // strands the merged note. See /sdk/utxo-transactions for the full rule.
   await fullWithdraw(deposited.outputUtxos, recipient, withdrawOptions);
 } else {
   // Partial withdrawal: withdraw a portion, keep private change in shielded state.

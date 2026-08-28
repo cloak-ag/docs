@@ -40,6 +40,8 @@ approval window and prompt counts: [Request authentication](/sdk/request-authent
 For UTXO `transact` deposits in browser apps, pass wallet signing fields in `TransactOptions`:
 
 ```typescript
+import { serializeUtxo, transact } from "@cloak.dev/sdk";
+
 const result = await transact(params, {
   connection,
   programId,
@@ -54,8 +56,13 @@ const result = await transact(params, {
 });
 
 // `result.outputUtxos` is the money this deposit created, and the SDK stores none of it.
-// Write it to durable storage before you report success:
-// see "Where your notes live between sessions" below.
+// Write the bytes down before you report success. Zero-amount outputs are circuit
+// padding, so drop them. `persistNotes` is your own storage, not the SDK's: it has
+// none, and it must have committed before it resolves.
+// See "Where your notes live between sessions" below.
+await persistNotes(
+  result.outputUtxos.filter((utxo) => utxo.amount > 0n).map(serializeUtxo),
+);
 ```
 
 Check `signMessage` is present before you offer a send or withdraw action. Not every adapter
@@ -73,9 +80,13 @@ import {
   fullWithdraw,
   generateUtxoKeypair,
   isRootNotFoundError,
+  serializeUtxo,
   transact,
 } from "@cloak.dev/sdk";
 import { Connection, PublicKey } from "@solana/web3.js";
+
+// Your own durable store. The SDK ships nothing that plays this role.
+declare function saveNoteBytes(bytes: Uint8Array): Promise<void>;
 
 const connection = new Connection(process.env.SOLANA_RPC_URL!, "confirmed");
 const relayUrl = CLOAK_PRODUCTION_RELAY_URL;
@@ -116,6 +127,11 @@ async function sendWithWalletAdapter({
       onProofProgress: (percent) => console.log("deposit proof", percent),
     },
   );
+
+  // Persist before the withdrawal. The retry loop below can prompt the wallet three
+  // times, and a tab closed at any of them leaves this note as the only claim on the
+  // deposited funds. `saveNoteBytes` is your own storage, not an SDK export.
+  await saveNoteBytes(serializeUtxo(deposited.outputUtxos[0]));
 
   const recipient = new PublicKey(recipientAddress);
   let withdrawResult: Awaited<ReturnType<typeof fullWithdraw>> | undefined;
@@ -164,6 +180,10 @@ Notes:
 - This example spends `deposited.outputUtxos` in the same breath as producing them, which is what
   makes it short. A real wallet has to persist them instead: see
   [where your notes live between sessions](#where-your-notes-live-between-sessions).
+- The withdrawal here spends **two** notes at most, so no consolidation round runs and the retry
+  loop is safe to write this way. Handing `fullWithdraw` three or more notes is a different call
+  with a different failure mode: see
+  [a withdrawal of three or more notes is not exempt](#a-withdrawal-of-three-or-more-notes-is-not-exempt).
 
 ## Where your notes live between sessions
 
@@ -175,10 +195,11 @@ The SDK does not persist anything for you. `transact`, `transfer`, `partialWithd
 and the swap helpers each return their new notes on `result.outputUtxos` and then forget them. That
 storage boundary is explicit, and closing it is your job.
 
-`fullWithdraw` is the one call that leaves nothing shielded, so it has no change note to lose. Every
-other call in that list produces one. `swapUtxo` and `swapWithChange` additionally return `refund`
-and `swapStatePda` on `UtxoSwapResult`, which is what reclaims the principal if the swap times out
-before it settles; persist those two alongside the notes.
+`fullWithdraw` leaves nothing shielded, so it hands back no change note **when it spends one or two
+notes**. That is the whole of its exemption, and the next section is why. Every other call in
+that list produces a change note on every path. `swapUtxo` and `swapWithChange` additionally return
+`refund` and `swapStatePda` on `UtxoSwapResult`, which is what reclaims the principal if the swap
+times out before it settles; persist those two alongside the notes.
 
 <Warning>
 Write `result.outputUtxos` to durable storage before you report success to the user. A note is
@@ -187,6 +208,71 @@ of a change note is fresh randomness generated inside `createUtxo`. It is never 
 that can be replayed. If your only copy is lost, that value is unspendable by anyone, permanently.
 No rescan, no seed phrase and no support path brings it back.
 </Warning>
+
+### A withdrawal of three or more notes is not exempt
+
+The circuit takes two inputs. `partialWithdraw`, and therefore `fullWithdraw`, which is a thin
+wrapper that calls `partialWithdraw` for the whole input sum, absorbs a larger set by **merging on
+chain first**: while more than two notes remain it spends the two smallest in a shield-to-shield
+`transact` and creates one merged note in their place, repeating until two are left, and only then
+builds the withdrawal itself. For `n` input notes that is `n - 2` settled merges ahead of the
+withdrawal.
+
+Each round is a real transaction. It nullifies two of your notes on chain and publishes the merged
+commitment, whose `blinding` is fresh `randomFieldElement()` randomness living in a local variable
+inside a call that has not returned yet. You are never handed it, because the merge is an
+implementation detail of the withdrawal.
+
+<Warning>
+**If a withdrawal of three or more notes throws part way through, the merged value is gone.** The
+consumed inputs are spent, the merged note sits on chain, and its `blinding` died with the call that
+threw. There is nothing to persist, because the call produced no result at all. Exhausted stale-root
+retries, a rejected wallet prompt, a failed submission or a closed tab all reach that state. No
+rescan recovers it: a merged note is built with `createUtxo`, which puts it in the first row of
+[what happens if that storage is lost](#what-happens-if-that-storage-is-lost).
+</Warning>
+
+You avoid that window rather than recover from it. Keep withdrawal inputs at two notes or fewer, and
+when they are not, merge deliberately: build the merged output yourself so you hold its `blinding`
+before anything is submitted.
+
+```typescript
+import {
+  createUtxo,
+  serializeUtxo,
+  transact,
+  type TransactOptions,
+  type Utxo,
+} from "@cloak.dev/sdk";
+
+// One deliberate merge round, in place of one round the withdrawal would have run
+// for you. The difference is that the secret exists in your storage first.
+async function mergeTwo(a: Utxo, b: Utxo, options: TransactOptions) {
+  const merged = await createUtxo(a.amount + b.amount, a.keypair, a.mintAddress);
+
+  // Write it down before submitting. Only `index` is still missing at this point,
+  // and `index` is recoverable from chain state; `blinding` is not.
+  await persistNotes([serializeUtxo(merged)]);
+
+  const result = await transact(
+    { inputUtxos: [a, b], outputUtxos: [merged], externalAmount: 0n },
+    options,
+  );
+
+  // On success, replace the provisional copy with the one carrying the leaf index.
+  await persistNotes(
+    result.outputUtxos.filter((utxo) => utxo.amount > 0n).map(serializeUtxo),
+  );
+  return result;
+}
+```
+
+<Note>
+`onProgress` is the only signal a caller gets that consolidation is happening at all. It fires
+`Consolidating notes (n remaining)...` once per round. A withdrawal that emits that string is inside
+the window above until it resolves, so treat it as a state worth surfacing rather than a spinner
+label.
+</Note>
 
 ### The two storage exports, and how they relate
 
@@ -307,9 +393,13 @@ Two things it does not do:
 - It returns `null` when the balance is short, rather than throwing. A truthy check is the whole
   error path.
 - It does not know about the circuit's two-input limit. It will happily return three notes, and
-  `transact` then throws `Maximum 2 input UTXOs allowed` before proving.
-  `partialWithdraw` and `fullWithdraw` consolidate for you, merging the two smallest notes
-  repeatedly until two remain. `transfer` does not, so cap the selection yourself.
+  `transact` then throws `Maximum 2 input UTXOs allowed` before proving. `transfer` does not
+  consolidate, so cap the selection yourself. `partialWithdraw` and `fullWithdraw` do consolidate,
+  merging the two smallest notes repeatedly until two remain, and that convenience is the one
+  described in
+  [a withdrawal of three or more notes is not exempt](#a-withdrawal-of-three-or-more-notes-is-not-exempt):
+  it settles merges whose secrets you never receive, so cap the selection before a withdrawal too
+  and run the merges yourself.
 
 `UtxoWallet.selectInputs(amount, mint, strategy)` does the same job against the wallet's own
 bookkeeping and throws instead of returning `null`.
@@ -402,6 +492,9 @@ after any failure, and drop anything it reports as spent.
 
 - Persist `result.outputUtxos` before you report a flow as successful. A lost change note is
   unspendable value, not a resyncable cache.
+- Cap withdrawal inputs at two notes, and merge deliberately above that. A withdrawal handed three
+  or more notes consolidates on chain first, and a failure part way through loses the merged value
+  outright, with no result to persist.
 - Show progress during proof generation (`onProgress`, `onProofProgress`).
 - Handle stale-root retries gracefully (`isRootNotFoundError`).
 - Keep circuit files accessible in browser deployments.

@@ -39,9 +39,15 @@ pub struct Utxo {
 }
 ```
 
-The `keypair` field is a **field-element keypair** (not an Ed25519 Solana keypair). It's how you prove ownership of a note later — save it.
+The `keypair` field is a **field-element keypair** (not an Ed25519 Solana keypair). It's how you prove ownership of a note later, and it is only half of what makes the note spendable. `blinding` is a separate field, and `Utxo::new(amount, keypair, mint)` takes no blinding argument, so the value it fills in exists only inside the `Utxo` you are holding. The chain stores the commitment `Poseidon(amount, public_key, blinding, mint_field)` and nothing else.
+
+<Warning>
+Saving the keypair alone loses the note as completely as saving nothing. Persist all of `amount`, `mint`, `keypair` (including `private_key`), `blinding`, and the leaf `index` from `result.output_indices[i]`, for every output. `UtxoKeypair::from_spend_key` makes keys re-derivable; it does not make blindings recoverable. See [Notes are yours to persist](/sdk/rust/introduction#notes-are-yours-to-persist).
+</Warning>
 
 The fixed-arity circuit consumes exactly 2 inputs and 2 outputs. You supply the real ones; preflight pads with zero-UTXOs (random blinding) up to 2 each.
+
+Arity 2 is also why a balance spread across three or more notes cannot be spent in a single call. The crate ships no consolidation helper, so you write the merge sequence: `transact()` a pair of notes into one merged note, repeat until at most two remain, then spend those. Each round is a real on-chain transaction that nullifies two notes and creates a merged note with a fresh blinding, so each round's output has to be stored before the next round starts. See [Errors and note persistence](/sdk/rust/error-handling#errors-and-note-persistence).
 
 ## `TransactOptions` as the single knob surface
 
@@ -101,6 +107,8 @@ Errors map to `IterationStatus`:
 After each successful transact, `TransactResult.cached_merkle_tree` holds a local `MerkleTree` with the two new output commitments appended. Thread it into the next `TransactOptions.cached_merkle_tree` and you skip the `/commitments` fetch on the next call — the orchestrator seeds `LoopState.merkle_tree` from it directly.
 
 `sibling_commitments` and `pre_transaction_left_sibling` on the result are populated from the post-tx tree so the next proof can use them without a fresh `/commitments` fetch.
+
+Threading the tree through a chain of calls is a performance optimization, not a checkpoint. The cached tree is in-process state: if the chain dies mid-sequence, it dies with it, while the transactions that already landed stay landed. Persist each call's output notes as you go, not at the end of the chain.
 
 ## Chain notes
 

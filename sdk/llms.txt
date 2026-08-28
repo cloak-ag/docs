@@ -282,11 +282,25 @@ function preflightNullifiers(                      // throws UtxoAlreadySpentErr
 ```
 
 `serializeUtxo` is the persistence primitive and it is the ONLY one: 128 bytes carrying amount,
-private key, blinding, mint and index. Every flow but a full withdrawal hands back a note the SDK
-then forgets, and `createUtxo` draws that note's `blinding` from `randomFieldElement()` and writes
-it nowhere on chain, so a note that is not serialized to durable storage before you report success
-is permanently unspendable by anyone. `StorageAdapter` (§5.13) is a DIFFERENT boundary: its methods
-are typed on `CloakNote`, and it does not accept these bytes.
+private key, blinding, mint and index. Every flow hands back a note the SDK then forgets, with one
+conditional exception below (a full withdrawal of one or two input notes), and `createUtxo` draws
+that note's `blinding` from `randomFieldElement()` and writes it nowhere on chain, so a note that
+is not serialized to durable storage before you report success is permanently unspendable by
+anyone. `StorageAdapter` (§5.13) is a DIFFERENT boundary: its methods are typed on `CloakNote`, and
+it does not accept these bytes.
+
+**The full-withdrawal exemption is CONDITIONAL: it holds for one or two input notes only.**
+`fullWithdraw` sums the inputs and calls `partialWithdraw`, and `partialWithdraw` runs
+`while (utxos.length > 2)` first: it sorts the notes, merges the two smallest on chain into a fresh
+note from `createUtxo`, and repeats until two remain. Each round nullifies its two inputs on chain
+and the merged note's blinding exists only in that call's local variable. If a later round or the
+final withdrawal throws (stale-root retries exhausted, a relay 5xx, a closed tab, a rejected wallet
+approval), the spent inputs are gone, the merged commitment is on chain, and the call returns no
+result to persist, so the balance is unrecoverable by anyone. There is no API that hands you the
+intermediate note. Mitigations, in order: withdraw from at most two notes (consolidate deliberately
+with your own `transact` calls, persisting each merged output, before calling `fullWithdraw`), and
+watch `onProgress` for `Consolidating notes (n remaining)...`, which is the ONLY signal the caller
+gets that consolidation is running. `partialWithdraw` shares the same loop and the same exposure.
 
 ### 5.3 UTXO transaction API (primary runtime path)
 
@@ -731,7 +745,9 @@ function encryptTransactionMetadataBundle(
   user_pubkey: string;
   commitment: string;
   timestamp: number;
-  tx_type?: ComplianceTxType;
+  tx_type?: string;          // widened to `string` here, NOT `ComplianceTxType`:
+                             // `const t: ComplianceTxType = bundle.tx_type` does not compile.
+                             // Narrow it yourself before treating it as the union.
 }>;
 
 function decryptTransactionMetadata(encrypted: string, viewKeySecret: Uint8Array): Promise<TransactionMetadata>;
@@ -870,8 +886,28 @@ function buildRelayAuthPreimage(
 
 function canonicalJson(value: unknown): string;                  // keys sorted bytewise, no whitespace
 function explainRelayAuthRejection(responseText: string): string | null;
-function submitTransactToRelay(args: SubmitTransactToRelayArgs); // takes depositorKeypair | relayAuthSigner
+function submitTransactToRelay(                  // takes depositorKeypair | relayAuthSigner
+  args: SubmitTransactToRelayArgs,
+): Promise<RelaySubmissionResult>;
+
+type RelaySubmissionResult =
+  | { kind: "submitted"; signature: string; commitmentIndices?: [number, number];
+      viewingKeyRegistered?: boolean; settlement: SettlementVerdict }
+  | { kind: "stale-root"; error: Error }   // root rejected; rebuild the tree and re-prove
+  | { kind: "failed"; error: Error };
+
+interface SettlementVerdict {
+  status: "landed" | "failed" | "not-landed" | "unknown";
+  signature: string | null;
+  reason: string;                          // safe to put in an error message
+  nullifiersSpent: boolean;                // true when every checkable nullifier PDA was on chain
+  signatureStatus: "finalized" | "confirmed" | "processed" | "absent" | "error" | "unchecked";
+}
 ```
+
+Branch on `kind`; the three outcomes above are returned, not thrown. A `"submitted"` result is not
+by itself proof: read `settlement.status`, and never report `"unknown"` as success or silently
+retry it. Surface `settlement.signature` instead.
 
 `preimage.message` is a plain ed25519 detached-signature preimage, newline separated:
 
@@ -1244,6 +1280,12 @@ const withdrawResult = await fullWithdraw(
 The signed request is good for 285 usable seconds (§5.8). If the user leaves the approval dialog
 open longer than that, map the rejection through `explainRelayAuthRejection` and ask again.
 
+**Both forms above pass ONE input note, which is the only shape with nothing to persist.** Passing
+three or more inputs makes `fullWithdraw` consolidate them on chain first, two at a time, and a
+throw partway through strands the merged balance with no result to save (§5.2). Consolidate
+deliberately with your own `transact` calls, persisting each merged output, or accept the risk
+knowingly and watch `onProgress` for `Consolidating notes (n remaining)...`.
+
 ### 6.3 Partial withdraw (keep a shielded change UTXO)
 
 ```ts
@@ -1378,9 +1420,12 @@ And persist `changeOutput` yourself, in either form. Nothing recovers a change n
 
 ### 6.5 Fast send (deposit + full withdraw in one user action)
 
-This is the ONE shape in section 6 that needs no note storage: the deposit note is spent by
-`fullWithdraw` in the same process, and a full withdrawal leaves no change. Every other recipe
-here writes a note before it reports success.
+This is the ONE shape in section 6 that needs no note storage, and only because it is written the
+way it is: exactly one deposit note goes in, `fullWithdraw` spends it in the same process, and a
+one-input full withdrawal leaves no change. Every other recipe here writes a note before it reports
+success. Do NOT generalise the recipe to a wallet's whole note set: pass three or more inputs and
+`fullWithdraw` consolidates them on chain first, and a throw partway through strands the merged
+balance with nothing to persist (§5.2). This shape stays storage-free only at one or two inputs.
 
 ```ts
 import {
@@ -1413,7 +1458,13 @@ deposit (`signTransaction` for the transaction, `signMessage` for the viewing-ke
 latter only on first use per wallet) and exactly one more for the withdraw.
 
 ```ts
-import { createZeroUtxo, fullWithdraw, getPublicKey, transact } from "@cloak.dev/sdk";
+import {
+  createZeroUtxo,
+  fullWithdraw,
+  getPublicKey,
+  serializeUtxo,
+  transact,
+} from "@cloak.dev/sdk";
 
 const dep = await transact(
   { inputUtxos: [await createZeroUtxo()], outputUtxos: [utxo], externalAmount: amount, depositor: getPublicKey(wallet) },
@@ -1425,6 +1476,11 @@ const dep = await transact(
     chainNoteViewingKeyNk: nk,
   },
 );
+
+// Persist BEFORE the second leg. In a browser the process is a tab, and the withdraw
+// below opens a wallet dialog: if the tab closes there, this note is the only claim on
+// the funds already in the pool. saveNoteBytes is your storage, not an SDK export.
+await saveNoteBytes(serializeUtxo(dep.outputUtxos[0]));
 
 const wd = await fullWithdraw([dep.outputUtxos[0]], recipientPublicKey, {
   connection, programId, relayUrl,
@@ -1657,6 +1713,11 @@ for (let attempt = 0; attempt < 3; attempt++) {
 }
 ```
 
+This loop is safe to re-enter only while `inputUtxos` holds one or two notes. With three or more,
+the first attempt may already have consolidated some of them on chain, so the same array is no
+longer the wallet's live state and a retry spends notes that are gone (§5.2). Guardrail 9 applies:
+the SDK transaction paths already retry stale roots, so do not add this loop by default.
+
 ---
 
 ## 7. Recipe index for common flows
@@ -1666,7 +1727,8 @@ written in the Node/server form and carries its own browser form beside it; read
 do not adapt the Node one by hand.
 
 - Deposit a fresh shielded UTXO: section 6.1.
-- Withdraw flows: sections 6.2 (full) and 6.3 (partial/change).
+- Withdraw flows: sections 6.2 (full) and 6.3 (partial/change), including why a full withdrawal is
+  storage-free at one or two input notes and not at three or more.
 - Private shield-to-shield transfer (private send): section 6.4, including how to make the note
   discoverable by the recipient.
 - Fast-send user flow: section 6.5.

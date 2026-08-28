@@ -45,8 +45,17 @@ paths; only the holder of the pen changes.
 `outputUtxos`, and those objects are the money. A note's blinding is drawn by `createUtxo` from
 `randomFieldElement()` and is never written on chain, so the on-chain note alone cannot be spent
 and no scan reconstructs it. A note you create and do not save is unspendable by anyone,
-permanently. `fullWithdraw` is the single exemption: it leaves nothing shielded, so it has no
-change note.
+permanently.
+
+`fullWithdraw` is the one exemption, and only when you pass one or two input notes: it leaves
+nothing shielded, so there is no change note to save. **With three or more inputs it is not
+exempt.** `fullWithdraw` calls `partialWithdraw`, which first merges the notes on chain two at a
+time until two remain. Each merge round spends its two inputs and creates a fresh note whose
+blinding lives only inside the call, so if a later round or the final withdrawal throws (a relay
+error, a closed tab, a rejected approval), the earlier inputs are already spent, the merged note is
+on chain, and the call returns nothing you could have saved. Withdraw from at most two notes where
+you can, and treat an `onProgress` line reading `Consolidating notes (n remaining)...` as the only
+signal that the call has entered that window.
 
 Printing a note's amount is not keeping it. Every sample below saves the note bytes first and
 logs afterwards, through two functions you supply:

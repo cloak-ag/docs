@@ -51,9 +51,14 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
    - `< 0` → **withdraw** (submitted via `relay_url` when set, otherwise direct).
    - `== 0` → **shield-to-shield transfer** (submitted via `relay_url` when set, otherwise direct).
 2. Every transact has exactly 2 inputs and 2 outputs. Preflight pads zero-UTXOs automatically — callers supply the real ones.
+   Consequence: a balance spread over 3+ notes cannot be spent in one call. The crate ships no
+   consolidation helper, so the caller merges pairs with `external_amount: 0` transacts until at
+   most 2 notes remain. Each merge round is a real on-chain transaction (2 notes nullified, 1
+   merged note created with a fresh blinding), so **every round's output must be stored before the
+   next round starts**. See invariant 3 and the recipe in section 8.
 3. **Output notes are the caller's to persist. This is the one invariant that loses money.**
-   `Utxo::new` draws `blinding` from `random_field_element()` and keeps it only inside the
-   value it returns; the on-chain leaf is nothing but
+   `Utxo::new(amount, keypair, mint)` takes no blinding argument; the `blinding: Fr` it fills in
+   is kept only inside the value it returns, and the on-chain leaf is nothing but
    `Poseidon(amount, public_key, blinding, mint_field)`. A note is spendable only by whoever
    holds its `keypair.private_key` **and** its exact `blinding`.
    - Clone every output `Utxo` before it moves into `opts.outputs` (`Utxo` and `UtxoKeypair`
@@ -62,7 +67,15 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
    - An output that is constructed and then dropped is unspendable by anyone, permanently.
      Nothing recovers it: the encrypted chain note carries an 8-byte timestamp, not the
      blinding, so no scan rebuilds the note. On transfer / withdraw / swap the dangerous
-     output is the **change**.
+     output is the **change**; in a merge round it is the merged note.
+   - **No user-level operation is exempt from this.** Judge storage per `transact()` call, never
+     per operation. A withdrawal that moves the entire balance out has a zero-UTXO change and
+     nothing to store, but if it was reached through merge rounds, each of those rounds produced
+     a note that had to be stored first.
+   - An `Err` from `transact()` is not proof that nothing landed: `submit_direct` refreshes the
+     blockhash and re-sends, and retries transient `Error::Relay` with the same signed bytes, so
+     a transaction can confirm while the call returns an error. Keep the output notes on the
+     error path too; never delete a note in a `catch`-equivalent arm.
    - `output_indices[i]` is `Option<u32>` and reconciliation is best-effort, so `None` is a
      normal outcome. Store the note with `index: None` and backfill by matching
      `result.output_commitments[i]` against the tree. Never drop a note over a missing index.
@@ -200,10 +213,10 @@ keypair. `UtxoKeypair::generate()` is random; `UtxoKeypair::from_spend_key(&[u8;
 deterministic, which is what the crate uses for deposits and change so every chain note
 lands under one `nk`.
 
-Determinism does not make a note recoverable. `Utxo::new` draws the `blinding` at random
-and writes it nowhere on chain, so the keypair alone is not enough: persist `amount`,
-`mint`, `keypair.private_key`, `blinding`, and `index` for **every** output. See invariant
-3.
+Determinism does not make a note recoverable. `Utxo::new` takes no blinding argument and the
+blinding it fills in is written nowhere on chain, so the keypair alone is not enough: persist
+`amount`, `mint`, `keypair.private_key`, `blinding`, and `index` for **every** output. Storing
+only the `UtxoKeypair` loses the note as completely as storing nothing. See invariant 3.
 
 Import trap: `cloak_sdk::Utxo` (the crate-root re-export) is a legacy scaffold type with
 `owner` / `spent` / `id` fields, not the v2 note. Always import
@@ -257,7 +270,9 @@ supported for direct use: build against `transact()` and the program.
 
 Every recipe below clones its outputs before they move into `TransactOptions` and stores
 them the moment the result lands. That is invariant 3, not decoration: `notes` is your
-`NoteStore` impl, and skipping the `insert` makes the note unspendable forever.
+`NoteStore` impl, and skipping the `insert` makes the note unspendable forever. Each recipe is
+one `transact()`; when the balance sits in 3+ notes, run the merge recipe first and store its
+output on every round.
 
 ### SOL deposit (direct)
 
@@ -347,7 +362,51 @@ notes.insert(change_note)?;
 ```
 
 A withdrawal that moves the whole balance out leaves nothing shielded, so `change_output`
-is a zero UTXO and there is nothing to store. Any other withdrawal has a change note.
+is a zero UTXO and **that call** has nothing to store. Any other withdrawal has a change note.
+
+This is a property of the single `transact()` call, not of the withdrawal as a user sees it. If
+the balance sat in 3+ notes, the merge rounds that got it down to 2 each produced a merged note
+that had to be stored before the next round ran. See the recipe below.
+
+### Merge round (consolidating 3+ notes)
+
+```rust
+// Repeat until utxos.len() <= 2, then run the withdraw recipe above.
+utxos.sort_by_key(|u| u.amount);
+let (small1, small2) = (utxos.remove(0), utxos.remove(0));
+
+let merged = Utxo::new(small1.amount + small2.amount, my_keypair.clone(), mint)?;
+let mut merged_note = merged.clone(); // the only copy of this blinding
+
+// Capture these before the inputs move into `opts`.
+let spent_1 = fr_to_bytes_be(&compute_commitment(&small1)?);
+let spent_2 = fr_to_bytes_be(&compute_commitment(&small2)?);
+
+let opts = TransactOptions {
+    inputs: vec![small1, small2],
+    outputs: vec![merged, Utxo::zero(Some(mint), None)?],
+    external_amount: 0, // shield-to-shield merge
+    rpc: Some(rpc.clone()),
+    payer: Some(payer.clone()),
+    relay_url: Some(relay_url.clone()),
+    cached_merkle_tree: cached_tree.take(),
+    ..Default::default()
+};
+let result = transact(opts).await?;
+
+// Store BEFORE the next round. Two notes are already spent on chain at this point.
+merged_note.index = result.output_indices[0];
+notes.insert(merged_note.clone())?;
+notes.mark_spent(&spent_1)?;
+notes.mark_spent(&spent_2)?;
+
+cached_tree = result.cached_merkle_tree;
+utxos.push(merged_note);
+```
+
+If a later round or the final withdrawal fails, resume from the note store: the merged notes you
+persisted are ordinary spendable notes, while the original small notes are already nullified.
+Replaying from the original input list double-spends and fails.
 
 ### Swap (requires relay_url, two-phase)
 
@@ -431,9 +490,19 @@ through one function (`transact()`) and a handful of helpers.
 
 What the engine deliberately leaves to consumers:
 
-- **Wallet / UTXO-set management.** Pick any backend (sled, sqlite, Postgres) behind `storage::note_store::NoteStore` and `storage::tree_cache::TreeCache`; the crate ships the traits and no implementation. This is not optional plumbing: per invariant 3, an output note you do not store is unspendable by anyone, permanently, because the random `blinding` from `Utxo::new` exists nowhere else. `TransactResult` gives you the commitments, indices, siblings, and post-tx tree to key that store by.
+- **Wallet / UTXO-set management.** Pick any backend (sled, sqlite, Postgres) behind `storage::note_store::NoteStore` and `storage::tree_cache::TreeCache`; the crate ships the traits and no implementation. This is not optional plumbing: per invariant 3, an output note you do not store is unspendable by anyone, permanently, because the `blinding` that `Utxo::new` fills in exists nowhere else. Input selection is yours too, and with it the merge sequence from invariant 2. `TransactResult` gives you the commitments, indices, siblings, and post-tx tree to key that store by.
 - **Chain scanner / compliance reports.** `RpcProvider` covers only `get_account_data`, `latest_blockhash`, `send_and_confirm`, and `get_slot`, so signature enumeration is on you (drive `getSignaturesForAddress` / `getTransaction` with your own client). Trial-decrypt chain notes with `ChainNote::decrypt(note_bytes, nk, &candidate_commitments)` and classify by discriminator. A scan recovers which commitments are yours; it does not recover a note's blinding, so it is no substitute for storing outputs at write time.
-- **High-level wallet façades.** The TS SDK ships optional stateful helpers (`UtxoWallet`, `SimpleWallet`) over the same engine; build your own shape that matches your app's lifecycle.
+- **High-level wallet façades.** The TS SDK ships optional stateful helpers (`UtxoWallet`,
+  `SimpleWallet`) over the same engine; build your own shape that matches your app's lifecycle.
+  Do **not** port their output construction. `UtxoWallet.prepareSend` ignores its recipient
+  argument and builds the recipient's note under a freshly generated random keypair, and it
+  hardcodes the native SOL mint on both the recipient note and the change, so the recipient
+  cannot spend what they receive and a non-SOL send is built against the wrong mint;
+  `SimpleWallet.send` delegates to it and inherits both. The TS `transfer` helper is correct and
+  shows the real constraint: it sets the recipient output's `privateKey` to `0` because the
+  sender does not hold the recipient's key, which is exactly why a sender must never count that
+  output into their own balance. In Rust: the recipient's `UtxoKeypair` public key must come from
+  the recipient, and only outputs you can spend belong in your balance.
 
 Alternate providers not currently wired through the crate:
 
@@ -453,6 +522,12 @@ Alternate providers not currently wired through the crate:
   and does not persist it. The stored record must include `keypair.private_key` and
   `blinding`, not just the commitment.
 - Handles `output_indices[i] == None` by storing the note anyway and backfilling later.
+- **Stores the merged note inside every merge round**, not once at the end of the sequence.
+  Reject any sample that loops `transact()` over 3+ notes and persists only the final result:
+  each round nullifies two notes on chain, so a sequence that fails midway has already spent
+  them. Reject equally any claim that some operation (a full withdrawal in particular) needs no
+  note storage; that is true only of an individual call whose outputs are all zero UTXOs.
+- Keeps output notes on the error path. An `Err` does not prove the transaction failed to land.
 - Imports `cloak_sdk::core::utxo::Utxo`, never the crate-root `cloak_sdk::Utxo`.
 - No secret logging (persisting to an encrypted store is not logging).
 - Uses SDK defaults for program / relay / circuits (no user-facing config).

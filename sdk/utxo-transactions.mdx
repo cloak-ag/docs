@@ -77,7 +77,10 @@ const utxo = await createUtxo(100_000_000n, keypair, NATIVE_SOL_MINT);
 
 `transact`, `transfer`, `partialWithdraw`, `swapUtxo` and `swapWithChange` all resolve to a result
 whose `outputUtxos` hold your money: the note a deposit created, and the change note left over by a
-spend. `fullWithdraw` is the only exemption, because it leaves nothing shielded.
+spend. `fullWithdraw` is exempt only when you hand it one or two notes, because only then does it
+leave nothing shielded. Given three or more notes it merges them on chain first, and that path
+strands money on failure:
+[withdrawing three or more notes consolidates first](#withdrawing-three-or-more-notes-consolidates-first).
 
 <Warning>
 A note is spendable only with its full secrets, and `createUtxo` draws each note's `blinding` from
@@ -112,6 +115,62 @@ back with `privateKey` set to `0n` and is not yours to hold.
 Where those bytes should live, how to reload them, and why `UtxoWallet.serialize()` drops
 `commitment` so that `verifyUtxos` then reports those notes as `skipped`:
 [where your notes live between sessions](/sdk/wallet-integration#where-your-notes-live-between-sessions).
+
+### Withdrawing three or more notes consolidates first
+
+`fullWithdraw` is a thin wrapper: it sums your inputs and calls `partialWithdraw` for the whole
+amount. `partialWithdraw` can spend only two notes at a time, because the circuit takes two inputs
+and two outputs. So when either call receives three or more notes, it first merges the two smallest
+on chain, repeatedly, until two are left, and only then withdraws.
+
+Each merge round is a real shield-to-shield transaction. It nullifies the two notes it consumed and
+creates one merged note whose `blinding` comes from `randomFieldElement()` inside `createUtxo`, the
+same fresh randomness as any other note. That merged note exists only in a local variable inside the
+call until the next round consumes it.
+
+<Warning>
+If a later merge round or the final withdrawal throws (stale-root retries exhausted, a `5xx` on
+submission, a closed tab, a rejected wallet approval), the merges that already landed are not undone.
+Their inputs are spent, the merged commitment is on chain, and the call rejected without returning a
+result, so there is nothing for you to persist. The secrets for that merged note existed only inside
+the call that just unwound. This is not specific to `fullWithdraw`: `partialWithdraw` runs the same
+loop.
+</Warning>
+
+With one or two input notes there is no loop and no exposure. `fullWithdraw` then genuinely leaves
+nothing shielded, and its outputs are padding rather than money.
+
+`onProgress` is the only signal a caller gets that consolidation is happening at all. It fires once
+per merge round with `Consolidating notes (n remaining)...`, so a call that emits it has already
+committed to multi-round on-chain work:
+
+```typescript
+await fullWithdraw(inputUtxos, recipientWallet, {
+  ...options,
+  // "Consolidating notes (4 remaining)..." means merges are landing on chain right now.
+  onProgress: (status) => console.log(status),
+});
+```
+
+The practical defence is to keep your note count low enough that withdrawals never take this path,
+and to consolidate deliberately rather than letting a withdrawal do it implicitly. A deliberate merge
+is an ordinary `transact` with `externalAmount: 0n`, and it hands the merged note back to you so you
+can write it down before the next one:
+
+```typescript
+// small1 and small2 are two notes you already hold. Merge them, persist, then take the next pair.
+const merged = await createUtxo(small1.amount + small2.amount, small1.keypair, small1.mintAddress);
+
+const result = await transact(
+  { inputUtxos: [small1, small2], outputUtxos: [merged], externalAmount: 0n },
+  options
+);
+
+await persistOutputs(result.outputUtxos); // now safe to merge the next pair
+```
+
+Repeat until two notes remain, then withdraw. Every intermediate note is one you hold on disk, so a
+failure costs you a retry instead of a note.
 
 ## Choosing a signer
 
@@ -258,7 +317,9 @@ await persistOutputs(sent.outputUtxos); // your change note is in here
 const withdrawn = await partialWithdraw(inputUtxos, recipientWallet, 10_000_000n, walletOptions);
 await persistOutputs(withdrawn.outputUtxos); // the remainder that stayed shielded
 
-// fullWithdraw is the exemption: it leaves nothing shielded, so there is no change note.
+// With one or two input notes fullWithdraw leaves nothing shielded, so there is no change note.
+// With three or more it merges on chain first, and a throw mid-merge strands a note no result
+// ever returns: see "Withdrawing three or more notes consolidates first" above.
 await fullWithdraw(inputUtxos, recipientWallet, walletOptions);
 ```
 
@@ -271,7 +332,9 @@ await persistOutputs(sent.outputUtxos); // your change note is in here
 const withdrawn = await partialWithdraw(inputUtxos, recipientWallet, 10_000_000n, options);
 await persistOutputs(withdrawn.outputUtxos); // the remainder that stayed shielded
 
-// fullWithdraw is the exemption: it leaves nothing shielded, so there is no change note.
+// With one or two input notes fullWithdraw leaves nothing shielded, so there is no change note.
+// With three or more it merges on chain first, and a throw mid-merge strands a note no result
+// ever returns: see "Withdrawing three or more notes consolidates first" above.
 await fullWithdraw(inputUtxos, recipientWallet, options);
 ```
 
@@ -387,9 +450,13 @@ If deposit account list is large, use v0 transactions with `addressLookupTableAc
 ## Operational notes
 
 - Every call hands its new notes back on `result.outputUtxos` and persists none of them. Write them
-  out with `serializeUtxo` before you report success. `fullWithdraw` is the exemption: it leaves
-  nothing shielded, so its outputs are padding rather than money. See
+  out with `serializeUtxo` before you report success. `fullWithdraw` is exempt only for one or two
+  input notes, where it leaves nothing shielded and its outputs are padding rather than money. See
   [every result carries notes you must persist](#every-result-carries-notes-you-must-persist).
+- `partialWithdraw` and `fullWithdraw` merge on chain before withdrawing whenever they are given
+  three or more input notes, and a failure mid-merge strands a note that no result ever hands back.
+  `onProgress` is the only signal. See
+  [withdrawing three or more notes consolidates first](#withdrawing-three-or-more-notes-consolidates-first).
 - Amounts use `bigint` in the UTXO API.
 - Proof retries are built in for stale roots (`0x1001`).
 - SDK-side Merkle reconstruction is preferred for older indices.

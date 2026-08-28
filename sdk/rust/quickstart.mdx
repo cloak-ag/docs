@@ -66,9 +66,9 @@ async fn main() -> anyhow::Result<()> {
     let payer = Arc::new(Keypair::new()); // replace with a funded keypair
 
     // ---- 2. Create the output UTXO --------------------------------------
-    // A UTXO is (keypair, blinding, amount, mint). `Utxo::new` draws the
-    // `blinding` at random and keeps it only inside the value it returns:
-    // the chain stores nothing but the Poseidon commitment. Clone the note
+    // A UTXO is (keypair, blinding, amount, mint). `Utxo::new` hands both the
+    // keypair and the blinding back inside the value it returns, and the chain
+    // stores nothing but the Poseidon commitment. Clone the note
     // now, because `output` is about to move into `TransactOptions`.
     let utxo_kp = UtxoKeypair::generate()?;
     let output = Utxo::new(MIN_DEPOSIT_LAMPORTS, utxo_kp, NATIVE_SOL_MINT)?;
@@ -156,9 +156,10 @@ Step 5 above is not boilerplate. The engine has no wallet and no storage, so per
 output notes is entirely yours.
 
 A note is spendable only by whoever holds its `UtxoKeypair.private_key` together with its
-exact `blinding`. `Utxo::new` draws that `blinding` from `random_field_element()` and
-keeps it only inside the value it returns; the on-chain leaf is nothing but
-`Poseidon(amount, public_key, blinding, mint_field)`.
+exact `blinding`. `Utxo::new` returns both inside the value it hands you, and the
+on-chain leaf is nothing but `Poseidon(amount, public_key, blinding, mint_field)`, so
+the chain never carries the `blinding` back. Persist the private key, the blinding and
+the leaf index together: any one of the three missing makes the note unspendable.
 
 <Warning>
   An output you constructed and then dropped is unspendable by you and by everyone else,
