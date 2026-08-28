@@ -47,4 +47,16 @@ Public input layout:
 
 ## Reliability behaviors
 
-- Stale root retries: SDK regenerates proofs when root history moved
+- Stale root retries: SDK regenerates proofs when root history moved, on a bounded retry budget
+- Nullifier preflight: `preflightNullifiers` throws `UtxoAlreadySpentError` before a spend, in one batched RPC call
+- Settlement confirmation: `confirmTransactSettlement` decides from chain state whether a submission landed by polling input-nullifier PDAs; a verdict of `unknown` means the SDK could not check and is never success
+- Direct-submission gating: `assertDirectSubmissionLanded` throws `SettlementVerificationError` unless nullifier PDAs prove the transaction was applied, because a confirmed-looking status field is not proof
+- Swap refund recovery: `discoverSwapRefunds` plus `deriveSwapRefundAuthorization` re-derive and reclaim a stranded swap refund. Discovery is forward-looking only: it finds refunds whose authorization was derived from the wallet's `nk`, so an empty result is not proof that no stranded refund exists
+- Pending-deposit recovery: `loadPendingDeposits` and `cleanupStalePendingOperations` persist in-flight deposits so a crash or navigation away does not strand a note. Browser storage is used by default and the records carry spending secrets, so encrypt that storage in production
+
+## Where to go next
+
+1. [Shield Pool Program](/protocol/shield-pool)
+2. [UTXO Transactions](/sdk/utxo-transactions)
+3. [Code Examples](/sdk/examples)
+4. [Security controls](/operations/security)

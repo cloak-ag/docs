@@ -10,6 +10,16 @@ Cloak runs on Solana devnet so you can develop and test your integration against
 
 This page is for **app developers** who want to integrate the Cloak SDK against a non-production environment.
 
+<Warning>
+**The hosted devnet submission endpoint is not serving right now.** `https://api.devnet.cloak.ag`
+resolves and accepts TCP on 443, but the TLS handshake is reset on every attempt, so the samples
+on this page will not complete as written. `@cloak.dev/sdk-devnet` also tracks an older SDK line
+than the mainnet package documented in [SDK](/sdk/introduction): it does not carry the 0.2.0
+surface, and its circuit artifact bucket no longer serves. For anything you need working today,
+build against `@cloak.dev/sdk` and a mainnet or local target. This page stays published so the
+devnet addresses and faucet remain discoverable.
+</Warning>
+
 ## Endpoints
 
 ```
@@ -29,7 +39,7 @@ Real Circle USDC and USDT are not available on devnet.
 
 ## SDK install
 
-The published `@cloak.dev/sdk` targets mainnet. For devnet, install the dedicated devnet SDK package — it pre-configures the program ID, the relay URL, and exports a `DEVNET_MOCK_USDC_MINT` constant. The surface is otherwise identical to the mainnet SDK.
+The published `@cloak.dev/sdk` targets mainnet. The devnet package pre-configures the devnet program ID and submission endpoint and exports a `DEVNET_MOCK_USDC_MINT` constant. It is a separate release line from the mainnet package and its exported surface differs; treat the mainnet [API reference](/sdk/api-reference) as authoritative only for `@cloak.dev/sdk`.
 
 <CodeGroup>
 ```bash @solana/web3.js
@@ -721,7 +731,7 @@ Successful response:
 | Per wallet, rolling 24h | 5,000 mock USDC |
 | Cooldown between requests for the same wallet | 30 seconds |
 
-Limits are enforced server-side in-memory per Vercel instance — they reset when the warm container is evicted, so don't treat them as a hard ceiling. If you need significantly more than the per-day cap for a load test, ask in Discord.
+Limits are enforced server-side in-memory per Vercel instance — they reset when the warm container is evicted, so don't treat them as a hard ceiling. If you need significantly more than the per-day cap for a load test, ask in [Discord](https://discord.gg/hdkrhrgfER).
 
 ### Notes
 
@@ -731,14 +741,21 @@ Limits are enforced server-side in-memory per Vercel instance — they reset whe
 
 ## Switching to mainnet
 
-When you ship to production, change one line:
+When you ship to production, change the import and name the submission endpoint:
 
 ```diff
 - import { transact, CLOAK_PROGRAM_ID } from "@cloak.dev/sdk-devnet";
 + import { transact, CLOAK_PROGRAM_ID } from "@cloak.dev/sdk";
+
+  const result = await transact(params, {
+    connection,
+    programId: CLOAK_PROGRAM_ID,
+    depositorKeypair: sender,
++   relayUrl: "https://api.cloak.ag",
+  });
 ```
 
-The mainnet SDK has the production relay, program ID, and circuits paths baked in as defaults — your code is otherwise unchanged. Just swap `DEVNET_MOCK_USDC_MINT` for Circle USDC (`EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v`) and use a mainnet RPC for your `Connection`. Cloak's mainnet `swapWithChange` routes through Jupiter (real liquidity); devnet routes through the Pyth-priced mock path.
+The mainnet SDK ships the production program ID and the 0.2.0 circuits paths as defaults. The submission endpoint is not defaulted: pass `relayUrl` in your options, or set `CLOAK_RELAY_URL` in the environment. Omitting it does not fail cleanly. `swapWithChange` throws `relayUrl is required for swapUtxo`, and a shielded transfer that also passes `depositorKeypair` falls back to submitting under your own wallet, which pays the fee and links the transaction to you. Also swap `DEVNET_MOCK_USDC_MINT` for Circle USDC (`EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v`) and use a mainnet RPC for your `Connection`. Cloak's mainnet `swapWithChange` routes through Jupiter (real liquidity); devnet routes through the Pyth-priced mock path.
 
 ## Limitations
 
@@ -749,4 +766,4 @@ The mainnet SDK has the production relay, program ID, and circuits paths baked i
 
 ## Help
 
-- Discord: https://discord.gg/FmtUrR3a9
+- Discord: https://discord.gg/hdkrhrgfER

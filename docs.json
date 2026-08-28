@@ -19,6 +19,7 @@
               "guide/what-is-cloak",
               "guide/how-it-works",
               "guide/private-balance",
+              "guide/private-send",
               "guide/fees",
               "guide/payment-links"
             ]
@@ -76,6 +77,7 @@
               "sdk/kit-integration",
               "sdk/core-concepts",
               "sdk/utxo-transactions",
+              "sdk/shielded-transfers",
               "sdk/wallet-integration",
               "sdk/error-handling",
               "sdk/api-reference"
@@ -154,7 +156,7 @@
         },
         {
           "anchor": "Discord",
-          "href": "https://discord.gg/FmtUrR3a9",
+          "href": "https://discord.gg/hdkrhrgfER",
           "icon": "discord"
         }
       ]
@@ -191,7 +193,7 @@
     "socials": {
       "x": "https://x.com/cloak_ag",
       "github": "https://github.com/cloak-ag",
-      "discord": "https://discord.gg/FmtUrR3a9"
+      "discord": "https://discord.gg/hdkrhrgfER"
     }
   },
   "redirects": [

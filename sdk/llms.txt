@@ -24,7 +24,8 @@ Use this file as your primary SDK briefing and only fall back to the friendlier 
 - Types: `dist/index.d.ts`
 - Program ID (default, mainnet): `zh1eLd6rSphLejbFfJEneUwzHRfMKxgzrgkfwA6qRkW`
 - Devnet program ID: `Zc1kHfp4rajSMeASFDwFFgkHRjv7dFQuLheJoQus27h` (served by the local-only `@cloak.dev/sdk-devnet` fork — see `docs/operations/devnet.md`; NOT available through the published `@cloak.dev/sdk` NPM package).
-- Submission endpoint and circuits defaults are built into the SDK for standard integrations.
+- Circuits: the 0.2.0 bundle base is pinned into this SDK build (`DEFAULT_TRANSACTION_CIRCUITS_URL`), so standard integrations configure nothing. Override with `setCircuitsPath()` or `CLOAK_CIRCUITS_PATH`.
+- Submission endpoint: NOT defaulted, by design, so a local or test run can never silently reach production. Pass `relayUrl` in `TransactOptions`, or set `CLOAK_RELAY_URL` in the environment (Node only). Without it: `swapUtxo` throws `relayUrl is required for swapUtxo`; `transact` / `transfer` / `partialWithdraw` / `fullWithdraw` fall back to direct submission signed and paid by the user, which forfeits the gasless, unlinkable path, and fail outright if no signer is supplied either.
 - Hashing: BN254 Poseidon (via `@lightprotocol/hasher.rs`) + BLAKE3.
 - Proof system: Groth16 via `snarkjs`.
 - Native companion types: `@solana/web3.js` for `Connection`, `Keypair`, `Transaction`, `PublicKey`. `@solana/kit` is supported for reads (see §4d).
@@ -50,15 +51,15 @@ npm install @solana/spl-token @solana/kit
    `inputSum + externalAmount === outputSum`.
 4. Amounts in UTXO flows are ALWAYS `bigint`. Never cast to `number` inside transaction logic.
 5. Public inputs for the transact/withdraw-swap proofs are 264-byte payloads; do not hand-pack them.
-6. On-chain fee model (enforced by the program from each pool's `PoolConfig`; `transact` reads the live config before building a fee-bearing proof):
-   - SOL: `fixed 0.005 SOL` (`5_000_000` lamports) + `0.3 %` variable fee.
-   - SPL (USDC/USDT): `fixed 0.45` (`450_000` base units) + `0.3 %` variable fee, charged in the withdrawn token.
+6. On-chain fee model (read by the program from each pool's `pool_config` PDA and collected by the program into the treasury; `transact` reads the live config before building a fee-bearing proof):
+   - SOL: `5_000_000` lamports fixed (`0.005 SOL`) + `0.3 %` variable. SDK helpers: `calculateFee(number)`, `calculateFeeBigint(bigint)`, `isWithdrawAmountSufficient(bigint)`, `getDistributableAmount(number)`.
+   - SPL (USDC/USDT, 6 decimals): `450_000` base units fixed (`0.45` token) + `0.3 %` variable, charged in the withdrawn token. The SDK does not compute SPL fees; there is no SPL fee helper.
    - Fees only apply on withdrawal/swap paths. Deposits and shield-to-shield transfers pay zero protocol fee.
-   - Minimum deposit: `10_000_000` lamports (SOL), `1_000_000` base units (USDC/USDT).
+   - Minimum deposit: `10_000_000` lamports for SOL, `1_000_000` base units for USDC/USDT.
 7. Viewing-key registration is required before scanner/compliance flows can decrypt chain notes; for pure deposit/withdraw flows you can pass `enforceViewingKeyRegistration: false` to `TransactOptions`.
 8. Merkle root freshness: treat `RootNotFound` / stale-root errors as retryable. SDK transaction paths already retry these by default; use `preflightCheck` / `waitForRoot` only for advanced/operator flows.
 9. Never log secrets: spend keys, viewing keys (`nk`), UTXO private keys, blindings, signed messages, note payloads.
-10. Standard integrations should use SDK defaults for program, relay, and circuits. Only override for custom/operator deployments.
+10. Standard integrations should use SDK defaults for program and circuits. Only override for custom/operator deployments. There is no relay default: `relayUrl` is required on every flow.
 11. In low-level UTXO calls, keep `programId` fixed to `CLOAK_PROGRAM_ID` in one place and do not expose it as user configuration.
 12. Minimal scripts should use `KEYPAIR_PATH` + `<lamports>` input; do not use raw secret env vars or float amount parsing.
 
@@ -78,6 +79,7 @@ import {
   MIN_DEPOSIT_LAMPORTS,       // 10_000_000
   VARIABLE_FEE_NUMERATOR,     // 3
   VARIABLE_FEE_DENOMINATOR,   // 1000
+  VARIABLE_FEE_RATE,          // 0.003
   LAMPORTS_PER_SOL,           // 1_000_000_000
   SIGN_IN_MESSAGE,            // wallet-based viewing-key derivation message
   VERSION,                    // SDK version string
@@ -110,36 +112,56 @@ class CloakError extends Error {
 ### 4a. Node.js with a Keypair (server / script)
 
 ```ts
-import { CloakSDK } from "@cloak.dev/sdk";
-import { Keypair } from "@solana/web3.js";
+import { CLOAK_PROGRAM_ID, setDebugMode } from "@cloak.dev/sdk";
+import { Connection, Keypair } from "@solana/web3.js";
 import { readFileSync } from "fs";
 
 const signer = Keypair.fromSecretKey(
   Uint8Array.from(JSON.parse(readFileSync(process.env.KEYPAIR_PATH!, "utf8"))),
 );
 
-const sdk = new CloakSDK({
-  keypairBytes: signer.secretKey,
-  network: "mainnet",
-  debug: true,
-});
+const connection = new Connection(process.env.SOLANA_RPC_URL!, "confirmed");
+setDebugMode(true);
+
+// There is no client object. The signer travels per call, in TransactOptions.
+const options = {
+  connection,
+  programId: CLOAK_PROGRAM_ID,
+  relayUrl: process.env.CLOAK_RELAY_URL!,
+  depositorKeypair: signer,
+  walletPublicKey: signer.publicKey,
+};
 ```
 
 ### 4b. Browser with `@solana/wallet-adapter`
 
 ```ts
-import { CloakSDK, LocalStorageAdapter } from "@cloak.dev/sdk";
+import {
+  CLOAK_PROGRAM_ID,
+  LocalStorageAdapter,
+  getPublicKey,
+  validateWalletConnected,
+} from "@cloak.dev/sdk";
 import { useWallet } from "@solana/wallet-adapter-react";
 
 const wallet = useWallet();
-const sdk = new CloakSDK({
-  wallet,
-  network: "mainnet",
-  storage: new LocalStorageAdapter(),
-});
+validateWalletConnected(wallet);
+
+// Persist notes and key material through an explicit storage boundary.
+const storage = new LocalStorageAdapter();
+
+const options = {
+  connection,
+  programId: CLOAK_PROGRAM_ID,
+  relayUrl: process.env.NEXT_PUBLIC_CLOAK_RELAY_URL!,
+  signTransaction: wallet.signTransaction!,
+  signMessage: wallet.signMessage!,
+  depositorPublicKey: getPublicKey(wallet),
+  walletPublicKey: getPublicKey(wallet),
+};
 ```
 
-### 4c. UTXO transaction API without `CloakSDK` (lower-level, recommended for new integrations)
+### 4c. UTXO transaction API (primary runtime entry point)
 
 ```ts
 import {
@@ -177,55 +199,15 @@ For an end-to-end Kit-flavored integration shape, combine the read/write split i
 
 Group exports by responsibility. Every symbol below is a real named export of `@cloak.dev/sdk`.
 
-### 5.1 Main client (legacy note-based API)
+### 5.1 Package constants and entry points
 
-- `CloakSDK` — class
-- `CLOAK_PROGRAM_ID` — `PublicKey`
-- `VERSION` — string
+There is no client class. The transaction entry points are free functions, listed in §5.3.
 
-`CloakSDK` high-signal methods:
-
-```ts
-class CloakSDK {
-  constructor(config: {
-    keypairBytes?: Uint8Array;
-    wallet?: WalletAdapter;
-    network?: Network;
-    cloakKeys?: CloakKeyPair;
-    storage?: StorageAdapter;
-    programId?: PublicKey;
-    relayUrl?: string;
-    debug?: boolean;
-  });
-
-  getPublicKey(): PublicKey;
-  isWalletMode(): boolean;
-
-  // Legacy (v1 note) flows — still supported; prefer UTXO API for new work.
-  deposit(connection: Connection, amountOrNote: number | CloakNote, options?: DepositOptions): Promise<DepositResult>;
-  privateTransfer(connection: Connection, note: CloakNote, recipients: MaxLengthArray<Transfer, 5>, options?: TransferOptions): Promise<TransferResult>;
-  withdraw(connection: Connection, note: CloakNote, recipient: PublicKey, options?: WithdrawOptions): Promise<TransferResult>;
-  send(connection: Connection, note: CloakNote, recipients: MaxLengthArray<Transfer, 5>, options?: TransferOptions): Promise<TransferResult>;
-  swap(connection: Connection, note: CloakNote, recipient: PublicKey, options: SwapOptions): Promise<SwapResult>;
-
-  generateNote(amountLamports: number, useWalletKeys?: boolean): Promise<CloakNote>;
-  parseNote(jsonString: string): CloakNote;
-  exportNote(note: CloakNote, pretty?: boolean): string;
-  isWithdrawable(note: CloakNote): boolean;
-
-  getMerkleProof(connection: Connection, leafIndex: number): Promise<MerkleProof>;
-  getCurrentRoot(connection: Connection): Promise<string>;
-  getTransactionStatus(requestId: string): Promise<TxStatus>;
-
-  loadNotes(): Promise<CloakNote[]>;
-  saveNote(note: CloakNote): Promise<void>;
-  findNote(commitment: string): Promise<CloakNote | undefined>;
-
-  importWalletKeys(keysJson: string): Promise<void>;
-  exportWalletKeys(): string;
-  getConfig(): CloakConfig;
-}
-```
+- `CLOAK_PROGRAM_ID` — `PublicKey`, mainnet program
+- `NATIVE_SOL_MINT` — `PublicKey`, SOL pool mint identity
+- `VERSION` — string, `"0.2.0"`
+- `setDebugMode(enabled: boolean)` — global SDK logging switch
+- `LocalStorageAdapter` / `MemoryStorageAdapter` — `StorageAdapter` implementations (see §5.13)
 
 ### 5.2 UTXO primitives (primary data model)
 
@@ -315,7 +297,7 @@ Key `TransactOptions` fields (most used):
 interface TransactOptions {
   connection: Connection;
   programId: PublicKey;
-  relayUrl?: string;                      // defaults to SDK relay URL
+  relayUrl?: string;                      // NO default, see §1; required on every flow
 
   // Signing (choose one):
   depositorKeypair?: Keypair;             // server / script mode
@@ -615,16 +597,22 @@ const VARIABLE_FEE_NUMERATOR: number;  // 3
 const VARIABLE_FEE_DENOMINATOR: number;// 1000
 const VARIABLE_FEE_RATE: number;       // 0.003
 
+// SOL pool. These four functions are the entire fee surface the SDK exports.
 function calculateFee(amountLamports: number): number;          // fixed + variable
 function calculateFeeBigint(amountLamports: bigint): bigint;    // same, bigint
 function isWithdrawAmountSufficient(amountLamports: bigint): boolean;
 function getDistributableAmount(amountLamports: number): number;
+
+// Formatting
 function formatAmount(lamports: number, decimals?: number): string;
 function parseAmount(sol: string): number;
 ```
 
-SPL pools (USDC/USDT) charge `450_000` base units fixed (0.45) + `3 / 1000` variable in the
-withdrawn token; minimum SPL deposit is `1_000_000` base units (1.00). See `/protocol/fee-model`.
+There is NO SPL fee helper. USDC and USDT pools charge `450_000` base units fixed (0.45 token at
+6 decimals) plus the same `3 / 1000` variable fee in the withdrawn token, and the program reads the
+effective values from the `pool_config` PDA; minimum SPL deposit is `1_000_000` base units (1.00).
+Compute an SPL fee yourself, or read it back from the transaction result. Do not invent a
+`calculateSpl*` or Q64 helper: none exists. See `/protocol/fee-model`.
 
 ### 5.12 Errors
 
@@ -910,18 +898,20 @@ const delta = await scanTransactions({
 For standard app integrations, keep the SDK-managed registration flow and avoid manual wiring.
 Only use direct registration helpers for custom/operator pipelines.
 
-### 6.9 Fee math (SOL + SPL)
+### 6.9 Fee math
 
 ```ts
 import { calculateFeeBigint, isWithdrawAmountSufficient } from "@cloak.dev/sdk";
 
 // SOL, 1.0 SOL gross → fee = 5_000_000 + 3_000_000 = 8_000_000 lamports, net 992_000_000
 const solGross = 1_000_000_000n;
-const solFee = calculateFeeBigint(solGross);
+const solFee = calculateFeeBigint(solGross);   // 5_000_000 fixed + 0.3 % variable
 const solNet = solGross - solFee;
-isWithdrawAmountSufficient(solGross); // true
+if (!isWithdrawAmountSufficient(solGross)) throw new Error("below the SOL fee floor");
 
-// USDC, 100.000000 USDC gross (program rule, charged on-chain from the pool's PoolConfig):
+// USDC / USDT, 100.000000 USDC gross. No SDK helper exists for SPL: the fixed component is a
+// program constant of 450_000 base units (0.45 token at 6 decimals), charged on-chain from the
+// pool's PoolConfig alongside the same 0.3 % variable fee.
 // fee = 450_000 + 100_000_000 * 3 / 1000 = 750_000 base units (0.75 USDC), net 99_250_000
 const usdcGross = 100_000_000n;
 const usdcFee = 450_000n + (usdcGross * 3n) / 1000n;
@@ -1014,11 +1004,11 @@ Use section 6 directly as your public, copy-paste integration source:
 ## 8. AI generation guardrails (hard rules)
 
 1. Never print/log secrets: spend keys (`skSpend`), viewing keys (`nk`, private bytes), UTXO `privateKey`, `blinding`, note payloads, raw `sign_message` outputs, `cloakKeys`, or relayer auth tokens.
-2. Never hand-pack Groth16 public inputs. Use `generateWithdrawRegularProof` / `generateWithdrawSwapProof` from the SDK.
+2. Never hand-pack Groth16 public inputs. Let `transact` / `swapUtxo` build the proof and the 264-byte public inputs for you.
 3. Never bypass `viewingKeyNk` when calling `scanTransactions` — it cannot return anything without it.
 4. Never change `externalAmount` semantics; treat deposit/withdraw/transfer as three distinct modes derived from that field.
 5. Never call `transact` with raw `number` amounts. Always `BigInt(...)` at API boundaries.
-6. Use SDK defaults for program, relay, and circuits in standard integrations.
+6. Use SDK defaults for program and circuits in standard integrations. `relayUrl` has no default and must be passed on every flow.
 7. Prefer `scanTransactions` + `toComplianceReport` for user history UX. Do not re-invent compliance endpoints.
 8. For mutating paths in the browser, prefer the wallet adapter (`signTransaction` / `signMessage`). Reserve `depositorKeypair` for Node scripts.
 9. Do not add manual stale-root retry loops by default in app scripts; SDK transaction paths already handle these retries.

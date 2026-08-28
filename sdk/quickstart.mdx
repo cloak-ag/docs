@@ -29,6 +29,7 @@ const connection = new Connection(
   "https://api.mainnet-beta.solana.com",
   "confirmed",
 );
+const relayUrl = process.env.CLOAK_RELAY_URL ?? "https://api.cloak.ag";
 const signer = Keypair.fromSecretKey(/* Uint8Array secret key */);
 
 const amount = 1_000_000_000n; // 1 SOL
@@ -45,6 +46,7 @@ const deposited = await transact(
   {
     connection,
     programId: CLOAK_PROGRAM_ID,
+    relayUrl,
     depositorKeypair: signer,
     walletPublicKey: signer.publicKey,
   },
@@ -56,6 +58,7 @@ const recipient = Keypair.generate().publicKey;
 await fullWithdraw(deposited.outputUtxos, recipient, {
   connection,
   programId: CLOAK_PROGRAM_ID,
+  relayUrl,
   depositorKeypair: signer,
   walletPublicKey: signer.publicKey,
   cachedMerkleTree: deposited.merkleTree,
@@ -65,6 +68,7 @@ await fullWithdraw(deposited.outputUtxos, recipient, {
 // await partialWithdraw(deposited.outputUtxos, recipient, 200_000_000n, {
 //   connection,
 //   programId: CLOAK_PROGRAM_ID,
+//   relayUrl,
 //   depositorKeypair: signer,
 //   walletPublicKey: signer.publicKey,
 //   cachedMerkleTree: deposited.merkleTree,
@@ -77,7 +81,7 @@ For minimal script generation, keep this exact interface:
 
 - file: `send-sol-private.ts`
 - command: `npx tsx send-sol-private.ts <recipientPubkey> <lamports>`
-- env vars: `SOLANA_RPC_URL`, `KEYPAIR_PATH`
+- env vars: `SOLANA_RPC_URL`, `KEYPAIR_PATH`, optional `CLOAK_RELAY_URL`
 
 Guardrails:
 
@@ -95,9 +99,12 @@ Use this when you want a first real send with explicit runtime values.
 
 ```bash
 export SOLANA_RPC_URL="https://api.mainnet-beta.solana.com"
+export CLOAK_RELAY_URL="https://api.cloak.ag"
 
-# Must be an absolute path. Do not rely on `~` expansion inside env files.
-export KEYPAIR_PATH="/Users/you/.config/solana/id.json"
+# KEYPAIR_PATH must resolve to an absolute path at runtime. The shell expands
+# $HOME here; env files do not expand `~` or `$HOME`, so write the resolved
+# absolute path there instead.
+export KEYPAIR_PATH="$HOME/.config/solana/id.json"
 ```
 
 Sanity-check before running:

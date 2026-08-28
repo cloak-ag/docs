@@ -22,29 +22,6 @@ Add wallet UI packages as needed:
 npm install @solana/wallet-adapter-react-ui @solana/wallet-adapter-wallets
 ```
 
-## Note-based integration (`CloakSDK`)
-
-```typescript
-import { useMemo } from "react";
-import { CloakSDK } from "@cloak.dev/sdk";
-import { useWallet } from "@solana/wallet-adapter-react";
-import { PublicKey } from "@solana/web3.js";
-
-export function useCloak() {
-  const { publicKey, signTransaction, sendTransaction } = useWallet();
-
-  return useMemo(() => {
-    if (!publicKey || !sendTransaction) return null;
-
-    return new CloakSDK({
-      wallet: { publicKey, signTransaction, sendTransaction },
-      network: "mainnet",
-      programId: new PublicKey("zh1eLd6rSphLejbFfJEneUwzHRfMKxgzrgkfwA6qRkW"),
-    });
-  }, [publicKey, signTransaction, sendTransaction]);
-}
-```
-
 ## UTXO integration with wallet signing
 
 For UTXO `transact` deposits in browser apps, pass wallet signing fields in `TransactOptions`:
@@ -80,6 +57,7 @@ import {
 import { Connection, PublicKey } from "@solana/web3.js";
 
 const connection = new Connection(process.env.SOLANA_RPC_URL!, "confirmed");
+const relayUrl = process.env.CLOAK_RELAY_URL!;
 const programId = CLOAK_PROGRAM_ID;
 
 async function sendWithWalletAdapter({
@@ -108,7 +86,9 @@ async function sendWithWalletAdapter({
     {
       connection,
       programId,
+      relayUrl,
       signTransaction,
+      signMessage,
       depositorPublicKey: walletPublicKey,
       walletPublicKey,
       onProgress: (status) => console.log("deposit", status),
@@ -124,6 +104,7 @@ async function sendWithWalletAdapter({
       withdrawResult = await fullWithdraw(deposited.outputUtxos, recipient, {
         connection,
         programId,
+        relayUrl,
         walletPublicKey,
         signMessage,
         cachedMerkleTree: deposited.merkleTree,

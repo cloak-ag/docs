@@ -43,7 +43,7 @@ We integrate `@cloak.dev/sdk`.
 ## Constants
 
 - Program ID: `zh1eLd6rSphLejbFfJEneUwzHRfMKxgzrgkfwA6qRkW`
-- Circuit base URL: `https://storage.googleapis.com/cloak-circuits/circuits/0.2.0` (ceremony bundle; the SDK default via `resolveCircuitsBase()` — never hand-write it, and never use `0.1.0`: the program no longer accepts those artifacts)
+- Circuit base URL: `https://storage.googleapis.com/cloak-circuits/circuits/0.2.0` (the ceremony bundle). Never hand-write the string: read the exported `DEFAULT_CIRCUITS_URL` constant, or call `resolveCircuitsBase()` to get the SDK default. Never point at `0.1.0`; the program no longer accepts those artifacts and they fail with `0x1010` (`ProofInvalid`).
 
 ## Capability groups (must check all)
 
@@ -58,7 +58,7 @@ We integrate `@cloak.dev/sdk`.
 
 - Prefer UTXO flows for new features.
 - Keep transaction amounts as `bigint`.
-- Enforce viewing-key registration before actions.
+- Do not add an app-level viewing-key registration step. `transact()` and `swapUtxo()` register automatically before every flow (`transfer`, `partialWithdraw`, `fullWithdraw` and `swapWithChange` route through them), deriving `nk` from the UTXO keypair when it is not supplied. Call the exported `registerViewingKey` only for standalone compliance or history scanning.
 - Build cache-first history with explicit rescan.
 
 ## Security rules
@@ -66,7 +66,7 @@ We integrate `@cloak.dev/sdk`.
 - Never output secrets in logs.
 - Never include raw private material in telemetry.
 - Transaction signatures are public and can be logged for support/debugging.
-- Use SDK defaults for program, relay, and circuits. Do not expose these as user-facing config.
+- Use SDK defaults for program and circuits. Do not expose those as user-facing config. The relay has no SDK default: pass `relayUrl` on every call, read from the `CLOAK_RELAY_URL` env var.
 
 ## Docs
 

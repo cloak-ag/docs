@@ -32,6 +32,7 @@ import { address, createSolanaRpc } from "@solana/kit";
 import { Connection, Keypair } from "@solana/web3.js";
 
 const rpcUrl = process.env.SOLANA_RPC_URL!;
+const relayUrl = process.env.CLOAK_RELAY_URL ?? "https://api.cloak.ag";
 const programId = CLOAK_PROGRAM_ID;
 
 // Kit client for read paths.
@@ -58,6 +59,7 @@ const deposit = await transact(
   {
     connection,
     programId,
+    relayUrl,
     depositorKeypair: signer,
   },
 );
@@ -65,10 +67,11 @@ const deposit = await transact(
 await partialWithdraw(
   deposit.outputUtxos,
   Keypair.generate().publicKey,
-  5_000_000n,
+  10_000_000n,
   {
     connection,
     programId,
+    relayUrl,
     depositorKeypair: signer,
     cachedMerkleTree: deposit.merkleTree,
   },

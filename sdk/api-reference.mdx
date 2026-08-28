@@ -6,76 +6,9 @@ icon: "code"
 
 This page tracks the current public exports of `@cloak.dev/sdk`.
 
-## Main client: `CloakSDK`
-
-### Constructor
-
-```typescript
-new CloakSDK({
-  keypairBytes?: Uint8Array;
-  wallet?: WalletAdapter;
-  network?: "mainnet";
-  cloakKeys?: CloakKeyPair;
-  storage?: StorageAdapter;
-  programId?: PublicKey;
-  relayUrl?: string;
-  debug?: boolean;
-})
-```
-
-At least one signer path is required: `keypairBytes` or `wallet`.
-
-### Core methods
-
-```typescript
-sdk.deposit(connection, amountOrNote, options?) => Promise<DepositResult>
-sdk.withdraw(connection, note, recipient, options?) => Promise<TransferResult>
-sdk.send(connection, note, recipients, options?) => Promise<TransferResult>
-sdk.swap(connection, note, recipient, options) => Promise<SwapResult>
-```
-
-Also available:
-
-```typescript
-sdk.privateTransfer(connection, note, recipients, options?)
-sdk.generateNote(amountLamports, useWalletKeys?)
-sdk.getMerkleProof(connection, leafIndex)
-sdk.getCurrentRoot(connection)
-sdk.getTransactionStatus(requestId)
-```
-
-Storage/key helpers on the class:
-
-```typescript
-sdk.loadNotes();
-sdk.saveNote(note);
-sdk.findNote(commitment);
-sdk.importWalletKeys(keysJson);
-sdk.exportWalletKeys();
-sdk.getConfig();
-```
-
-## Note API types
-
-```typescript
-type DepositResult = {
-  note: CloakNote;
-  signature: string;
-  leafIndex: number;
-  root: string;
-};
-
-type TransferResult = {
-  signature: string;
-  outputs: Array<{ recipient: string; amount: number }>;
-  nullifier: string;
-  root: string;
-};
-```
-
 ## UTXO API
 
-Common UTXO transaction exports:
+The UTXO free functions are the primary entrypoint. There is no client class to construct.
 
 ```typescript
 transact(params, options)
@@ -86,6 +19,15 @@ swapUtxo(params, options)
 swapWithChange(inputUtxos, swapAmount, outputMint, recipientAta, minOutputAmount, options, recipientWallet?)
 ```
 
+`transact` is the single engine entrypoint and the sign of `externalAmount` classifies the
+flow: positive shields (deposit), negative withdraws, zero is a shielded transfer.
+`transfer`, `partialWithdraw` and `fullWithdraw` are shaped wrappers over it.
+
+Every one of these takes a `TransactOptions` object. `connection`, `programId` and `relayUrl`
+are required on all flows; supply either `depositorKeypair` (programmatic) or the wallet
+callbacks `signTransaction` / `signMessage` plus `walletPublicKey` (browser). `relayUrl` has
+no default, so pass it explicitly or set `CLOAK_RELAY_URL` on Node.
+
 UTXO primitives:
 
 ```typescript
@@ -94,19 +36,75 @@ createUtxo(amount, keypair, mint?)
 createZeroUtxo(mint?)
 computeUtxoCommitment(utxo)
 computeUtxoNullifier(utxo)
+selectUtxos(available: Utxo[], targetAmount: bigint)
+verifyUtxos(utxos, connection, programId, commitment?)
+```
+
+Note storage and key material:
+
+```typescript
+UtxoWallet
+LocalStorageAdapter
+MemoryStorageAdapter
+importWalletKeys(keysJson: string)
+exportWalletKeys(keys: CloakKeyPair)
+```
+
+Note helpers, all free functions:
+
+```typescript
+generateNoteFromWallet(amountLamports, keys, network?)
+parseNote(jsonString)
+serializeNote(note, pretty?)
+encodeNoteSimple(note)
+exportNote(note, pretty?)
+validateNote(note)
 ```
 
 Full flow guide: [UTXO Transactions](/sdk/utxo-transactions)
 
-## Relay and proof utilities
+## Result types
+
+Every UTXO flow resolves to a `TransactResult`:
 
 ```typescript
-new RelayService(baseUrl)
-relay.submitWithdraw(...)
-relay.submitSwap(...)
-relay.getStatus(requestId)
-relay.resumeWithdraw(requestId)
+interface TransactResult {
+  signature: string;
+  inputNullifiers: bigint[];
+  outputCommitments: bigint[];
+  newRoot: string;
+  commitmentIndices: [number, number];
+  siblingCommitments: [bigint, bigint];
+  preTransactionLeftSibling?: bigint;
+  outputUtxos: Utxo[];
+  viewingKeyRegistered?: boolean;
+  merkleTree?: MerkleTree;
+  addressLookupTableAccounts?: AddressLookupTableAccount[];
+}
+```
 
+`swapUtxo` and `swapWithChange` both resolve to a `UtxoSwapResult`, which extends it:
+
+```typescript
+interface UtxoSwapResult extends TransactResult {
+  swapStatePda: string;
+  nullifier: string;
+  requestId?: string;
+  refund: {
+    privateKey: string;
+    publicKey: string;
+    blinding: string;
+    derivedFromNk: boolean;
+  };
+}
+```
+
+Persist `refund`. It is the recovery secret for reclaiming the input if the swap times out
+before its second transaction lands.
+
+## Proof and Merkle utilities
+
+```typescript
 computeProofFromChain(connection, merkleTreePDA, leafIndex)
 readMerkleTreeState(connection, merkleTreePDA)
 buildMerkleTreeFromRelay(relayUrl)
@@ -115,7 +113,6 @@ buildMerkleTreeFromRelay(relayUrl)
 Notes:
 
 - UTXO transact/swap flows submit 256-byte proofs and 264-byte public inputs.
-- `RelayService` is the low-level submission client; the high-level `CloakSDK` class wraps it for you.
 
 ## Fee constants
 
@@ -125,20 +122,24 @@ math. SPL pools (USDC/USDT) charge `450_000` base units fixed (0.45) + 0.3%; see
 [Fee Model](/protocol/fee-model).
 
 ```typescript
-FIXED_FEE_LAMPORTS      // 5_000_000
-VARIABLE_FEE_NUMERATOR  // 3
-VARIABLE_FEE_DENOMINATOR// 1000
-MIN_DEPOSIT_LAMPORTS    // 10_000_000
-VARIABLE_FEE_RATE       // 0.003
-LAMPORTS_PER_SOL        // 1_000_000_000
+FIXED_FEE_LAMPORTS       // 5_000_000
+VARIABLE_FEE_NUMERATOR   // 3
+VARIABLE_FEE_DENOMINATOR // 1000
+VARIABLE_FEE_RATE        // 0.003
+MIN_DEPOSIT_LAMPORTS     // 10_000_000
+LAMPORTS_PER_SOL         // 1_000_000_000
 
-calculateFee(amount: number)
-calculateFeeBigint(amount: bigint)
-isWithdrawAmountSufficient(amount: bigint)
-getDistributableAmount(amount: number)
+calculateFee(amountLamports: number)
+calculateFeeBigint(amountLamports: bigint)
+isWithdrawAmountSufficient(amountLamports: bigint)
+getDistributableAmount(amountLamports: number)
 formatAmount(lamports: number, decimals?: number)
 parseAmount(sol: string)
 ```
+
+These values cover the native SOL pool. SPL pools (USDC and USDT) charge a fixed 0.45 token,
+450,000 raw units at 6 decimals, plus the same 0.3 percent variable fee. The program reads the
+effective values from the `pool_config` PDA; the SDK does not compute SPL fees.
 
 ## Error utilities
 
@@ -156,7 +157,7 @@ Detailed usage: [Error Handling](/sdk/error-handling)
 ## Versioned exports
 
 ```typescript
-VERSION; // "1.0.0"
+VERSION; // "0.2.0"
 CLOAK_PROGRAM_ID; // mainnet program constant
 ```
 

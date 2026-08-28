@@ -40,7 +40,7 @@ This file is the canonical index for AI coding agents integrating with Cloak.
 - [Introduction](/sdk/rust/introduction): Scope, install, minimal setup, TS→Rust mental model.
 - [Quickstart](/sdk/rust/quickstart): First SOL deposit end-to-end with `TransactOptions`.
 - [Core concepts](/sdk/rust/core-concepts): How Rust types map to protocol primitives.
-- [API reference](/sdk/rust/api-reference): `TransactOptions`, `TransactResult`, `Relay`, and helper types.
+- [API reference](/sdk/rust/api-reference): `TransactOptions`, `TransactResult`, and helper types.
 - [Error handling](/sdk/rust/error-handling): `Error` enum variants and retry semantics.
 - [Rust SDK LLM reference](/sdk/rust/llms.txt): Dense AI-oriented reference for the `cloak-sdk` crate.
 
@@ -80,7 +80,7 @@ This file is the canonical index for AI coding agents integrating with Cloak.
 ## Integration Tips For Agents
 
 - Pick the SDK that matches the host app: TypeScript for web/Node, Rust for server/CLI/program clients.
-- Use SDK defaults for program, relay, and circuits in standard integrations. The only accepted circuits bundle is `circuits/0.2.0` (ceremony); never hand-write a `0.1.0` URL.
+- Use SDK defaults for program and circuits in standard integrations; the only accepted circuits bundle is `circuits/0.2.0` (ceremony), so never hand-write a `0.1.0` URL. `relayUrl` has no default and must be passed on every flow.
 - Fees are enforced on-chain from each pool's `PoolConfig`: SOL 0.005 fixed + 0.3%; USDC/USDT 0.45 fixed + 0.3%; withdrawals and swaps only. Minimum deposit 0.01 SOL / 1.00 USDC / 1.00 USDT.
 - Keep tx amounts as `bigint` (TS) or `u64` / `i64` (Rust) end-to-end — no float math.
 - Treat stale-root failures as retryable (both SDK transaction paths already do this by default).

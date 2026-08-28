@@ -46,13 +46,13 @@ We use `@cloak.dev/sdk`.
 ## Required runtime assumptions
 
 - Program ID: `zh1eLd6rSphLejbFfJEneUwzHRfMKxgzrgkfwA6qRkW`
-- Circuit base URL: `https://storage.googleapis.com/cloak-circuits/circuits/0.2.0` (ceremony bundle; the SDK default via `resolveCircuitsBase()` — never hand-write it, and never use `0.1.0`: the program no longer accepts those artifacts)
+- Circuit base URL: `https://storage.googleapis.com/cloak-circuits/circuits/0.2.0` (ceremony bundle, and the SDK default; use the exported `DEFAULT_CIRCUITS_URL` constant or `resolveCircuitsBase()` instead of hardcoding the string, and never use `0.1.0`: the program no longer accepts those artifacts)
 - UTXO API is primary (`transact`, `partialWithdraw`, `fullWithdraw`, `swapWithChange`)
 - Amounts are `bigint` in transaction logic
 
 ## Full SDK capability groups
 
-1. `CloakSDK` note API
+1. Note API free functions (`generateNoteFromWallet`, `parseNote`, `serializeNote`, `exportNote`)
 2. UTXO primitives + UTXO transaction API
 3. chain-note scanner/compliance APIs
 4. viewing key + metadata encryption APIs
@@ -63,8 +63,8 @@ We use `@cloak.dev/sdk`.
 
 - Never log secrets (private keys, viewing keys (`nk`), raw note payloads, seed material).
 - Transaction signatures are public and can be logged for support/debugging.
-- Use SDK defaults for program, relay, and circuits. Do not expose these as user-facing config.
-- Enforce viewing-key registration before protocol actions.
+- Use SDK defaults for program and circuits. Do not expose those as user-facing config. The relay has no SDK default: pass `relayUrl` on every call, read from the `CLOAK_RELAY_URL` env var.
+- Viewing-key registration is enforced inside the SDK transaction flows (`transact`, `transfer`, `partialWithdraw`, `fullWithdraw`, `swapWithChange`); do not add an app-level registration step and do not disable it. Call the exported `registerViewingKey` only for standalone compliance or history scanning.
 - Keep privacy history cache-first, then explicit rescan.
 - Rely on SDK stale-root retries by default; add extra app-level retry/backoff only when explicitly required.
 

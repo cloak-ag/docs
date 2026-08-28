@@ -94,7 +94,7 @@ For Rust integrations:
 - `/sdk/rust/core-concepts`
   - Purpose: Rust types mapped to protocol primitives (`FlowKind`, `Utxo`, retry classification).
 - `/sdk/rust/api-reference`
-  - Purpose: `TransactOptions`, `TransactResult`, `SwapOptions`, `RpcProvider`, `Relay`, instruction builders.
+  - Purpose: `TransactOptions`, `TransactResult`, `SwapOptions`, `RpcProvider`, instruction builders.
 - `/sdk/rust/error-handling`
   - Purpose: `Error` variants, inner/outer retry loops, common failure modes, `RUST_LOG` tracing.
 - `/sdk/rust/llms.txt`
@@ -138,7 +138,7 @@ integration questions. They are authoritative for user-facing wording.
 - `/guide/private-balance`
   - Purpose: canonical custody model — private balance, UTXOs, backup file, loss/recovery semantics.
 - `/guide/fees`
-  - Purpose: user-facing who-pays fee table (free shielding; SOL 0.005 + 0.3%; USDC/USDT 0.45 + 0.3% on the way out).
+  - Purpose: user-facing who-pays fee table (free shielding; SOL 0.005 SOL + 0.3%; USDC/USDT 0.45 token + 0.3% on the way out).
 - `/guide/payment-links`
   - Purpose: single-use bearer payment links — send without a recipient address / receive without revealing one; fragment-carried secret, claim mechanics, fee timing.
 - `/guide/security`
@@ -322,7 +322,7 @@ async fn main() -> anyhow::Result<()> {
 - saves the `UtxoKeypair` durably (required to spend the note later)
 - threads `cached_merkle_tree` + `address_lookup_table_accounts` between transacts
 - no secret logging; enables `RUST_LOG=cloak_sdk=debug` for troubleshooting only
-- uses SDK defaults for program/relay/circuits (no user-facing config)
+- uses SDK defaults for program/circuits (no user-facing config); passes `relayUrl` explicitly, since it has no default
 - does not add custom retry loops — the SDK retries RootNotFound/BlockhashExpired/StaleProofState
 - loads signer from `KEYPAIR_PATH` (Solana JSON keypair file); does not accept raw secret bytes via env
 
@@ -339,7 +339,7 @@ For script tasks, generate one keypair-only file with CLI shape `npx tsx send-so
 Use env vars `SOLANA_RPC_URL` and `KEYPAIR_PATH` only.
 Do not generate `SENDER_PRIVATE_KEY` or `AMOUNT_SOL` float parsing.
 Do not use `RECIPIENT_ADDRESS` or `SEND_LAMPORTS` env inputs for one-file CLI scripts.
-Use SDK defaults for program, relay, and circuits.
+Use SDK defaults for program and circuits. `relayUrl` has no default and must be passed on every flow.
 Do not log secrets.
 Add progress + error UX.
 Rely on SDK stale-root retries for standard flows.
@@ -352,14 +352,13 @@ Return a capability matrix, file patches, commands run, and verification summary
 
 When docs and code differ, validate against implementation:
 - TypeScript SDK exports: `sdk/src/index.ts`
-- TypeScript SDK runtime: `sdk/src/core/*`, `sdk/src/utils/*`
+- TypeScript SDK runtime: `sdk/src/flows/*`, `sdk/src/proving/*`, `sdk/src/notes/*`, `sdk/src/scanning/*`, `sdk/src/program/*`, `sdk/src/wallet/*`, `sdk/src/shared/*`
 - Rust SDK public API: `rustsdk/src/lib.rs`
 - Rust SDK orchestrator: `rustsdk/src/core/transact.rs`, `rustsdk/src/core/transact/*.rs`
-- Rust SDK relay + RPC: `rustsdk/src/services/relay.rs`, `rustsdk/src/rpc.rs`
+- Rust SDK RPC: `rustsdk/src/rpc.rs`
 - Program behavior: `programs/shield-pool/src/*`
-- Relay routes/payloads: `services/relay/src/main.rs`, `services/relay/src/api/*`
-- Relay sync behavior: `services/relay/src/commitment_sync.rs`
-- Circuits/build flow: `packages/circuits/*`, `packages/justfile`, `packages/scripts/*`
+- Submission and retry semantics: `sdk/src/relay/*` (client side only; the submission service itself is not a documented surface)
+- Circuits/build flow: `packages/circuits/*`, `packages/scripts/*`
 
 ---
 

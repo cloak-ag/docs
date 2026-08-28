@@ -44,13 +44,19 @@ Under the hood, SDK builds proof + `264`-byte public inputs and submits the resu
   - `gross = abs(externalAmount)`
   - `fee = 5_000_000 + floor(gross * 3 / 1000)`
   - `net = gross - fee`
-- SPL (USDC/USDT) withdraw: `fee = floor(gross * 3 / 1000)` only — no fixed component
-- Deposits and shielded transfers have no protocol fee; SOL deposits must satisfy the
-  min deposit (`10_000_000` lamports — SOL pool only, no program minimum for SPL)
+- SPL (USDC/USDT) withdraw: `fee = 450_000 + floor(gross * 3 / 1000)` in token base units,
+  i.e. 0.45 token fixed plus 0.3%, charged in the withdrawn token
+- Deposits and shielded transfers have no protocol fee, but every deposit must meet the
+  on-chain minimum: `10_000_000` lamports (0.01 SOL) for the SOL pool, and `1_000_000`
+  base units (1.00 token) for the 6-decimal USDC/USDT pools. Anything below the minimum
+  is rejected by the program with `DepositTooSmall` (`0x1038`). The SDK exports
+  `MIN_DEPOSIT_LAMPORTS` for the SOL pool only, so an under-minimum USDC or USDT deposit
+  is not caught client side and fails at submission.
 
 SDK helpers you can call directly:
 
-- SOL: `calculateSolFeeLamports`, `calculateSolNetAmountLamports`
+- SOL: `calculateFeeBigint(gross)` for the fee, `gross - calculateFeeBigint(gross)` for the
+  net, `isWithdrawAmountSufficient(gross)` to check the withdrawal clears the fee.
 
 ## Create UTXOs
 
@@ -78,6 +84,7 @@ import {
 import { Connection, Keypair } from "@solana/web3.js";
 
 const connection = new Connection(process.env.SOLANA_RPC_URL!, "confirmed");
+const relayUrl = process.env.CLOAK_RELAY_URL!;
 const programId = CLOAK_PROGRAM_ID;
 const depositorKeypair = Keypair.fromSecretKey(secretKeyBytes);
 
@@ -85,27 +92,27 @@ const owner = await generateUtxoKeypair();
 const output = await createUtxo(20_000_000n, owner); // 0.02 SOL
 
 const result = await transact(
-{
-inputUtxos: [],
-outputUtxos: [output],
-externalAmount: 20_000_000n,
-},
-{
-connection,
-programId,
-depositorKeypair,
-}
+  {
+    inputUtxos: [],
+    outputUtxos: [output],
+    externalAmount: 20_000_000n,
+  },
+  {
+    connection,
+    programId,
+    relayUrl,
+    depositorKeypair,
+  }
 );
 
 console.log(result.signature, result.commitmentIndices);
-
-````
+```
 
 ```typescript Wallet adapter
 import { transact, createUtxo, createZeroUtxo, generateUtxoKeypair } from "@cloak.dev/sdk";
 import { useWallet } from "@solana/wallet-adapter-react";
 
-const { publicKey, signTransaction } = useWallet();
+const { publicKey, signTransaction, signMessage } = useWallet();
 
 const owner = await generateUtxoKeypair();
 const output = await createUtxo(20_000_000n, owner);
@@ -120,12 +127,14 @@ const result = await transact(
   {
     connection,
     programId,
+    relayUrl,
     signTransaction: signTransaction!,
+    signMessage: signMessage!,
     depositorPublicKey: publicKey!,
     walletPublicKey: publicKey!,
   }
 );
-````
+```
 
 </CodeGroup>
 
@@ -138,8 +147,7 @@ import { transfer, partialWithdraw, fullWithdraw } from "@cloak.dev/sdk";
 await transfer(inputUtxos, recipientUtxoPublicKey, 30_000_000n, options);
 await partialWithdraw(inputUtxos, recipientWallet, 10_000_000n, options);
 await fullWithdraw(inputUtxos, recipientWallet, options);
-
-````
+```
 
 ```typescript Wallet adapter
 import { transfer, partialWithdraw, fullWithdraw } from "@cloak.dev/sdk";
@@ -155,7 +163,7 @@ const walletOptions = {
 await transfer(inputUtxos, recipientUtxoPublicKey, 30_000_000n, walletOptions);
 await partialWithdraw(inputUtxos, recipientWallet, 10_000_000n, walletOptions);
 await fullWithdraw(inputUtxos, recipientWallet, walletOptions);
-````
+```
 
 </CodeGroup>
 
@@ -168,19 +176,20 @@ await fullWithdraw(inputUtxos, recipientWallet, walletOptions);
 import { swapWithChange } from "@cloak.dev/sdk";
 
 await swapWithChange(
-inputUtxos,
-50_000_000n, // swap amount (lamports)
-outputMint,
-recipientAta,
-1_000_000n, // min output
-{
-connection,
-programId,
-},
-recipientWallet
+  inputUtxos,
+  50_000_000n, // swap amount (lamports)
+  outputMint,
+  recipientAta,
+  1_000_000n, // min output
+  {
+    connection,
+    programId,
+    relayUrl,
+    depositorKeypair,
+  },
+  recipientWallet
 );
-
-````
+```
 
 ```typescript Wallet adapter
 import { swapWithChange } from "@cloak.dev/sdk";
@@ -200,7 +209,7 @@ await swapWithChange(
   },
   publicKey!
 );
-````
+```
 
 </CodeGroup>
 
@@ -231,13 +240,19 @@ If deposit account list is large, use v0 transactions with `addressLookupTableAc
 - Proof retries are built in for stale roots (`0x1001`).
 - SDK-side Merkle reconstruction is preferred for older indices.
 - Optional `cachedMerkleTree` helps sequential txs avoid extra rebuild/fetch.
-- Optional `useUniqueNullifiers` helps repeated development runs avoid nullifier collisions.
+- `useUniqueNullifiers` defaults to `true`: every padding UTXO gets a random salt, so padding
+  nullifiers never collide between runs or between concurrent depositors. Leave it unset.
+  Setting it to `false` restores deterministic padding salts, which collide and fail with
+  `DoubleSpend` (`0x1020`) once more than one deposit shares them.
 
 ## Troubleshooting
 
 - `Invalid public inputs size`: the protocol expects `264` bytes, not `232`.
 - `RootNotFound` / `0x1001`: regenerate proof with fresh root (SDK retry usually handles this).
-- `0x1020` in local repeated runs: set `CLOAK_UNIQUE_NULLIFIERS=1`.
+- `0x1020` (double spend): the input UTXO was already spent, usually from another session or
+  device. `transact` and `swapUtxo` pre-flight the input nullifiers and throw
+  `UtxoAlreadySpentError` before any proof is generated. Catch it and call `verifyUtxos()` to
+  reconcile your local notes with chain state.
 - `viewing key not found`: re-run a transaction with registration enabled, then rescan history.
 
 ## Next

@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 300" role="img" aria-label="Your private balance has two ways out. Top lane: a private send or withdraw sends value out to a public wallet, where it becomes liquid SOL and leaves the pool. Bottom lane: a shielded transfer moves value sideways to another shielded balance, where it stays private in the pool and is delivered as a bearer handoff. One private balance, two ways out.">
+  <!-- fork from the pool into two horizontal lanes -->
+  <path d="M 196 150 L 250 92" fill="none" stroke="#8B93A7" stroke-opacity="0.35" stroke-width="1.2"/>
+  <path d="M 196 150 L 250 208" fill="none" stroke="#8B93A7" stroke-opacity="0.30" stroke-width="1.2" stroke-dasharray="3 5"/>
+  <!-- top lane (solid = leaves the pool) -->
+  <line x1="250" y1="92" x2="650" y2="92" stroke="#8B93A7" stroke-opacity="0.35" stroke-width="1.2"/>
+  <!-- bottom lane (dashed = stays in the pool, off-chain handoff) -->
+  <line x1="250" y1="208" x2="636" y2="208" stroke="#8B93A7" stroke-opacity="0.30" stroke-width="1.2" stroke-dasharray="3 5"/>
+
+  <!-- pool: your private balance -->
+  <polygon points="196,150 173,110 127,110 104,150 127,190 173,190" fill="none" stroke="#6366F1" stroke-opacity="0.85" stroke-width="1.5"/>
+  <polygon points="168,150 159,134 141,134 132,150 141,166 159,166" fill="#6366F1" fill-opacity="0.4">
+    <animate attributeName="fill-opacity" values="0.4;0.85;0.5;0.5;0.85;0.5;0.4" keyTimes="0;0.1;0.2;0.5;0.6;0.7;1" dur="11s" repeatCount="indefinite"/>
+  </polygon>
+  <text x="139" y="212" text-anchor="middle" fill="#8B93A7" font-size="12" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">Your private balance</text>
+
+  <!-- TOP LANE labels, sitting directly above the lane -->
+  <text x="450" y="60" text-anchor="middle" fill="#10B981" font-size="12.5" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">Private send / withdraw &#8594; out to an address</text>
+  <text x="450" y="77" text-anchor="middle" fill="#8B93A7" font-size="11" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">becomes liquid SOL &#183; leaves the pool</text>
+
+  <!-- BOTTOM LANE labels, sitting directly below the lane -->
+  <text x="443" y="240" text-anchor="middle" fill="#818CF8" font-size="12.5" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">Shielded transfer &#8594; sideways, stays shielded</text>
+  <text x="443" y="257" text-anchor="middle" fill="#8B93A7" font-size="11" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">stays in the pool &#183; bearer handoff</text>
+
+  <!-- public wallet node -->
+  <circle cx="662" cy="92" r="10" fill="#6366F1"/>
+  <circle cx="662" cy="92" r="10" fill="none" stroke="#10B981" stroke-width="2" stroke-opacity="0">
+    <animate attributeName="r" values="10;10;26;10" keyTimes="0;0.36;0.44;0.52" dur="11s" repeatCount="indefinite"/>
+    <animate attributeName="stroke-opacity" values="0;0;0.65;0;0" keyTimes="0;0.36;0.38;0.44;0.52" dur="11s" repeatCount="indefinite"/>
+  </circle>
+  <text x="682" y="97" text-anchor="start" fill="#8B93A7" font-size="12" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">Public wallet</text>
+
+  <!-- their shielded balance node -->
+  <polygon points="688,208 674,190 650,190 636,208 650,226 674,226" fill="none" stroke="#6366F1" stroke-opacity="0.8" stroke-width="1.3"/>
+  <polygon points="676,208 670,199 660,199 654,208 660,217 670,217" fill="#6366F1" fill-opacity="0.35">
+    <animate attributeName="fill-opacity" values="0.35;0.35;0.35;0.85;0.5;0.35" keyTimes="0;0.5;0.8;0.9;0.96;1" dur="11s" repeatCount="indefinite"/>
+  </polygon>
+  <text x="700" y="213" text-anchor="start" fill="#8B93A7" font-size="12" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">Their shielded balance</text>
+
+  <!-- top flow dot: green (liquid) leaves the pool -->
+  <circle r="5" fill="#10B981" opacity="0">
+    <animateMotion path="M 250 92 L 652 92" calcMode="linear" keyPoints="0;0;1;1" keyTimes="0;0.06;0.36;1" dur="11s" repeatCount="indefinite"/>
+    <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.06;0.08;0.36;0.4;1" dur="11s" repeatCount="indefinite"/>
+  </circle>
+
+  <!-- bottom flow dot: indigo (stays shielded) -->
+  <circle r="5" fill="#6366F1" opacity="0">
+    <animateMotion path="M 250 208 L 640 208" calcMode="linear" keyPoints="0;0;1;1" keyTimes="0;0.54;0.86;1" dur="11s" repeatCount="indefinite"/>
+    <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.54;0.56;0.86;0.9;1" dur="11s" repeatCount="indefinite"/>
+  </circle>
+
+  <!-- persistent punchline -->
+  <text x="430" y="288" text-anchor="middle" fill="#6366F1" fill-opacity="0.75" font-size="11" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">one private balance &#183; two ways out</text>
+</svg>
