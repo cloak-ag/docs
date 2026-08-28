@@ -134,8 +134,9 @@ notes it just created and then forgets them. A change note is your own money com
 `blinding` is fresh randomness that `createUtxo` generates in memory and publishes nowhere, on chain
 or off. A note you did not store is unspendable by anyone, permanently: no rescan, no seed phrase and
 no support path brings it back. That is why every example below captures its result and calls
-`saveNotes` at the point where your service would commit to its own database. For the browser
-equivalent, and for the two storage exports the SDK ships, read
+`saveNotes` at the point where your service would commit to its own database. The browser version of
+`saveNotes` is in [the wallet-adapter example](#the-same-send-from-a-browser-wallet-adapter) below;
+for the two storage exports the SDK ships, read
 [where your notes live between sessions](/sdk/wallet-integration#where-your-notes-live-between-sessions).
 </Warning>
 
@@ -242,10 +243,30 @@ import {
   explainRelayAuthRejection,
   fullWithdraw,
   generateUtxoKeypair,
+  serializeUtxo,
   transact,
+  type Utxo,
 } from "@cloak.dev/sdk";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { Connection, PublicKey } from "@solana/web3.js";
+
+// The browser stand-in for the server path's append-only file, and the same
+// `serializeUtxo` encoding: amount, private key, blinding, mint and leaf index.
+// `localStorage` is the smallest thing that survives a reload; move to IndexedDB
+// or your own backend when you outgrow it. See /sdk/wallet-integration for the
+// two storage exports the SDK ships.
+const NOTES_KEY = "myapp.cloak.notes";
+
+function saveNotes(utxos: Utxo[]): void {
+  const stored: string[] = JSON.parse(
+    window.localStorage.getItem(NOTES_KEY) ?? "[]",
+  );
+  for (const utxo of utxos) {
+    if (utxo.amount === 0n) continue; // padding output, nothing to lose
+    stored.push(btoa(String.fromCharCode(...serializeUtxo(utxo))));
+  }
+  window.localStorage.setItem(NOTES_KEY, JSON.stringify(stored));
+}
 
 export function useSendSameMint(connection: Connection, viewingKeyNk: Uint8Array) {
   const { publicKey, signTransaction, signMessage } = useWallet();
@@ -292,16 +313,26 @@ export function useSendSameMint(connection: Connection, viewingKeyNk: Uint8Array
       walletOptions,
     );
 
-    // Persist `deposited.outputUtxos` here too, with the browser storage from
-    // /sdk/wallet-integration rather than a file. If the send below fails, that note
-    // is the only claim on the funds the user just deposited.
+    // Store the deposit note before going any further. If the send below fails, or
+    // the user closes the tab while the wallet dialog is open, this is the only
+    // claim on the funds that just entered the pool.
+    saveNotes(deposited.outputUtxos);
 
     // Send: submitted for you, so this is the call that needs the signed sender.
     try {
-      return await fullWithdraw(deposited.outputUtxos, args.recipientWallet, {
-        ...walletOptions,
-        cachedMerkleTree: deposited.merkleTree,
-      });
+      const withdrawn = await fullWithdraw(
+        deposited.outputUtxos,
+        args.recipientWallet,
+        {
+          ...walletOptions,
+          cachedMerkleTree: deposited.merkleTree,
+        },
+      );
+
+      // A full withdrawal leaves no change, so this writes nothing today. It is
+      // here so that swapping in a flow that does produce change stays safe.
+      saveNotes(withdrawn.outputUtxos);
+      return withdrawn;
     } catch (error) {
       const hint = explainRelayAuthRejection(String(error));
       throw hint ? new Error(hint, { cause: error }) : error;
@@ -311,7 +342,9 @@ export function useSendSameMint(connection: Connection, viewingKeyNk: Uint8Array
 ```
 
 `partialWithdraw` and `swapWithChange` take the same `walletOptions` object; swap it in wherever the
-server examples spread `baseOptions`.
+server examples spread `baseOptions`. Both of them do return a change note, so the `saveNotes` call
+above stops being a no-op the moment you substitute one, and `swapWithChange` needs its `refund`
+stored under a second key as well, for the reason given in the swap section below.
 
 <Note>
 `walletPublicKey` and `depositorPublicKey` are the same end user here, which is why both are set to

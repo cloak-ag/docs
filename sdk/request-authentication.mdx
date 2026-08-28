@@ -43,6 +43,18 @@ You supply one of two things in `TransactOptions`. The SDK builds and signs the 
 | Browser, wallet adapter | `signMessage` **and** `walletPublicKey` (or `depositorPublicKey`) | yes, once per request |
 | Node, server, CLI | `depositorKeypair` | no |
 
+<Warning>
+**One rule applies to every sample below.** Authentication decides whether a request is accepted;
+it does nothing about what comes back. `transfer`, `transact`, `partialWithdraw`, `swapUtxo` and
+`swapWithChange` all hand you `result.outputUtxos` once and then forget them, and one of those
+notes is your user's own **change**. Its `blinding` is fresh randomness drawn inside `createUtxo`
+and written nowhere on chain, so a change note that is not in durable storage before you report
+success is permanently unspendable by anyone: no rescan, no seed phrase, no support path. Persist
+with `serializeUtxo`, read back with `deserializeUtxo`. `fullWithdraw` is the single exemption,
+because it leaves nothing shielded. Full treatment:
+[where your notes live between sessions](/sdk/wallet-integration#where-your-notes-live-between-sessions).
+</Warning>
+
 ### Browser: `useWallet()`
 
 This is the complete browser path. It holds no secret key, and it is what a wallet adapter can
@@ -53,13 +65,19 @@ import {
   CLOAK_PROGRAM_ID,
   CLOAK_PRODUCTION_RELAY_URL,
   explainRelayAuthRejection,
+  serializeUtxo,
   transfer,
   type Utxo,
 } from "@cloak.dev/sdk";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { Connection } from "@solana/web3.js";
 
-export function usePrivateSend(connection: Connection) {
+// `persistNotes` is your own storage, not the SDK's: it has none. It must have
+// committed the bytes before it resolves.
+export function usePrivateSend(
+  connection: Connection,
+  persistNotes: (noteBytes: Uint8Array[]) => Promise<void>,
+) {
   const { publicKey, signMessage } = useWallet();
 
   // `recipientPubkey` is the recipient's Cloak pubkey, not a Solana wallet address.
@@ -71,7 +89,7 @@ export function usePrivateSend(connection: Connection) {
     }
 
     try {
-      return await transfer(notes, recipientPubkey, amount, {
+      const result = await transfer(notes, recipientPubkey, amount, {
         connection,
         programId: CLOAK_PROGRAM_ID,
         relayUrl: CLOAK_PRODUCTION_RELAY_URL,
@@ -84,6 +102,15 @@ export function usePrivateSend(connection: Connection) {
         onProgress: (status) => console.log(status),
         onProofProgress: (percent) => console.log(`proof ${percent}%`),
       });
+
+      // Bank the outputs BEFORE you return, and before any UI says "sent". The
+      // sender's change note is in here and these bytes are its only copy.
+      // Zero-amount outputs are circuit padding, so drop them.
+      await persistNotes(
+        result.outputUtxos.filter((utxo) => utxo.amount > 0n).map(serializeUtxo),
+      );
+
+      return result;
     } catch (error) {
       const hint = explainRelayAuthRejection(String(error));
       throw hint ? new Error(hint, { cause: error }) : error;
@@ -179,9 +206,11 @@ Two consequences worth designing for:
 `null` for anything that is not an authentication rejection, so it is safe to append unconditionally:
 
 ```typescript
-import { explainRelayAuthRejection } from "@cloak.dev/sdk";
+import { explainRelayAuthRejection, fullWithdraw } from "@cloak.dev/sdk";
 
 try {
+  // fullWithdraw is used here because it is the one flow with no change note to
+  // bank. Every other flow on this page returns notes you must persist first.
   await fullWithdraw(notes, recipient, options);
 } catch (error) {
   const hint = explainRelayAuthRejection(String(error));
@@ -203,21 +232,40 @@ Swaps are the exception, because a swap re-proves on every retry and each new pr
 that needs a fresh approval. `maxWalletApprovals` caps how many times one swap may ask:
 
 ```typescript
-import { swapWithChange } from "@cloak.dev/sdk";
+import { serializeUtxo, swapWithChange } from "@cloak.dev/sdk";
 
-await swapWithChange(inputUtxos, amount, outputMint, recipientAta, minOutput, {
+const swap = await swapWithChange(inputUtxos, amount, outputMint, recipientAta, minOutput, {
   connection,
   programId,
   relayUrl,
   walletPublicKey: publicKey,
   signMessage,
-  maxWalletApprovals: 3, // default 5, floored at 1
+  chainNoteViewingKeyNk: nk,  // the user's own nk; see the refund note below
+  maxWalletApprovals: 3,      // default 5, floored at 1
 });
+
+// A swap returns TWO things you must keep, and this call is the last moment
+// either exists. Store both before you report success.
+await persistNotes(
+  swap.outputUtxos.filter((utxo) => utxo.amount > 0n).map(serializeUtxo), // the change note
+);
+await persistSwapRefund(swap.swapStatePda, swap.refund); // reclaims a timed-out swap
 ```
 
 - Applies **only** to the wallet-adapter path and **only** to `swapUtxo` / `swapWithChange`.
 - Default `5`. Without the cap, `maxRootRetries` alone would allow 41 dialogs for a single swap.
 - A `depositorKeypair` never prompts and stays bounded by `maxRootRetries` as before.
+
+<Warning>
+**A swap has a second secret, and it is not a note.** Alongside the change note on `outputUtxos`,
+`swapUtxo` and `swapWithChange` return `refund`: the key material that reclaims the swap principal
+if the swap times out before it executes. Persist it beside the change note, keyed by
+`swap.swapStatePda`. Persisting it is the **fast** path always, and the **only** path when no
+`chainNoteViewingKeyNk` was passed to the swap, because that is the case where `refund` is the only
+copy that will ever exist. When an `nk` **was** passed, `refund.derivedFromNk` comes back `true` and
+`discoverSwapRefunds` / `matchSwapRefundLeaf` can rebuild the same secret from the `nk` plus the
+swap's public input nullifier, so losing the object is recoverable rather than terminal.
+</Warning>
 
 ## Driving submission yourself
 

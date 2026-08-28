@@ -55,6 +55,7 @@ use cloak_sdk::{
         utxo::{Utxo, UtxoKeypair},
     },
     rpc::SolanaRpc,
+    utils::crypto::fr_to_bytes_be,
 };
 use solana_keypair::Keypair;
 
@@ -65,10 +66,13 @@ async fn main() -> anyhow::Result<()> {
     let payer = Arc::new(Keypair::new()); // replace with a funded keypair
 
     // ---- 2. Create the output UTXO --------------------------------------
-    // A UTXO is a (keypair, amount, mint) triple. The keypair is local-only
-    // — save it somewhere durable, it's how you'll spend this note later.
+    // A UTXO is (keypair, blinding, amount, mint). `Utxo::new` draws the
+    // `blinding` at random and keeps it only inside the value it returns:
+    // the chain stores nothing but the Poseidon commitment. Clone the note
+    // now, because `output` is about to move into `TransactOptions`.
     let utxo_kp = UtxoKeypair::generate()?;
     let output = Utxo::new(MIN_DEPOSIT_LAMPORTS, utxo_kp, NATIVE_SOL_MINT)?;
+    let mut note = output.clone();
 
     // ---- 3. Describe the transaction ------------------------------------
     let opts = TransactOptions {
@@ -88,6 +92,15 @@ async fn main() -> anyhow::Result<()> {
     // ---- 4. Run the engine ----------------------------------------------
     let result = transact(opts).await?;
 
+    // ---- 5. Persist the note before you touch anything else --------------
+    // `output_indices[0]` is the leaf index assigned to `outputs[0]`.
+    // Reconciliation is best-effort, so `None` is a normal outcome: store
+    // the note anyway and backfill the index later by matching
+    // `result.output_commitments[0]` against the tree. Never drop a note
+    // because its index is missing.
+    note.index = result.output_indices[0];
+    save_note(&note)?;
+
     println!("signature: {}", result.signature);
     println!("output commitments: {:?}", result.output_commitments);
     println!("assigned leaf indices: {:?}", result.output_indices);
@@ -98,6 +111,28 @@ async fn main() -> anyhow::Result<()> {
         println!("cached tree has {} leaves", tree.len());
     }
 
+    Ok(())
+}
+
+/// The five values that make a note spendable. `private_key` and `blinding`
+/// are secrets: this plain-text file is a demo, encrypt them at rest the way
+/// you would any wallet secret. In production implement
+/// `cloak_sdk::storage::note_store::NoteStore` over sled / sqlite / Postgres
+/// and call `insert(note)` here instead.
+fn save_note(note: &Utxo) -> anyhow::Result<()> {
+    let hex = |b: [u8; 32]| b.iter().map(|x| format!("{x:02x}")).collect::<String>();
+    let label = note.index.map_or("pending".to_string(), |i| i.to_string());
+    std::fs::write(
+        format!("cloak-note-{label}.txt"),
+        format!(
+            "amount={}\nmint={}\nprivate_key={}\nblinding={}\nindex={:?}\n",
+            note.amount,
+            note.mint,
+            hex(fr_to_bytes_be(&note.keypair.private_key)),
+            hex(fr_to_bytes_be(&note.blinding)),
+            note.index,
+        ),
+    )?;
     Ok(())
 }
 ```
@@ -115,17 +150,55 @@ async fn main() -> anyhow::Result<()> {
 
 All this is one `transact(opts).await?` call.
 
+## What `transact()` does not do: keep your notes
+
+Step 5 above is not boilerplate. The engine has no wallet and no storage, so persisting
+output notes is entirely yours.
+
+A note is spendable only by whoever holds its `UtxoKeypair.private_key` together with its
+exact `blinding`. `Utxo::new` draws that `blinding` from `random_field_element()` and
+keeps it only inside the value it returns; the on-chain leaf is nothing but
+`Poseidon(amount, public_key, blinding, mint_field)`.
+
+<Warning>
+  An output you constructed and then dropped is unspendable by you and by everyone else,
+  permanently. Nothing recovers it: the encrypted chain note carries an 8-byte timestamp,
+  not the blinding, so no scan of the chain can rebuild the note. On a transfer, a
+  withdrawal, or a swap the output that hurts is the **change**, because that is the
+  balance you kept.
+</Warning>
+
+The pattern is the same at every call site: clone each output `Utxo` before it moves into
+`TransactOptions.outputs` (`Utxo` and `UtxoKeypair` both derive `Clone`), write
+`result.output_indices[i]` into the clone's `index`, and store it before you use the
+result for anything else. `cloak_sdk::storage::note_store::NoteStore` is the trait to
+implement for that; the crate ships the trait, not a backend.
+
 ## Chaining transactions
 
-Thread the returned tree and ALTs into the next call to avoid repeating work:
+Thread the returned tree and ALTs into the next call to avoid repeating work. Every
+output still has to be cloned and stored:
 
 ```rust
 let first = transact(deposit_opts).await?;
 
+// `deposit_note` is the deposit's output note, cloned before `deposit_opts`
+// moved (`let mut deposit_note = output.clone();`, the `note` variable in the
+// first sample). Give it its index and store it before anything else.
+deposit_note.index = first.output_indices[0];
+save_note(&deposit_note)?;
+
+// outputs[0] is the recipient's note, outputs[1] is your change. A recipient
+// can only spend outputs[0] once they hold that `UtxoKeypair`; delivering it
+// to them is your application's job, the protocol does not do it.
+let recipient_output = Utxo::new(send_amount, recipient_keypair, mint)?;
+let change_output = Utxo::new(deposit_note.amount - send_amount, UtxoKeypair::generate()?, mint)?;
+let mut change_note = change_output.clone();
+
 let transfer_opts = TransactOptions {
     // Spend the output we just created
-    inputs: vec![/* the Utxo with its keypair, index set to first.output_indices[0] */],
-    outputs: vec![/* one new output for the recipient, one zero-UTXO change */],
+    inputs: vec![deposit_note],
+    outputs: vec![recipient_output, change_output],
     external_amount: 0, // shield-to-shield transfer
     cached_merkle_tree: first.cached_merkle_tree,
     address_lookup_table_accounts: first.address_lookup_table_accounts,
@@ -133,6 +206,11 @@ let transfer_opts = TransactOptions {
 };
 
 let second = transact(transfer_opts).await?;
+
+// The change note is your remaining balance. Store it before you log, print,
+// or return anything from `second`.
+change_note.index = second.output_indices[1];
+save_note(&change_note)?;
 ```
 
 ## Next steps

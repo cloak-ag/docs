@@ -51,18 +51,36 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
    - `< 0` → **withdraw** (submitted via `relay_url` when set, otherwise direct).
    - `== 0` → **shield-to-shield transfer** (submitted via `relay_url` when set, otherwise direct).
 2. Every transact has exactly 2 inputs and 2 outputs. Preflight pads zero-UTXOs automatically — callers supply the real ones.
-3. Balance identity enforced by preflight: `sum(inputs) + external_amount == sum(outputs)`.
-4. Amounts are `u64` (or `i64` for `external_amount`). Internal balance check uses `i128` to avoid overflow.
-5. Public inputs are a 264-byte blob; the orchestrator builds it — never hand-pack.
-6. Fees (enforced on-chain by the program from each pool's `PoolConfig`; shared with the TS SDK):
+3. **Output notes are the caller's to persist. This is the one invariant that loses money.**
+   `Utxo::new` draws `blinding` from `random_field_element()` and keeps it only inside the
+   value it returns; the on-chain leaf is nothing but
+   `Poseidon(amount, public_key, blinding, mint_field)`. A note is spendable only by whoever
+   holds its `keypair.private_key` **and** its exact `blinding`.
+   - Clone every output `Utxo` before it moves into `opts.outputs` (`Utxo` and `UtxoKeypair`
+     both derive `Clone`), then set `note.index = result.output_indices[i]` and store it
+     **before** doing anything else with the result.
+   - An output that is constructed and then dropped is unspendable by anyone, permanently.
+     Nothing recovers it: the encrypted chain note carries an 8-byte timestamp, not the
+     blinding, so no scan rebuilds the note. On transfer / withdraw / swap the dangerous
+     output is the **change**.
+   - `output_indices[i]` is `Option<u32>` and reconciliation is best-effort, so `None` is a
+     normal outcome. Store the note with `index: None` and backfill by matching
+     `result.output_commitments[i]` against the tree. Never drop a note over a missing index.
+   - Storage surface: implement `cloak_sdk::storage::note_store::NoteStore`
+     (`insert` / `mark_spent` / `unspent_for` / `all`) and
+     `cloak_sdk::storage::tree_cache::TreeCache`. The crate ships the traits, no backend.
+4. Balance identity enforced by preflight: `sum(inputs) + external_amount == sum(outputs)`.
+5. Amounts are `u64` (or `i64` for `external_amount`). Internal balance check uses `i128` to avoid overflow.
+6. Public inputs are a 264-byte blob; the orchestrator builds it — never hand-pack.
+7. Fees (enforced on-chain by the program from each pool's `PoolConfig`; shared with the TS SDK):
    - SOL pool: fixed `5_000_000` lamports + `3 / 1000` of gross (withdrawal/swap).
    - SPL pools (USDC/USDT): fixed `450_000` base units (0.45) + `3 / 1000` of gross, in the withdrawn token.
    - Minimum deposit: `10_000_000` lamports (SOL); `1_000_000` base units (USDC/USDT).
-7. Swaps (`opts.swap = Some(SwapOptions {...})`) require `opts.relay_url`. `submit_direct` rejects them with `Error::Config`.
-8. Direct **SPL withdraw** is rejected — set `opts.relay_url` for SPL withdrawals.
-9. `RootNotFound` and `StaleProofState` are retryable and are handled by the outer retry loop automatically.
-10. Never log secrets: UTXO private keys (`Fr`), viewing keys (`nk: [u8; 32]`), blindings, seed material, raw note payloads.
-11. Standard integrations should use SDK defaults for program, relay, and circuits.
+8. Swaps (`opts.swap = Some(SwapOptions {...})`) require `opts.relay_url`. `submit_direct` rejects them with `Error::Config`.
+9. Direct **SPL withdraw** is rejected — set `opts.relay_url` for SPL withdrawals.
+10. `RootNotFound` and `StaleProofState` are retryable and are handled by the outer retry loop automatically.
+11. Never log secrets: UTXO private keys (`Fr`), viewing keys (`nk: [u8; 32]`), blindings, seed material, raw note payloads. Persisting them under invariant 3 is mandatory; encrypt them at rest, do not print them.
+12. Standard integrations should use SDK defaults for program, relay, and circuits.
 
 ---
 
@@ -148,6 +166,8 @@ pub struct TransactResult {
     pub signature: Signature,
     pub nullifiers: [Fr; 2],
     pub output_commitments: [Fr; 2],
+    // Leaf index per output, positionally matched to opts.outputs.
+    // Best-effort: `None` is a normal outcome. Store the note anyway.
     pub output_indices: [Option<u32>; 2],
     pub sibling_commitments: [Option<Fr>; 2],
     pub pre_transaction_left_sibling: Option<Fr>,
@@ -163,16 +183,31 @@ Thread `cached_merkle_tree` and `address_lookup_table_accounts` from one result 
 ## 5. UTXO primitives
 
 ```rust
-use cloak_sdk::core::utxo::{Utxo, UtxoKeypair, compute_commitment};
+use cloak_sdk::{
+    core::utxo::{Utxo, UtxoKeypair, compute_commitment},
+    utils::crypto::Fr,
+};
 
-let kp = UtxoKeypair::generate()?;                  // random field-element keypair
-let u = Utxo::new(amount_u64, kp, mint_pubkey)?;    // commitment cached eagerly
-let zero = Utxo::zero(Some(mint), None)?;            // for padding (random salt)
+let kp = UtxoKeypair::generate()?;                   // random field-element keypair
+let mut u = Utxo::new(amount_u64, kp, mint_pubkey)?; // commitment cached eagerly
+let zero = Utxo::zero(Some(mint_pubkey), None)?;     // for padding (random salt)
 let commitment: Fr = compute_commitment(&u)?;
-let nullifier: Fr = u.compute_nullifier()?;          // requires u.index
+let nullifier: Fr = u.compute_nullifier()?;          // takes &mut self; needs u.index
 ```
 
-`UtxoKeypair` is **not** a Solana keypair — it's a Poseidon-compatible field-element keypair. Save it alongside the note; it's required to spend.
+`UtxoKeypair` is **not** a Solana keypair — it's a Poseidon-compatible field-element
+keypair. `UtxoKeypair::generate()` is random; `UtxoKeypair::from_spend_key(&[u8; 32])` is
+deterministic, which is what the crate uses for deposits and change so every chain note
+lands under one `nk`.
+
+Determinism does not make a note recoverable. `Utxo::new` draws the `blinding` at random
+and writes it nowhere on chain, so the keypair alone is not enough: persist `amount`,
+`mint`, `keypair.private_key`, `blinding`, and `index` for **every** output. See invariant
+3.
+
+Import trap: `cloak_sdk::Utxo` (the crate-root re-export) is a legacy scaffold type with
+`owner` / `spent` / `id` fields, not the v2 note. Always import
+`cloak_sdk::core::utxo::Utxo`.
 
 ---
 
@@ -182,7 +217,11 @@ let nullifier: Fr = u.compute_nullifier()?;          // requires u.index
 use cloak_sdk::rpc::{RpcProvider, SolanaRpc};
 
 let rpc = SolanaRpc::new("https://api.mainnet-beta.solana.com");
-// or: SolanaRpc::with_commitment(url, CommitmentConfig::confirmed());
+// or, with `solana_commitment_config::CommitmentConfig` in scope:
+// let rpc = SolanaRpc::with_commitment(url, CommitmentConfig::confirmed());
+
+// This is the shape `TransactOptions.rpc` wants.
+let rpc: std::sync::Arc<dyn RpcProvider> = std::sync::Arc::new(rpc);
 ```
 
 Trait surface (object-safe via `async-trait`):
@@ -194,7 +233,9 @@ async fn send_and_confirm(&self, wire: &[u8]) -> Result<Signature>;
 async fn get_slot(&self)                     -> Result<u64>;
 ```
 
-Tests use `rpc::test_support::MockRpc` (scripted responses, captured sends).
+The crate's own tests use `rpc::test_support::MockRpc`, but that module is `pub(crate)` and
+is not importable from outside the crate. Downstream tests implement `RpcProvider`
+themselves; it is four async methods.
 
 ---
 
@@ -214,6 +255,10 @@ supported for direct use: build against `transact()` and the program.
 
 ## 8. Recipes
 
+Every recipe below clones its outputs before they move into `TransactOptions` and stores
+them the moment the result lands. That is invariant 3, not decoration: `notes` is your
+`NoteStore` impl, and skipping the `insert` makes the note unspendable forever.
+
 ### SOL deposit (direct)
 
 ```rust
@@ -222,6 +267,7 @@ use cloak_sdk::{
     constants::{MIN_DEPOSIT_LAMPORTS, NATIVE_SOL_MINT},
     core::{transact::{transact, TransactOptions}, utxo::{Utxo, UtxoKeypair}},
     rpc::SolanaRpc,
+    storage::note_store::NoteStore,
 };
 use solana_keypair::Keypair;
 
@@ -232,6 +278,7 @@ let output = Utxo::new(
     UtxoKeypair::generate()?,
     NATIVE_SOL_MINT,
 )?;
+let mut note = output.clone(); // the blinding lives only here
 
 let opts = TransactOptions {
     inputs: vec![],
@@ -243,12 +290,18 @@ let opts = TransactOptions {
     ..Default::default()
 };
 let result = transact(opts).await?;
+
+note.index = result.output_indices[0]; // may be None; store the note regardless
+notes.insert(note)?;                   // your NoteStore impl
 ```
 
 ### Shield-to-shield transfer
 
 ```rust
 // input_utxo.index must be set (assigned at deposit time).
+// outputs[0] is the recipient's note, outputs[1] is your change.
+let mut change_note = change_output.clone();
+
 let opts = TransactOptions {
     inputs: vec![input_utxo],
     outputs: vec![recipient_output, change_output],
@@ -260,11 +313,23 @@ let opts = TransactOptions {
     ..Default::default()
 };
 let result = transact(opts).await?;
+
+// Do this before logging or returning `result`.
+change_note.index = result.output_indices[1];
+notes.insert(change_note)?;
+notes.mark_spent(&input_commitment_be)?; // [u8; 32], the spent input's commitment
 ```
+
+The recipient can spend `outputs[0]` only once they hold that output's `UtxoKeypair`.
+Delivering it is the application's job; the protocol does not carry it.
 
 ### Withdraw
 
 ```rust
+// outputs[0] is the change note (the balance that stays shielded), outputs[1]
+// is padding. Only outputs[0] needs storing.
+let mut change_note = change_output.clone();
+
 let opts = TransactOptions {
     inputs: vec![input_utxo],
     outputs: vec![change_output, Utxo::zero(Some(mint), None)?],
@@ -276,12 +341,27 @@ let opts = TransactOptions {
     ..Default::default()
 };
 let result = transact(opts).await?;
+
+change_note.index = result.output_indices[0];
+notes.insert(change_note)?;
 ```
+
+A withdrawal that moves the whole balance out leaves nothing shielded, so `change_output`
+is a zero UTXO and there is nothing to store. Any other withdrawal has a change note.
 
 ### Swap (requires relay_url, two-phase)
 
 ```rust
-use cloak_sdk::core::transact::options::SwapOptions;
+use cloak_sdk::{
+    core::{
+        transact::{transact, TransactOptions, options::SwapOptions},
+        utxo::Utxo,
+    },
+    storage::note_store::NoteStore,
+};
+
+// Same shape as withdraw: outputs[0] is the change note in the input mint.
+let mut change_note = change_output.clone();
 
 let opts = TransactOptions {
     inputs: vec![input_utxo],
@@ -302,7 +382,14 @@ let opts = TransactOptions {
 };
 // transact() internally posts /transact_swap then polls /status/{request_id}.
 let result = transact(opts).await?;
+
+change_note.index = result.output_indices[0];
+notes.insert(change_note)?;
 ```
+
+The swap output lands in `swap.recipient_ata`, a public token account. The change note is
+the only part of a swap that stays shielded, and it is the only part you can lose by
+dropping it.
 
 ---
 
@@ -344,8 +431,8 @@ through one function (`transact()`) and a handful of helpers.
 
 What the engine deliberately leaves to consumers:
 
-- **Wallet / UTXO-set management.** Pick any storage (sled, sqlite, memory). The engine returns commitments, indices, siblings, and the post-tx Merkle tree on each call so you can persist what you need.
-- **Chain scanner / compliance reports.** `get_account_data` + `get_signatures_for_address` via your `RpcProvider` are all you need; trial-decrypt chain notes with `ChainNote::decrypt(nk, candidates)` and classify by discriminator.
+- **Wallet / UTXO-set management.** Pick any backend (sled, sqlite, Postgres) behind `storage::note_store::NoteStore` and `storage::tree_cache::TreeCache`; the crate ships the traits and no implementation. This is not optional plumbing: per invariant 3, an output note you do not store is unspendable by anyone, permanently, because the random `blinding` from `Utxo::new` exists nowhere else. `TransactResult` gives you the commitments, indices, siblings, and post-tx tree to key that store by.
+- **Chain scanner / compliance reports.** `RpcProvider` covers only `get_account_data`, `latest_blockhash`, `send_and_confirm`, and `get_slot`, so signature enumeration is on you (drive `getSignaturesForAddress` / `getTransaction` with your own client). Trial-decrypt chain notes with `ChainNote::decrypt(note_bytes, nk, &candidate_commitments)` and classify by discriminator. A scan recovers which commitments are yours; it does not recover a note's blinding, so it is no substitute for storing outputs at write time.
 - **High-level wallet façades.** The TS SDK ships optional stateful helpers (`UtxoWallet`, `SimpleWallet`) over the same engine; build your own shape that matches your app's lifecycle.
 
 Alternate providers not currently wired through the crate:
@@ -360,8 +447,14 @@ Alternate providers not currently wired through the crate:
 - Uses `cloak_sdk::core::transact::transact` as the entrypoint.
 - Populates `opts.rpc` and `opts.payer`; sets `opts.relay_url` for non-deposit flows.
 - Amounts are `u64` / `i64` — no float math.
-- Derives and saves UTXO keypairs durably (they're required to spend).
-- No secret logging.
+- **Clones every output `Utxo` before it moves into `opts.outputs`, writes
+  `result.output_indices[i]` into the clone, and stores it before using the result for
+  anything else.** Reject any sample that awaits `transact()` on a flow with a change output
+  and does not persist it. The stored record must include `keypair.private_key` and
+  `blinding`, not just the commitment.
+- Handles `output_indices[i] == None` by storing the note anyway and backfilling later.
+- Imports `cloak_sdk::core::utxo::Utxo`, never the crate-root `cloak_sdk::Utxo`.
+- No secret logging (persisting to an encrypted store is not logging).
 - Uses SDK defaults for program / relay / circuits (no user-facing config).
 - Relies on built-in retry loops (no custom stale-root loops unless app policy demands it).
 
@@ -378,4 +471,6 @@ When docs differ from code, trust the implementation:
 - Instruction builders: `rustsdk/src/solana/instructions.rs`
 - ALT creation: `rustsdk/src/solana/alt.rs`
 - Proof generation: `rustsdk/src/utils/proof_generation.rs`
+- Note / tree storage traits: `rustsdk/src/storage/{note_store,tree_cache}.rs`
+- UTXO primitive (`Utxo::new` blinding, `UtxoKeypair::from_spend_key`): `rustsdk/src/core/utxo.rs`
 - Error enum: `rustsdk/src/error.rs`

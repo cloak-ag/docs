@@ -215,6 +215,7 @@ Send SOL privately through Cloak by:
 
 ```typescript
 import {
+  CLOAK_PRODUCTION_RELAY_URL,
   CLOAK_PROGRAM_ID,
   NATIVE_SOL_MINT,
   createUtxo,
@@ -245,6 +246,7 @@ const deposited = await transact(
   {
     connection,
     programId: CLOAK_PROGRAM_ID,
+    relayUrl: CLOAK_PRODUCTION_RELAY_URL,   // no default; omitting it throws (contract 13)
     depositorKeypair: signer,
     walletPublicKey: signer.publicKey,
   },
@@ -255,6 +257,7 @@ const recipient = Keypair.generate().publicKey;
 await fullWithdraw(deposited.outputUtxos, recipient, {
   connection,
   programId: CLOAK_PROGRAM_ID,
+  relayUrl: CLOAK_PRODUCTION_RELAY_URL,
   depositorKeypair: signer,
   walletPublicKey: signer.publicKey,
   cachedMerkleTree: deposited.merkleTree,
@@ -284,7 +287,9 @@ async fn main() -> anyhow::Result<()> {
     let payer = Arc::new(load_keypair_from_path(&std::env::var("KEYPAIR_PATH")?)?);
     let amount = MIN_DEPOSIT_LAMPORTS;
 
-    // Deposit.
+    // Deposit. The `Utxo` you build here is the only spendable copy of the note: `transact`
+    // returns commitments and leaf indices, never notes, and nothing on chain carries the
+    // blinding. Persist the keypair, amount, mint and the assigned index before moving on.
     let owner = UtxoKeypair::generate()?;
     let output = Utxo::new(amount, owner, NATIVE_SOL_MINT)?;
     let deposit = transact(TransactOptions {
@@ -297,11 +302,12 @@ async fn main() -> anyhow::Result<()> {
         ..Default::default()
     }).await?;
 
-    // Withdraw (full).
-    let mut input = deposit.output_commitments; // actual `Utxo` — saved with its keypair
+    // save_deposit_note(&owner, amount, NATIVE_SOL_MINT, deposit.output_indices[0])?;
+
+    // Withdraw (full). A full withdrawal leaves no change, so this leg stores nothing new.
     let recipient: Pubkey = args_recipient()?;
     let withdraw = transact(TransactOptions {
-        inputs: vec![/* the Utxo from deposit, with index populated */],
+        inputs: vec![/* the Utxo with its keypair, index set to deposit.output_indices[0] */],
         outputs: vec![
             Utxo::zero(Some(NATIVE_SOL_MINT), None)?,
             Utxo::zero(Some(NATIVE_SOL_MINT), None)?,
@@ -326,7 +332,7 @@ async fn main() -> anyhow::Result<()> {
 - uses UTXO API (not legacy note API)
 - uses `bigint` for transaction amounts
 - no secret logging
-- persists `result.outputUtxos` (and `UtxoSwapResult.refund` for swaps) before reporting success in any flow that leaves change
+- persists `result.outputUtxos` (and `UtxoSwapResult.refund` for swaps) before reporting success in any flow that leaves change (`transact` with `externalAmount: 0n`, `transfer`, `partialWithdraw`, `swapWithChange`, `swapUtxo`); only `fullWithdraw` is exempt
 - does not offer `UtxoWallet.prepareSend` or `SimpleWallet.send` as a send path
 - includes progress and user-facing error states
 - uses `KEYPAIR_PATH` + `<recipientPubkey> <lamports>` for minimal CLI scripts
@@ -338,7 +344,7 @@ async fn main() -> anyhow::Result<()> {
 
 - uses `cloak_sdk::core::transact::transact(opts)` as the entrypoint
 - amounts are `u64` / `i64` — no float math
-- saves the `UtxoKeypair` durably (required to spend the note later)
+- saves the whole note durably (keypair, amount, mint, and the leaf index from `result.output_indices`); `transact` returns commitments and indices, never spendable notes, and nothing on chain carries the blinding
 - threads `cached_merkle_tree` + `address_lookup_table_accounts` between transacts
 - no secret logging; enables `RUST_LOG=cloak_sdk=debug` for troubleshooting only
 - uses SDK defaults for program/circuits (no user-facing config); sets `opts.relay_url` explicitly, since it has no default

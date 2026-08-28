@@ -266,7 +266,27 @@ function utxoBigintToBytes32(value: bigint): Uint8Array;
 function sumUtxoAmounts(utxos: Utxo[]): bigint;
 function selectUtxos(available: Utxo[], targetAmount: bigint): Utxo[] | null;
 function utxoEquals(a: Utxo, b: Utxo): Promise<boolean>;
+
+// Reconcile restored notes against chain before spending them. A note only lands in `unspent` or
+// `spent` when it carries `commitment`, `mintAddress` AND a keypair; anything missing one of those
+// lands in `skipped`, which means UNVERIFIED, not absent.
+interface VerifyUtxosResult { spent: Utxo[]; unspent: Utxo[]; skipped: Utxo[]; }
+function verifyUtxos(
+  utxos: Utxo[], connection: Connection, programId: PublicKey,
+  commitment?: "processed" | "confirmed" | "finalized",
+): Promise<VerifyUtxosResult>;
+function preflightNullifiers(                      // throws UtxoAlreadySpentError on a spent input
+  utxos: Utxo[], connection: Connection, programId: PublicKey,
+  commitment?: "processed" | "confirmed" | "finalized",
+): Promise<void>;
 ```
+
+`serializeUtxo` is the persistence primitive and it is the ONLY one: 128 bytes carrying amount,
+private key, blinding, mint and index. Every flow but a full withdrawal hands back a note the SDK
+then forgets, and `createUtxo` draws that note's `blinding` from `randomFieldElement()` and writes
+it nowhere on chain, so a note that is not serialized to durable storage before you report success
+is permanently unspendable by anyone. `StorageAdapter` (§5.13) is a DIFFERENT boundary: its methods
+are typed on `CloakNote`, and it does not accept these bytes.
 
 ### 5.3 UTXO transaction API (primary runtime path)
 
@@ -727,12 +747,42 @@ function decryptComplianceMetadataWithMasterKey(
 ### 5.8 Relay + merkle + on-chain proof helpers
 
 ```ts
+// Every params shape below is declared INLINE on the class. There is no exported
+// `SubmitWithdrawParams` / `SubmitSwapParams` type name to import.
 class RelayService {
   constructor(baseUrl: string);
-  submitWithdraw(params: SubmitWithdrawParams, onStatus?: (s: string) => void, onRequestId?: (id: string) => void): Promise<string>;
-  submitSwap(params: SubmitSwapParams, onStatus?: (s: string) => void, onRequestId?: (id: string) => void): Promise<string>;
+
+  submitWithdraw(
+    params: {
+      proof: string;
+      publicInputs: { root: string; nf: string; outputs_hash: string; amount: number };
+      outputs: Array<{ recipient: string; amount: number }>;
+      feeBps: number;
+      metadataBundle?: EncryptedMetadataBundle;
+    },
+    onStatusUpdate?: (status: string) => void,
+    onRequestId?: (requestId: string) => void,
+  ): Promise<string>;
+
+  submitSwap(
+    params: {
+      proof: string;
+      publicInputs: { root: string; nf: string; outputs_hash: string; amount: number };
+      outputs: Array<{ recipient: string; amount: number }>;
+      feeBps: number;
+      swap: { output_mint: string; slippage_bps: number; min_output_amount: number };
+      metadataBundle?: EncryptedMetadataBundle;
+    },
+    onStatusUpdate?: (status: string) => void,
+    onRequestId?: (requestId: string) => void,
+  ): Promise<string>;
+
+  resumeWithdraw(requestId: string, onStatusUpdate?: (status: string) => void): Promise<{
+    status: "completed" | "failed" | "pending"; signature?: string; error?: string;
+  }>;
   getStatus(requestId: string): Promise<TxStatus>;
   registerViewingKey(userPubkey: string, viewingKey: string, signMessage: (msg: Uint8Array) => Promise<Uint8Array>): Promise<boolean>;
+  getCompliancePublicKey(): Promise<Uint8Array>;
 }
 
 function fetchCommitments(relayUrl: string, options?: {
@@ -764,6 +814,8 @@ function buildMerkleTreeFromChain(
   programId: PublicKey,
   merkleTree: PublicKey,
   onProgress?: (m: string) => void,
+  mint?: PublicKey,        // required in practice: without it a CloseSwapState refund leaf
+                           // cannot be attributed to a tree and reconstruction fails closed
 ): Promise<MerkleTree>;
 
 function validateRoot(relayUrl: string, rootHex: string): Promise<{ valid: boolean; currentRoot?: string; message: string; isRecent: boolean; }>;
@@ -838,28 +890,58 @@ HARD TRAP: `slippage_bps` MUST always be present in a signed swap body. Every ot
 
 ### 5.9 Proof / circuit utilities
 
+This SDK pins exactly ONE circuit: the ceremony-frozen `transaction` circuit. The pre-ceremony
+`withdraw_regular` / `withdraw_swap` circuits were removed in 0.2.0 together with every function
+that loaded them, so proof generation is not a public entry point at all. There is no
+`generateWithdrawRegularProof`, `generateWithdrawSwapProof`, `areCircuitsAvailable` or
+`getDefaultCircuitsPath`, and no `WithdrawRegularInputs` / `WithdrawSwapInputs` / `ProofResult`
+type. `transact` and the flows built on it load, verify and prove for you; the exports below exist
+for start-up diagnostics and for callers driving artifact loading themselves.
+
 ```ts
-function generateWithdrawRegularProof(inputs: WithdrawRegularInputs, circuitsPath: string): Promise<ProofResult>;
-function generateWithdrawSwapProof(inputs: WithdrawSwapInputs, circuitsPath: string): Promise<ProofResult>;
+// Load artifacts and get back the very bytes whose digest was checked. Fails closed on any
+// mismatch, unreachable artifact, or environment that cannot produce bytes. `circuitsPath` is a
+// base directory or URL, honoured verbatim; pass `null` to report the "no base configured" state.
+function loadVerifiedCircuitArtifacts(circuitsPath: string | null): Promise<{
+  wasm: Uint8Array;
+  zkey: Uint8Array;
+  digests: { wasm: string; zkey: string };  // SHA-256 of the buffers in this same object
+}>;   // the return shape is declared inline; it is NOT an exported type name
 
-function verifyCircuitIntegrity(circuitsPath: string, circuit: "withdraw_regular" | "withdraw_swap"): Promise<CircuitVerificationResult>;
-function verifyAllCircuits(circuitsPath: string): Promise<CircuitVerificationResult[]>;
+// The fail-closed gate: throws when the artifacts are not the pinned ones.
+function assertTransactionCircuitIntegrity(
+  circuitsPath: string | null,
+  prefetched?: { wasm: Uint8Array; zkey: Uint8Array },   // already-downloaded bytes, to skip a refetch
+): Promise<void>;
 
-function areCircuitsAvailable(circuitsPath: string): Promise<boolean>;
-function getDefaultCircuitsPath(): Promise<string>;
-function assertTransactionCircuitIntegrity(circuitsPath: string | null, prefetched?: { wasm: Uint8Array; zkey: Uint8Array }): Promise<void>;
-function loadVerifiedCircuitArtifacts(circuitsPath: string | null, circuit: "transaction" | "withdraw_regular" | "withdraw_swap"): Promise<VerifiedCircuitArtifacts>;
+// Reporting only. These do NOT gate proving: a check that re-reads the source cannot speak for the
+// bytes a later, independent read returns. Prove from loadVerifiedCircuitArtifacts, always.
+function verifyCircuitIntegrity(
+  circuitsPath: string | null,
+  prefetched?: { wasm: Uint8Array; zkey: Uint8Array },
+): Promise<CircuitVerificationResult>;
+function verifyAllCircuits(
+  circuitsPath: string | null,
+  transactionCircuitsPath?: string | null,   // same base; takes precedence when given
+): Promise<CircuitVerificationResult[]>;     // one entry, for `transaction`
+
+interface CircuitVerificationResult {
+  valid: boolean;
+  error?: string;
+  computed?: { wasm: string; zkey: string };
+  expected?: { wasm: string; zkey: string };
+}
 
 const DEFAULT_CIRCUITS_URL: string; // alias of DEFAULT_TRANSACTION_CIRCUITS_URL: same ceremony transaction bundle, same 0.2.0 URL, never null
-const EXPECTED_CIRCUIT_HASHES: {
-  withdraw_regular_wasm: string;
-  withdraw_regular_zkey: string;
-  withdraw_swap_wasm: string;
-  withdraw_swap_zkey: string;
+const EXPECTED_CIRCUIT_HASHES: Readonly<{   // frozen VIEW; exactly two keys, no withdraw_* entries
   transaction_wasm: string; // 02ec02e954ae3932827ad9de51afa597ca95569aa97fec8410879c937a58aa2b
   transaction_zkey: string; // 9da7db8cb1370fc497d36a0365f1f107ab0b0c13ca66fa9f0287e5f96ee68d25
-};
+}>;
 ```
+
+There is no environment variable that disables the integrity check. A build that genuinely needs
+different artifacts needs different DIGESTS, which is a source edit and a rebuild, exactly like the
+endpoint pin.
 
 The `transaction` circuit (used by `transact`, `transfer`, `partialWithdraw`, `fullWithdraw`, `swapUtxo`, `swapWithChange`) is frozen by the `cloak-transaction-0.2.0` trusted-setup ceremony. The SDK checks every artifact it loads against these digests and refuses to prove against anything else; the program rejects proofs from the older `0.1.0` bundle.
 
@@ -877,6 +959,13 @@ function sendTransaction(
 function signTransaction<T extends Transaction>(tx: T, wallet: WalletAdapter | Keypair): Promise<T>;
 function keypairToAdapter(keypair: Keypair): WalletAdapter;
 ```
+
+`UtxoWallet` and `SimpleWallet` are also exported and are NOT send paths. `UtxoWallet.prepareSend`
+and `SimpleWallet.send` build the recipient output from a freshly generated random keypair, so the
+recipient cannot spend what they produce, and `SimpleWallet.sync()` throws
+`Sync not yet implemented`. `UtxoWallet.serialize()` additionally drops each note's `commitment`,
+so notes restored from it come back from `verifyUtxos` (§5.2) as `skipped`. Use `transfer` for a
+shielded send and `fullWithdraw` / `partialWithdraw` to exit the pool.
 
 ### 5.11 Fees
 
@@ -918,7 +1007,7 @@ const ShieldPoolErrors: Record<number, string>; // maps 0x1000+ program error co
 function parseError(error: unknown): UserFriendlyError;
 function parseTransactionError(error: any): string;
 function formatErrorForLogging(error: unknown): string;
-function parseRelayErrorResponse(text: string): { ... };
+function parseRelayErrorResponse(text: string): { isRootNotFound: boolean; currentRoot?: string };
 ```
 
 ### 5.13 Network + logging + storage + PDAs
@@ -927,8 +1016,8 @@ function parseRelayErrorResponse(text: string): { ... };
 function detectNetworkFromRpcUrl(rpcUrl?: string): Network;
 function getRpcUrlForNetwork(network: Network): string;
 function isValidRpcUrl(url: string): boolean;
-function getExplorerUrl(signature: string, network?: Network, cluster?: string): string;
-function getAddressExplorerUrl(address: string, network?: Network, cluster?: string): string;
+function getExplorerUrl(signature: string, network?: Network): string;
+function getAddressExplorerUrl(address: string, network?: Network): string;
 
 function createLogger(module: string): Logger;
 function setDebugMode(enabled: boolean): void;
@@ -977,8 +1066,12 @@ function removePendingWithdrawal(requestId: string): void;
 function clearPendingWithdrawals(): void;
 
 function hasPendingOperations(): boolean;
-function getPendingOperationsSummary(): { deposits: number; withdrawals: number };
-function cleanupStalePendingOperations(maxAgeMs?: number): void;
+function getPendingOperationsSummary(): {
+  deposits: PendingDeposit[]; withdrawals: PendingWithdrawal[]; totalPending: number;
+};
+function cleanupStalePendingOperations(maxAgeMs?: number): {
+  removedDeposits: number; removedWithdrawals: number;
+};
 ```
 
 ---
@@ -1014,6 +1107,7 @@ All recipes assume you created:
 
 ```ts
 import { CLOAK_PROGRAM_ID, CLOAK_PRODUCTION_RELAY_URL, getPublicKey } from "@cloak.dev/sdk";
+import { Connection } from "@solana/web3.js";
 
 const connection = new Connection(process.env.SOLANA_RPC_URL!, "confirmed");
 const programId  = CLOAK_PROGRAM_ID;
@@ -1021,14 +1115,22 @@ const relayUrl   = CLOAK_PRODUCTION_RELAY_URL;
 
 // Node / server: `sender` is a Keypair.
 // Browser: `wallet` is the object from useWallet(); see §4b.
+
+// YOUR durable note store. Every recipe below writes through it; the SDK ships nothing that plays
+// this role for `Utxo` bytes (`StorageAdapter` is a different boundary, §5.13). Back it with
+// something that survives a process restart, and write BEFORE reporting success.
+declare function saveNoteBytes(bytes: Uint8Array): Promise<void>;
+declare function saveSwapRefund(refund: {
+  privateKey: string; publicKey: string; blinding: string; derivedFromNk: boolean;
+}): Promise<void>;
 ```
 
 ### 6.1 Deposit into a fresh UTXO (SOL)
 
 ```ts
 import {
-  generateUtxoKeypair, createUtxo, createZeroUtxo,
-  getNkFromUtxoPrivateKey, transact, NATIVE_SOL_MINT,
+  NATIVE_SOL_MINT, createUtxo, createZeroUtxo, generateUtxoKeypair,
+  getNkFromUtxoPrivateKey, serializeUtxo, transact,
 } from "@cloak.dev/sdk";
 
 const amount = 1_000_000_000n; // 1 SOL
@@ -1058,12 +1160,18 @@ const depositResult = await transact(
 
 console.log("tx", depositResult.signature);
 console.log("leaf_index", depositResult.outputUtxos[0].index);
+
+// This note was built with createUtxo, so its blinding is raw randomness and no scan rebuilds it.
+// The returned UTXO already carries its leaf index; persist it as it stands.
+await saveNoteBytes(serializeUtxo(depositResult.outputUtxos[0]));
 ```
 
 **Browser form of this same deposit.** A deposit is signed by the user's wallet and submitted
 straight to chain, so it is the one flow that needs `signTransaction` as well as `signMessage`:
 
 ```ts
+import { getPublicKey, serializeUtxo, transact } from "@cloak.dev/sdk";
+
 const depositResult = await transact(
   {
     inputUtxos:   [padding],
@@ -1081,6 +1189,8 @@ const depositResult = await transact(
     chainNoteViewingKeyNk: nk,
   },
 );
+
+await saveNoteBytes(serializeUtxo(depositResult.outputUtxos[0]));   // same rule here.
 ```
 
 To make this deposit recoverable from `nk` alone later, build the output with
@@ -1114,6 +1224,8 @@ console.log("withdraw sig", withdrawResult.signature);
 retried.
 
 ```ts
+import { fullWithdraw, getPublicKey } from "@cloak.dev/sdk";
+
 const withdrawResult = await fullWithdraw(
   [depositResult.outputUtxos[0]],
   recipientPublicKey,
@@ -1135,7 +1247,7 @@ open longer than that, map the rejection through `explainRelayAuthRejection` and
 ### 6.3 Partial withdraw (keep a shielded change UTXO)
 
 ```ts
-import { partialWithdraw } from "@cloak.dev/sdk";
+import { partialWithdraw, serializeUtxo } from "@cloak.dev/sdk";
 
 const withdrawAmount = 500_000_000n; // 0.5 SOL
 
@@ -1153,13 +1265,18 @@ const result = await partialWithdraw(
     cachedMerkleTree: depositResult.merkleTree,
   },
 );
-// result.outputUtxos[0] is the new shielded change UTXO (remainder).
+
+// result.outputUtxos[0] is the new shielded change UTXO (remainder), and this write is the only
+// thing that keeps it spendable. Do it before you report success.
+await saveNoteBytes(serializeUtxo(result.outputUtxos[0]));
 ```
 
 **Browser form of this same partial withdrawal.** Relay-submitted, so the keypair is replaced, not
 supplemented:
 
 ```ts
+import { getPublicKey, partialWithdraw, serializeUtxo } from "@cloak.dev/sdk";
+
 const result = await partialWithdraw(
   [depositResult.outputUtxos[0]],
   recipientPublicKey,
@@ -1174,6 +1291,8 @@ const result = await partialWithdraw(
     cachedMerkleTree: depositResult.merkleTree,
   },
 );
+
+await saveNoteBytes(serializeUtxo(result.outputUtxos[0]));   // the change note. Same rule here.
 ```
 
 **Persist `result.outputUtxos[0]` before you do anything else, in either form.** A change note is
@@ -1187,7 +1306,7 @@ Relay-submitted, so this recipe has a browser form and the block below is NOT it
 this flow uses `signMessage` + `walletPublicKey`; there is no `depositorKeypair` in browser code.
 
 ```ts
-import { transact, createUtxo } from "@cloak.dev/sdk";
+import { NATIVE_SOL_MINT, createUtxo, serializeUtxo, transact } from "@cloak.dev/sdk";
 
 const transferAmount = 1_000_000_000n;
 const changeAmount   = senderShieldedUtxo.amount - transferAmount;
@@ -1211,12 +1330,18 @@ const result = await transact(
     cachedMerkleTree: senderCachedTree,
   },
 );
+
+// outputUtxos[1] is YOUR change (outputs were [recipientOutput, changeOutput]). Nothing on chain
+// carries its blinding, so this write is the only thing that keeps it spendable.
+await saveNoteBytes(serializeUtxo(result.outputUtxos[1]));
 ```
 
 **Browser form of this same private send.** Same call, same params, one field swapped. The wallet
 prompts EXACTLY ONCE; a send never re-prompts on retry.
 
 ```ts
+import { getPublicKey, serializeUtxo, transact } from "@cloak.dev/sdk";
+
 const result = await transact(
   {
     inputUtxos:  [senderShieldedUtxo],
@@ -1234,6 +1359,8 @@ const result = await transact(
     cachedMerkleTree: senderCachedTree,
   },
 );
+
+await saveNoteBytes(serializeUtxo(result.outputUtxos[1]));   // your change note. Same rule here.
 ```
 
 `transfer(inputUtxos, recipientPubkey, amount, options)` (§5.3) wraps the same flow when you have
@@ -1251,8 +1378,15 @@ And persist `changeOutput` yourself, in either form. Nothing recovers a change n
 
 ### 6.5 Fast send (deposit + full withdraw in one user action)
 
+This is the ONE shape in section 6 that needs no note storage: the deposit note is spent by
+`fullWithdraw` in the same process, and a full withdrawal leaves no change. Every other recipe
+here writes a note before it reports success.
+
 ```ts
-import { transact, fullWithdraw, createUtxo, createZeroUtxo, generateUtxoKeypair, getNkFromUtxoPrivateKey } from "@cloak.dev/sdk";
+import {
+  NATIVE_SOL_MINT, createUtxo, createZeroUtxo, fullWithdraw,
+  generateUtxoKeypair, getNkFromUtxoPrivateKey, transact,
+} from "@cloak.dev/sdk";
 
 const amount = 1_000_000_000n;
 const kp = await generateUtxoKeypair();
@@ -1279,6 +1413,8 @@ deposit (`signTransaction` for the transaction, `signMessage` for the viewing-ke
 latter only on first use per wallet) and exactly one more for the withdraw.
 
 ```ts
+import { createZeroUtxo, fullWithdraw, getPublicKey, transact } from "@cloak.dev/sdk";
+
 const dep = await transact(
   { inputUtxos: [await createZeroUtxo()], outputUtxos: [utxo], externalAmount: amount, depositor: getPublicKey(wallet) },
   {
@@ -1302,7 +1438,8 @@ const wd = await fullWithdraw([dep.outputUtxos[0]], recipientPublicKey, {
 ### 6.6 Swap SOL -> SPL (with shielded change)
 
 ```ts
-import { swapWithChange, createUtxo, NATIVE_SOL_MINT } from "@cloak.dev/sdk";
+import { NATIVE_SOL_MINT, serializeUtxo, swapWithChange } from "@cloak.dev/sdk";
+import { PublicKey } from "@solana/web3.js";
 import { getAssociatedTokenAddress } from "@solana/spl-token";
 import { createJupiterApiClient } from "@jup-ag/api";
 
@@ -1313,7 +1450,7 @@ const recipientAta = await getAssociatedTokenAddress(outputMint, sender.publicKe
 // Quote (Jupiter) -> pick minOut:
 const jup = createJupiterApiClient();
 const quote = await jup.quoteGet({
-  inputMint: "So11111111111111111111111111111111111111112",
+  inputMint: NATIVE_SOL_MINT.toBase58(),   // swap input is wSOL-locked
   outputMint: outputMint.toBase58(),
   amount: Number(swapAmount),
   slippageBps: 1500,
@@ -1342,6 +1479,10 @@ const swapResult = await swapWithChange(
 
 console.log("swap sig", swapResult.signature);
 console.log("swapStatePda", swapResult.swapStatePda);
+
+// TWO pieces of the user's own money exist only in that returned object. Write both now.
+await saveNoteBytes(serializeUtxo(swapResult.outputUtxos[0]));  // shielded change note
+await saveSwapRefund(swapResult.refund);                        // timeout-refund secret
 ```
 
 **Browser form of this same swap.** Relay-submitted, so the same one-field swap, with one extra
@@ -1350,6 +1491,8 @@ route can be re-quoted and re-signed. `maxWalletApprovals` caps how many times (
 at 1). Sends and withdrawals never do this.
 
 ```ts
+import { getPublicKey, serializeUtxo, swapWithChange } from "@cloak.dev/sdk";
+
 const swapResult = await swapWithChange(
   depositResult.outputUtxos,
   swapAmount,
@@ -1367,6 +1510,9 @@ const swapResult = await swapWithChange(
   },
   getPublicKey(wallet),        // so the SDK can create the ATA if missing
 );
+
+await saveNoteBytes(serializeUtxo(swapResult.outputUtxos[0]));  // change note
+await saveSwapRefund(swapResult.refund);                        // timeout-refund secret
 ```
 
 **Persist `swapResult.outputUtxos[0]` AND `swapResult.refund` before you do anything else, in
@@ -1390,6 +1536,7 @@ import {
   scanTransactions, toComplianceReport, formatComplianceCsv,
   getNkFromUtxoPrivateKey,
 } from "@cloak.dev/sdk";
+import { writeFile } from "node:fs/promises";
 
 const nk = getNkFromUtxoPrivateKey(utxoKeypair.privateKey);
 
@@ -1406,12 +1553,14 @@ const scan = await scanTransactions({
 console.log("summary", scan.summary);
 const report = toComplianceReport(scan);
 const csv = formatComplianceCsv(report);
-await fs.promises.writeFile("cloak-history.csv", csv, "utf8");
+await writeFile("cloak-history.csv", csv, "utf8");
 ```
 
 Incremental re-scan (only fetch new transactions since the last run):
 
 ```ts
+import { scanTransactions } from "@cloak.dev/sdk";
+
 const delta = await scanTransactions({
   connection,
   programId,

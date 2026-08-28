@@ -97,6 +97,10 @@ async fn main() -> anyhow::Result<()> {
         ..Default::default()
     };
 
+    // Every output UTXO you put in `opts.outputs` must be cloned before it
+    // moves in here, then stored with its leaf index from
+    // `result.output_indices` before you use `result` for anything else.
+    // See "Notes are yours to persist" below.
     let result = transact(opts).await?;
     println!("landed: {}", result.signature);
     Ok(())
@@ -105,11 +109,47 @@ async fn main() -> anyhow::Result<()> {
 
 `TransactOptions` is the single knob surface — no client builder, no stateful client object. Every flow is a different `TransactOptions` shape routed through the same `transact()` call.
 
+## Notes are yours to persist
+
+The engine has no wallet and no storage. `Utxo::new` draws a fresh `blinding` from
+`random_field_element()` and keeps it only inside the value it hands back, and the chain
+stores nothing but the Poseidon commitment
+`Poseidon(amount, public_key, blinding, mint_field)`. A note is spendable only by whoever
+holds its `UtxoKeypair.private_key` together with its exact `blinding`.
+
+So, at every call site: clone each output `Utxo` before it moves into
+`TransactOptions.outputs`, write `result.output_indices[i]` into the clone's `index`, and
+store it before you touch the result for anything else. `Utxo` and `UtxoKeypair` both
+derive `Clone`.
+
+<Warning>
+An output you constructed and then dropped is unspendable by you and by everyone else,
+permanently. Nothing recovers it: the encrypted chain note carries an 8-byte timestamp,
+not the blinding, so no scan of the chain can rebuild the note. On a transfer, a
+withdrawal, or a swap the output that hurts is the **change**, because that is the balance
+you kept.
+</Warning>
+
+Two details that bite:
+
+- `result.output_indices[i]` is `Option<u32>` and reconciliation is best-effort, so `None`
+  is a normal outcome. Store the note with `index: None` and backfill it later by matching
+  `result.output_commitments[i]` against the tree. Never drop a note because its index is
+  missing.
+- `UtxoKeypair::from_spend_key(&[u8; 32])` is deterministic, so a keypair can be re-derived.
+  The blinding cannot. Deriving keys does not remove the need to persist the note.
+
+`cloak_sdk::storage::note_store::NoteStore` is the trait to implement for this
+(`insert`, `mark_spent`, `unspent_for`, `all`), alongside
+`cloak_sdk::storage::tree_cache::TreeCache` for the Merkle tree. The crate ships both
+traits and no backend, so pick your own (sled, sqlite, Postgres). Treat the stored
+`private_key` and `blinding` like wallet secrets and encrypt them at rest.
+
 ## Design at a glance
 
 A few intentional choices shape how the crate reads:
 
-- **Engine-first, no stateful façade.** The TS SDK ships optional stateful helpers such as `UtxoWallet` and `SimpleWallet` for local note tracking and input selection; the Rust crate exposes the engine directly and leaves that shape to you. Build your own wallet, scanner, or compliance report on top — `TransactResult` gives you the commitments, indices, and post-tx tree to do it.
+- **Engine-first, no stateful façade.** The TS SDK ships optional stateful helpers such as `UtxoWallet` and `SimpleWallet` for local note tracking and input selection; the Rust crate exposes the engine directly and leaves that shape to you. Build your own wallet, scanner, or compliance report on top — `TransactResult` gives you the commitments, indices, and post-tx tree to do it. The flip side is that [note persistence is entirely yours](#notes-are-yours-to-persist), and an output you fail to store is money nobody can spend.
 - **`TransactOptions` as the one knob.** Parameters (inputs, outputs, external_amount, recipient) and submission config (rpc, payer, relay_url, risk checks) live on one struct. `..Default::default()` + struct-update syntax keeps call sites readable.
 - **`RpcProvider` is a trait.** Production wraps `solana-rpc-client::nonblocking::RpcClient` via `SolanaRpc`; tests inject `MockRpc`. Same shape, no cfg-gated code paths.
 - **Focused Solana crates.** Depends on `solana-keypair`, `solana-pubkey`, `solana-transaction`, `solana-rpc-client`, etc. — not the `solana-sdk` umbrella. Keeps the dep graph predictable and compile times reasonable.

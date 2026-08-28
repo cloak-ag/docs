@@ -52,6 +52,10 @@ const result = await transact(params, {
   riskQuoteUrl, // absolute URL on this build's allowlist (if needed)
   addressLookupTableAccounts,
 });
+
+// `result.outputUtxos` is the money this deposit created, and the SDK stores none of it.
+// Write it to durable storage before you report success:
+// see "Where your notes live between sessions" below.
 ```
 
 Check `signMessage` is present before you offer a send or withdraw action. Not every adapter
@@ -171,6 +175,11 @@ The SDK does not persist anything for you. `transact`, `transfer`, `partialWithd
 and the swap helpers each return their new notes on `result.outputUtxos` and then forget them. That
 storage boundary is explicit, and closing it is your job.
 
+`fullWithdraw` is the one call that leaves nothing shielded, so it has no change note to lose. Every
+other call in that list produces one. `swapUtxo` and `swapWithChange` additionally return `refund`
+and `swapStatePda` on `UtxoSwapResult`, which is what reclaims the principal if the swap times out
+before it settles; persist those two alongside the notes.
+
 <Warning>
 Write `result.outputUtxos` to durable storage before you report success to the user. A note is
 spendable only with its full secrets, `(amount, owner pubkey, blinding, mint)`, and the `blinding`
@@ -190,6 +199,10 @@ No rescan, no seed phrase and no support path brings it back.
 objects. They cover different halves of the problem: `UtxoWallet` is the spendable note set, the
 adapters are a ready-made place to keep key material. The note set is the half that decides
 solvency.
+
+For a single note rather than a whole set, `serializeUtxo(utxo)` returns a `Uint8Array` and
+`deserializeUtxo(bytes)` returns a `Promise<Utxo>`. Those are the primitives if you keep notes in
+your own table or send one across a boundary; `UtxoWallet.serialize()` is the batch form.
 
 ### A note set that survives a reload
 
@@ -276,7 +289,17 @@ const selected = selectUtxos(available, 30_000_000n);
 if (!selected) throw new Error("insufficient shielded balance");
 if (selected.length > 2) throw new Error("consolidate before sending");
 
-await transfer(selected, recipientUtxoPublicKey, 30_000_000n, walletOptions);
+const sent = await transfer(selected, recipientUtxoPublicKey, 30_000_000n, walletOptions);
+
+// The inputs are spent and your change is in `sent.outputUtxos`. Record both, and save,
+// before you report the send as done.
+for (const spent of selected) {
+  wallet.markSpent(spent, spent.mintAddress);
+}
+for (const utxo of sent.outputUtxos) {
+  wallet.addUtxo(utxo, utxo.mintAddress);
+}
+saveWallet(wallet);
 ```
 
 Two things it does not do:
@@ -306,7 +329,7 @@ Most of it does not come back. Be precise with yourself about which parts do:
 
 | What was lost | Recoverable from chain | Why |
 |---|---|---|
-| Change from your own send, withdrawal or swap | **No** | `transfer`, `partialWithdraw`, `fullWithdraw` and `swapWithChange` all build change with `createUtxo`, whose `blinding` is `randomFieldElement()` and is written nowhere on chain |
+| Change from your own send, withdrawal or swap | **No** | `transfer`, `partialWithdraw`, `swapUtxo` and `swapWithChange` all build change with `createUtxo`, whose `blinding` is `randomFieldElement()` and is written nowhere on chain |
 | A deposit built with `createUtxo` | **No** | Same missing `blinding`. It appears in history as an amount, which is not a spendable note |
 | A deposit built with `createRecoverableDepositUtxo` | Yes | Secrets are a PRF of your `nk` and the salt the chain note already carries, so a cold scan can replay the derivation |
 | A note someone sent you, when the sender passed `recipientViewingPublicKey` | Yes | The sender sealed `amount` and `blinding` into an on-chain envelope addressed to your viewing key |
@@ -344,10 +367,17 @@ import { createRecoverableDepositUtxo, transact } from "@cloak.dev/sdk";
 
 const { utxo, noteSalt } = await createRecoverableDepositUtxo(20_000_000n, nk);
 
-await transact(
+const deposit = await transact(
   { inputUtxos: [], outputUtxos: [utxo], externalAmount: 20_000_000n },
   { ...options, chainNoteViewingKeyNk: nk, chainNoteSalt: noteSalt },
 );
+
+// Recoverable is the fallback, not the plan. `deposit.outputUtxos` comes back with the leaf
+// index already filled in, so persist it now and keep the scan as a repair tool.
+for (const out of deposit.outputUtxos) {
+  wallet.addUtxo(out, out.mintAddress);
+}
+saveWallet(wallet);
 ```
 
 The salt has to reach the chain note, which is what `chainNoteSalt` does, and `transact` refuses a

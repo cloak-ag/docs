@@ -39,6 +39,39 @@ tracks an older release line, so move to the mainnet package first when you buil
 Nothing else differs. The parameters, the amounts, the helpers and the results are identical on both
 paths; only the holder of the pen changes.
 
+## Persist every note this page creates
+
+`transact`, `transfer`, `partialWithdraw`, `swapUtxo` and `swapWithChange` all return
+`outputUtxos`, and those objects are the money. A note's blinding is drawn by `createUtxo` from
+`randomFieldElement()` and is never written on chain, so the on-chain note alone cannot be spent
+and no scan reconstructs it. A note you create and do not save is unspendable by anyone,
+permanently. `fullWithdraw` is the single exemption: it leaves nothing shielded, so it has no
+change note.
+
+Printing a note's amount is not keeping it. Every sample below saves the note bytes first and
+logs afterwards, through two functions you supply:
+
+```typescript
+// Replace both with your own storage: a database row, a keystore file, an encrypted blob.
+// The samples turn a note into bytes with serializeUtxo(utxo) from the SDK; deserializeUtxo(bytes)
+// gives the note back when you reload it.
+async function saveNote(bytes: Uint8Array): Promise<void> {
+  /* your storage */
+}
+async function saveRefund(
+  swapStatePda: string,
+  refund: { privateKey: string; publicKey: string; blinding: string; derivedFromNk: boolean },
+): Promise<void> {
+  /* your storage */
+}
+```
+
+Once a saved note has been spent as an input, mark it spent in your store so a later reload does
+not try to spend it again. Where these bytes should live between sessions is answered in
+[Where your notes live between sessions](/sdk/wallet-integration#where-your-notes-live-between-sessions).
+Devnet balances are play money, but this page ends by telling you to switch one import and point
+the same script at mainnet, so the shape you copy here is the shape that will hold real funds.
+
 ## Endpoints
 
 ```
@@ -81,6 +114,7 @@ import {
   createZeroUtxo,
   generateUtxoKeypair,
   getNkFromUtxoPrivateKey,
+  serializeUtxo,
   NATIVE_SOL_MINT,
 } from "@cloak.dev/sdk-devnet";
 import { Connection, Keypair, LAMPORTS_PER_SOL } from "@solana/web3.js";
@@ -113,6 +147,12 @@ const result = await transact(
   },
 );
 
+// Persist before logging. The deposited note's blinding exists only in this process;
+// if it is lost, the deposit is unspendable by anyone, forever.
+for (const note of result.outputUtxos.filter((u) => u.amount > 0n)) {
+  await saveNote(serializeUtxo(note));
+}
+
 console.log("Deposit landed:", result.signature);
 ```
 
@@ -124,6 +164,7 @@ import {
   createZeroUtxo,
   generateUtxoKeypair,
   getNkFromUtxoPrivateKey,
+  serializeUtxo,
   NATIVE_SOL_MINT,
 } from "@cloak.dev/sdk-devnet";
 import { address, createSolanaRpc } from "@solana/kit";
@@ -168,6 +209,12 @@ const result = await transact(
   },
 );
 
+// Persist before logging. The deposited note's blinding exists only in this process;
+// if it is lost, the deposit is unspendable by anyone, forever.
+for (const note of result.outputUtxos.filter((u) => u.amount > 0n)) {
+  await saveNote(serializeUtxo(note));
+}
+
 console.log("Deposit landed:", result.signature);
 ```
 </CodeGroup>
@@ -191,6 +238,7 @@ import {
   createZeroUtxo,
   generateUtxoKeypair,
   getNkFromUtxoPrivateKey,
+  serializeUtxo,
   NATIVE_SOL_MINT,
 } from "@cloak.dev/sdk-devnet";
 import { Connection, Keypair, LAMPORTS_PER_SOL } from "@solana/web3.js";
@@ -223,6 +271,8 @@ const deposit = await transact(
   },
 );
 const shielded = deposit.outputUtxos[0];
+// Save it before the wait below: a crash in the next 20 seconds strands the deposit otherwise.
+await saveNote(serializeUtxo(shielded));
 
 // Wait for the deposit's commitment to settle on chain.
 await new Promise((r) => setTimeout(r, 20_000));
@@ -254,6 +304,13 @@ const transfer = await transact(
   },
 );
 
+// Persist both outputs before logging. outputUtxos[1] is the change note, and printing its
+// amount is not the same as keeping it. This script generated recipientUtxo too, so it owns
+// outputUtxos[0] as well; save both.
+for (const note of transfer.outputUtxos.filter((u) => u.amount > 0n)) {
+  await saveNote(serializeUtxo(note));
+}
+
 console.log("Transfer landed:", transfer.signature);
 console.log("Recipient amount (lamports):", transfer.outputUtxos[0].amount);
 console.log("Change amount    (lamports):", transfer.outputUtxos[1].amount);
@@ -267,6 +324,7 @@ import {
   createZeroUtxo,
   generateUtxoKeypair,
   getNkFromUtxoPrivateKey,
+  serializeUtxo,
   NATIVE_SOL_MINT,
 } from "@cloak.dev/sdk-devnet";
 import { address, createSolanaRpc } from "@solana/kit";
@@ -308,6 +366,8 @@ const deposit = await transact(
   },
 );
 const shielded = deposit.outputUtxos[0];
+// Save it before the wait below: a crash in the next 20 seconds strands the deposit otherwise.
+await saveNote(serializeUtxo(shielded));
 
 await new Promise((r) => setTimeout(r, 20_000));
 
@@ -336,6 +396,13 @@ const transfer = await transact(
   },
 );
 
+// Persist both outputs before logging. outputUtxos[1] is the change note, and printing its
+// amount is not the same as keeping it. This script generated recipientUtxo too, so it owns
+// outputUtxos[0] as well; save both.
+for (const note of transfer.outputUtxos.filter((u) => u.amount > 0n)) {
+  await saveNote(serializeUtxo(note));
+}
+
 console.log("Transfer landed:", transfer.signature);
 ```
 </CodeGroup>
@@ -360,6 +427,7 @@ import {
   createZeroUtxo,
   generateUtxoKeypair,
   getNkFromUtxoPrivateKey,
+  serializeUtxo,
 } from "@cloak.dev/sdk-devnet";
 import { Connection, Keypair } from "@solana/web3.js";
 import { getAssociatedTokenAddress, getAccount } from "@solana/spl-token";
@@ -399,6 +467,8 @@ const deposit = await transact(
   },
 );
 const shielded = deposit.outputUtxos[0];
+// Save it before the wait below: a crash in the next 20 seconds strands the deposit otherwise.
+await saveNote(serializeUtxo(shielded));
 
 await new Promise((r) => setTimeout(r, 20_000));
 
@@ -427,6 +497,13 @@ const transfer = await transact(
   },
 );
 
+// Persist both outputs before logging. outputUtxos[1] is the change note, and printing its
+// amount is not the same as keeping it. This script generated recipientUtxo too, so it owns
+// outputUtxos[0] as well; save both.
+for (const note of transfer.outputUtxos.filter((u) => u.amount > 0n)) {
+  await saveNote(serializeUtxo(note));
+}
+
 console.log("USDC transfer landed:", transfer.signature);
 console.log("Recipient amount:", transfer.outputUtxos[0].amount); // 2_000_000
 console.log("Change amount:   ", transfer.outputUtxos[1].amount); // 3_000_000
@@ -441,6 +518,7 @@ import {
   createZeroUtxo,
   generateUtxoKeypair,
   getNkFromUtxoPrivateKey,
+  serializeUtxo,
 } from "@cloak.dev/sdk-devnet";
 import { address, createSolanaRpc } from "@solana/kit";
 import { Connection, Keypair } from "@solana/web3.js";
@@ -483,6 +561,8 @@ const deposit = await transact(
   },
 );
 const shielded = deposit.outputUtxos[0];
+// Save it before the wait below: a crash in the next 20 seconds strands the deposit otherwise.
+await saveNote(serializeUtxo(shielded));
 
 await new Promise((r) => setTimeout(r, 20_000));
 
@@ -511,6 +591,13 @@ const transfer = await transact(
   },
 );
 
+// Persist both outputs before logging. outputUtxos[1] is the change note, and printing its
+// amount is not the same as keeping it. This script generated recipientUtxo too, so it owns
+// outputUtxos[0] as well; save both.
+for (const note of transfer.outputUtxos.filter((u) => u.amount > 0n)) {
+  await saveNote(serializeUtxo(note));
+}
+
 console.log("USDC transfer landed:", transfer.signature);
 ```
 </CodeGroup>
@@ -525,6 +612,13 @@ plus `walletPublicKey` instead, and a swap is the one flow that can prompt more 
 
 Devnet swaps from shielded SOL to mock-USDC settle at a Pyth-quoted spot price. The SDK call shape is identical to a mainnet `swapWithChange` — only the output mint differs.
 
+`swapWithChange` returns two things worth keeping: the change note in `outputUtxos`, and `refund`,
+the secret that reclaims the swap principal if the swap times out before it settles. Save both.
+Because these samples pass `chainNoteViewingKeyNk`, `discoverSwapRefunds` and
+`matchSwapRefundLeaf` can rebuild that refund later from the wallet's `nk` plus the swap's public
+nullifier, so persisting `refund` is the fast path. Omit `chainNoteViewingKeyNk` and the returned
+object is the only copy that will ever exist.
+
 <CodeGroup>
 ```typescript @solana/web3.js
 import {
@@ -536,6 +630,7 @@ import {
   createZeroUtxo,
   generateUtxoKeypair,
   getNkFromUtxoPrivateKey,
+  serializeUtxo,
   NATIVE_SOL_MINT,
 } from "@cloak.dev/sdk-devnet";
 import { Connection, Keypair, LAMPORTS_PER_SOL } from "@solana/web3.js";
@@ -580,6 +675,8 @@ const deposit = await transact(
   },
 );
 const shielded = deposit.outputUtxos[0];
+// Save it before the wait below: a crash in the next 20 seconds strands the deposit otherwise.
+await saveNote(serializeUtxo(shielded));
 
 await new Promise((r) => setTimeout(r, 20_000));
 
@@ -607,6 +704,14 @@ const swap = await swapWithChange(
   sender.publicKey,
 );
 
+// Persist the change note and the refund secret before anything else. The refund is what
+// reclaims the principal if the swap times out instead of settling, and by the time that
+// matters this process is long gone.
+for (const note of swap.outputUtxos.filter((u) => u.amount > 0n)) {
+  await saveNote(serializeUtxo(note));
+}
+await saveRefund(swap.swapStatePda, swap.refund);
+
 console.log("Swap initiated:", swap.signature);
 console.log("Expected mock USDC out (base units):", minOut);
 ```
@@ -621,6 +726,7 @@ import {
   createZeroUtxo,
   generateUtxoKeypair,
   getNkFromUtxoPrivateKey,
+  serializeUtxo,
   NATIVE_SOL_MINT,
 } from "@cloak.dev/sdk-devnet";
 import { address, createSolanaRpc } from "@solana/kit";
@@ -672,6 +778,8 @@ const deposit = await transact(
   },
 );
 const shielded = deposit.outputUtxos[0];
+// Save it before the wait below: a crash in the next 20 seconds strands the deposit otherwise.
+await saveNote(serializeUtxo(shielded));
 
 await new Promise((r) => setTimeout(r, 20_000));
 
@@ -699,9 +807,18 @@ const swap = await swapWithChange(
   sender.publicKey,
 );
 
+// Persist the change note and the refund secret before anything else. The refund is what
+// reclaims the principal if the swap times out instead of settling, and by the time that
+// matters this process is long gone.
+for (const note of swap.outputUtxos.filter((u) => u.amount > 0n)) {
+  await saveNote(serializeUtxo(note));
+}
+await saveRefund(swap.swapStatePda, swap.refund);
+
 console.log("Swap initiated:", swap.signature);
 
-// Poll the swap output ATA via kit.
+// Poll the swap output ATA via kit. If this loop exits without seeing the funds, the swap may
+// have timed out: that is the case the saved refund above exists for.
 for (let i = 0; i < 60; i++) {
   await new Promise((r) => setTimeout(r, 1000));
   const bal = await kitRpc
@@ -781,8 +898,8 @@ Limits are enforced server-side in-memory per Vercel instance — they reset whe
 When you ship to production, change the import and name the submission endpoint:
 
 ```diff
-- import { transact, CLOAK_PROGRAM_ID } from "@cloak.dev/sdk-devnet";
-+ import { transact, CLOAK_PROGRAM_ID } from "@cloak.dev/sdk";
+- import { transact, CLOAK_PROGRAM_ID, serializeUtxo } from "@cloak.dev/sdk-devnet";
++ import { transact, CLOAK_PROGRAM_ID, serializeUtxo } from "@cloak.dev/sdk";
 
   const result = await transact(params, {
     connection,
@@ -790,6 +907,11 @@ When you ship to production, change the import and name the submission endpoint:
     depositorKeypair: sender,
 +   relayUrl: "https://api.cloak.ag",
   });
+
+  // Unchanged, and now holding real funds: persist result.outputUtxos before you log anything.
+  for (const note of result.outputUtxos.filter((u) => u.amount > 0n)) {
+    await saveNote(serializeUtxo(note));
+  }
 ```
 
 The mainnet SDK ships the production program ID and the 0.2.0 circuits paths as defaults. The submission endpoint is not defaulted, and no environment variable substitutes for it: pass `relayUrl` in your options. Omitting it, or passing an empty string, makes every flow throw `Viewing key registration is mandatory: relayUrl is required.` before the call touches the network, `swapWithChange` and deposits included, because viewing-key registration is enforced by default. Nothing falls back to submitting under your own wallet on that path, so a missing `relayUrl` is a loud failure rather than a silent privacy loss. Also swap `DEVNET_MOCK_USDC_MINT` for Circle USDC (`EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v`) and use a mainnet RPC for your `Connection`. Cloak's mainnet `swapWithChange` routes through Jupiter (real liquidity); devnet routes through the Pyth-priced mock path.

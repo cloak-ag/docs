@@ -22,6 +22,22 @@ import { CloakError } from "@cloak.dev/sdk";
 
 Most app flows should treat `retryable === true` as backoff-eligible.
 
+## Persist the change note before you report success
+
+`transact`, `transfer`, `partialWithdraw`, `swapUtxo` and `swapWithChange` all return
+`result.outputUtxos`, and the change note among them is the user's remaining shielded balance. Its
+`blinding` is fresh randomness generated inside the SDK and is written nowhere on chain, so a change
+note whose only copy you dropped is unspendable by anyone, permanently. No rescan brings it back.
+Outputs with `amount === 0n` are padding and can be skipped. `fullWithdraw` leaves nothing shielded,
+so it is the one call with no change note to keep.
+
+This is an error-handling concern because every example below is a `try`/`catch`. The `catch` is the
+failure path; the tail of the `try` is the success path, and that is where the write belongs. A
+`try` block whose tail is empty has already lost the note by the time control reaches the next line.
+`saveNotes` and `saveSwapRefund` in these snippets are your own storage, not SDK exports;
+[Where your notes live between sessions](/sdk/wallet-integration#where-your-notes-live-between-sessions)
+covers what to build them on.
+
 ## `Unauthorized` and bare `401` on a send, withdraw or swap
 
 Every request Cloak submits for you carries a signed sender, and every way that can go wrong arrives
@@ -64,6 +80,8 @@ try {
     depositorKeypair,
     walletPublicKey: depositorKeypair.publicKey,
   });
+  // fullWithdraw leaves nothing shielded, so there is no change note to persist here.
+  // Every other flow has one: see the wallet-adapter tab.
 } catch (error) {
   if (error instanceof RootNotFoundError || isRootNotFoundError(error)) {
     // Refresh proof inputs and retry flow
@@ -76,16 +94,21 @@ import {
   isRootNotFoundError,
   partialWithdraw,
   RootNotFoundError,
+  serializeUtxo,
 } from "@cloak.dev/sdk";
 
 try {
-  await partialWithdraw(inputUtxos, recipient, 10_000_000n, {
+  const withdrawn = await partialWithdraw(inputUtxos, recipient, 10_000_000n, {
     connection,
     programId,
     relayUrl,
     walletPublicKey: publicKey!,
     signMessage: signMessage!,
   });
+  // Success path: the remaining balance is here and nowhere else. Write it first.
+  await saveNotes(
+    withdrawn.outputUtxos.filter((utxo) => utxo.amount > 0n).map(serializeUtxo),
+  );
 } catch (error) {
   if (error instanceof RootNotFoundError || isRootNotFoundError(error)) {
     // Rebuild with fresh commitments/root and retry
@@ -112,16 +135,37 @@ console.log(ShieldPoolErrors[0x1076]); // Proof verification failed
 
 <CodeGroup>
 ```typescript Keypair bytes
-import { parseError, swapWithChange, type UserFriendlyError } from "@cloak.dev/sdk";
+import {
+  parseError,
+  serializeUtxo,
+  swapWithChange,
+  type UserFriendlyError,
+} from "@cloak.dev/sdk";
 
 try {
-  await swapWithChange(inputUtxos, amountLamports, outputMint, recipientAta, minOutput, {
-    connection,
-    programId,
-    relayUrl,
-    depositorKeypair,
-    walletPublicKey: depositorKeypair.publicKey,
-  });
+  const swapped = await swapWithChange(
+    inputUtxos,
+    amountLamports,
+    outputMint,
+    recipientAta,
+    minOutput,
+    {
+      connection,
+      programId,
+      relayUrl,
+      depositorKeypair,
+      walletPublicKey: depositorKeypair.publicKey,
+    },
+  );
+  // Success path, two writes. The change note is the remaining shielded balance.
+  await saveNotes(
+    swapped.outputUtxos.filter((utxo) => utxo.amount > 0n).map(serializeUtxo),
+  );
+  // `swapped.refund` reclaims the principal if the swap times out before it executes.
+  // With `chainNoteViewingKeyNk` supplied it can be rebuilt later via `discoverSwapRefunds`,
+  // so saving it is the fast path. Without one, `refund.derivedFromNk` is false and this
+  // object is the only copy that will ever exist.
+  await saveSwapRefund(swapped.swapStatePda, swapped.refund);
 } catch (error) {
   const parsed: UserFriendlyError = parseError(error);
   // parsed.category: wallet | network | validation | service | transaction | unknown
@@ -130,16 +174,33 @@ try {
 ```
 
 ```typescript Wallet adapter
-import { parseError, swapWithChange, type UserFriendlyError } from "@cloak.dev/sdk";
+import {
+  parseError,
+  serializeUtxo,
+  swapWithChange,
+  type UserFriendlyError,
+} from "@cloak.dev/sdk";
 
 try {
-  await swapWithChange(inputUtxos, amountLamports, outputMint, recipientAta, minOutput, {
-    connection,
-    programId,
-    relayUrl,
-    walletPublicKey: publicKey!,
-    signMessage: signMessage!,
-  });
+  const swapped = await swapWithChange(
+    inputUtxos,
+    amountLamports,
+    outputMint,
+    recipientAta,
+    minOutput,
+    {
+      connection,
+      programId,
+      relayUrl,
+      walletPublicKey: publicKey!,
+      signMessage: signMessage!,
+    },
+  );
+  // Same two writes as the other tab: the change note, then the timeout refund secret.
+  await saveNotes(
+    swapped.outputUtxos.filter((utxo) => utxo.amount > 0n).map(serializeUtxo),
+  );
+  await saveSwapRefund(swapped.swapStatePda, swapped.refund);
 } catch (error) {
   const parsed: UserFriendlyError = parseError(error);
   // parsed.category / parsed.recoverable
@@ -157,14 +218,14 @@ try {
 ## UTXO stale-root retry template
 
 ```typescript
-import { fullWithdraw, isRootNotFoundError } from "@cloak.dev/sdk";
+import { isRootNotFoundError, partialWithdraw, serializeUtxo } from "@cloak.dev/sdk";
 
-let result: Awaited<ReturnType<typeof fullWithdraw>> | undefined;
+let result: Awaited<ReturnType<typeof partialWithdraw>> | undefined;
 let cachedMerkleTree = initialMerkleTree;
 
 for (let attempt = 1; attempt <= 3; attempt += 1) {
   try {
-    result = await fullWithdraw(inputUtxos, recipientWallet, {
+    result = await partialWithdraw(inputUtxos, recipientWallet, 10_000_000n, {
       connection,
       programId,
       relayUrl,
@@ -182,7 +243,16 @@ for (let attempt = 1; attempt <= 3; attempt += 1) {
 }
 
 if (!result) throw new Error("withdraw did not complete");
+
+// `break` only ends the retry. The change note is still unsaved at this point, and it is the
+// only copy of the user's remaining balance, so persist it before anything reports success.
+await saveNotes(result.outputUtxos.filter((utxo) => utxo.amount > 0n).map(serializeUtxo));
 ```
+
+Swap `partialWithdraw` for `transact`, `transfer`, `swapUtxo` or `swapWithChange` and the loop is
+unchanged, but the tail still has to run: each of those returns a change note too, and the two swap
+helpers add a `refund` secret. `fullWithdraw` is the only substitution that needs no tail, because
+it leaves nothing shielded.
 
 ## Security logging rule
 

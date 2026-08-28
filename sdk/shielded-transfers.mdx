@@ -155,15 +155,25 @@ import {
   generateUtxoKeypair,
   getNkFromUtxoPrivateKey,
   scanRecipientDeliveryNotes,
+  serializeUtxo,
   transact,
   transfer,
   fullWithdraw,
+  type Utxo,
 } from "@cloak.dev/sdk";
 import { Connection, Keypair } from "@solana/web3.js";
+import { writeFileSync } from "node:fs";
 
 const connection = new Connection(process.env.SOLANA_RPC_URL!, "confirmed");
 const programId = CLOAK_PROGRAM_ID;
 const relayUrl = CLOAK_PRODUCTION_RELAY_URL;
+
+// The SDK persists nothing for you. `serializeUtxo` is the 128-byte encoding of one
+// note (amount, private key, blinding, mint, index) that `deserializeUtxo` reads back;
+// nothing else can. A file is the simplest durable store there is. Treat these bytes
+// as key material: whoever holds them can spend the note.
+const keepNote = (name: string, utxo: Utxo) =>
+  writeFileSync(`${name}.note`, serializeUtxo(utxo));
 
 // Solana wallets. Each side's own wallet authenticates that side's request.
 const aliceWallet = Keypair.fromSecretKey(
@@ -202,12 +212,13 @@ const deposit = await transact(
   },
 );
 const [aliceNote] = deposit.outputUtxos;   // ← the 0.10 note, with its leaf index attached
+keepNote(`alice-deposit-${deposit.signature}`, aliceNote);  // crash here and it is gone
 
 // ── Sender (Alice) sends ─────────────────────────────────────────────
 // Alice moves 0.06 SOL of that note to Bob. externalAmount is 0 this time, so
 // nothing leaves the pool, only ownership. Her 0.04 change comes back on
 // `outputUtxos`, and that is the only copy of it: see the note below.
-await transfer(
+const sent = await transfer(
   [aliceNote],              // input note(s) Alice owns
   bobPubkey,                // recipient's Cloak pubkey — NOT a Solana wallet
   60_000_000n,             // 0.06 SOL
@@ -220,6 +231,16 @@ await transfer(
     cachedMerkleTree: deposit.merkleTree,   // the deposit already built the tree; reuse it
   },
 );
+
+// Bank Alice's 0.04 change BEFORE anything reports success. `transfer` puts Bob's
+// note at output 0 and Alice's change at output 1; a zero amount there means the
+// input was consumed exactly and there is no change. The change note's blinding is
+// fresh randomness that reaches no chain, so these bytes are its only copy and
+// dropping them makes 0.04 SOL unspendable by Alice, by Bob and by anyone else.
+const aliceChange = sent.outputUtxos[1];
+if (aliceChange && aliceChange.amount > 0n) {
+  keepNote(`alice-change-${sent.signature}`, aliceChange);
+}
 
 // ── Recipient (Bob) discovers and claims ─────────────────────────────
 // Bob scans with nothing but his own keys and finds the note Alice sent him.
@@ -251,7 +272,7 @@ await fullWithdraw([claimable], bobWallet.publicKey, {   // ← funds land at bo
 </Note>
 
 <Note>
-Drop `recipientViewingPublicKey` and you are back on the **bearer** path: Alice must read the recipient note out of `transfer`'s `outputUtxos` (the one at index 0) and hand Bob its amount and blinding off-chain herself. Without either the envelope or that hand-off, the note is orphaned — Bob owns a commitment he has no secrets for, and no scan will surface it.
+Drop `recipientViewingPublicKey` and you are back on the **bearer** path: Alice must read the recipient note out of `sent.outputUtxos[0]` and hand Bob its amount and blinding off-chain herself, on top of banking her own change from `sent.outputUtxos[1]`. Without either the envelope or that hand-off, the note is orphaned — Bob owns a commitment he has no secrets for, and no scan will surface it.
 </Note>
 
 ### Browser: the same send from a wallet adapter
@@ -312,7 +333,8 @@ async function sendToBob(
       recipientViewingPublicKey: bobViewingPublicKey, // opt in to recipient discovery
     });
 
-    // Bank the change before you render "sent". This is its only copy.
+    // Bank the change before you render "sent". This is its only copy: output 0 is
+    // Bob's note, output 1 is Alice's change, and its blinding reaches no chain.
     for (const spent of inputs) wallet.markSpent(spent, spent.mintAddress);
     for (const utxo of result.outputUtxos) wallet.addUtxo(utxo, utxo.mintAddress);
     window.localStorage.setItem(NOTES_KEY, wallet.serialize());
@@ -322,6 +344,12 @@ async function sendToBob(
   }
 }
 ```
+
+<Note>
+**`UtxoWallet.serialize()` drops each note's `commitment`.** It is spend-complete, so nothing here is
+lost, but notes restored with `UtxoWallet.deserialize` come back from `verifyUtxos` as `skipped`
+rather than `unspent`. Read `skipped` as "not checked", never as "gone".
+</Note>
 
 Two things a browser integration should design around, both covered in full on [Request authentication](/sdk/request-authentication):
 

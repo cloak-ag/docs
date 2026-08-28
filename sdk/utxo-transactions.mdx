@@ -21,6 +21,7 @@ All are exported from `@cloak.dev/sdk`.
 
 ```typescript
 import type { Utxo } from "@cloak.dev/sdk";
+import type { PublicKey } from "@solana/web3.js";
 
 interface TransactParams {
   inputUtxos: Utxo[];
@@ -72,6 +73,46 @@ const keypair = await generateUtxoKeypair();
 const utxo = await createUtxo(100_000_000n, keypair, NATIVE_SOL_MINT);
 ```
 
+## Every result carries notes you must persist
+
+`transact`, `transfer`, `partialWithdraw`, `swapUtxo` and `swapWithChange` all resolve to a result
+whose `outputUtxos` hold your money: the note a deposit created, and the change note left over by a
+spend. `fullWithdraw` is the only exemption, because it leaves nothing shielded.
+
+<Warning>
+A note is spendable only with its full secrets, and `createUtxo` draws each note's `blinding` from
+`randomFieldElement()`. That value is written nowhere on chain; the on-chain commitment is a hash
+that does not carry it. If you drop a change note, it is unspendable by anyone, permanently. No
+rescan, no seed phrase and no support path brings it back. Persist `result.outputUtxos` before you
+report success to the user.
+</Warning>
+
+`serializeUtxo` and `deserializeUtxo` are the persistence primitives. Every sample on this page
+calls the same helper rather than repeating it:
+
+```typescript
+import { serializeUtxo, type Utxo } from "@cloak.dev/sdk";
+
+/** Your own durable write. Anything that survives a reload will do. */
+declare function saveNoteBytes(bytes: Uint8Array): Promise<void>;
+
+async function persistOutputs(outputUtxos: Utxo[]): Promise<void> {
+  for (const utxo of outputUtxos) {
+    if (utxo.amount === 0n) continue; // zero-amount outputs are padding, not money
+    if (utxo.keypair.privateKey === 0n) continue; // a transfer recipient's note, not yours
+    await saveNoteBytes(serializeUtxo(utxo));
+  }
+}
+```
+
+Both filters matter. `transact` pads its outputs to a fixed count with zero-amount notes, and
+`transfer` builds the recipient's output from the recipient's public key alone, so that note comes
+back with `privateKey` set to `0n` and is not yours to hold.
+
+Where those bytes should live, how to reload them, and why `UtxoWallet.serialize()` drops
+`commitment` so that `verifyUtxos` then reports those notes as `skipped`:
+[where your notes live between sessions](/sdk/wallet-integration#where-your-notes-live-between-sessions).
+
 ## Choosing a signer
 
 Every example below comes in two tabs. Which one you need is decided by where your code runs, not
@@ -100,10 +141,21 @@ the exact options, the 300-second approval window, how many wallet prompts each 
 
 <CodeGroup>
 ```typescript Wallet adapter
-import { transact, createUtxo, createZeroUtxo, generateUtxoKeypair } from "@cloak.dev/sdk";
-import { useWallet } from "@solana/wallet-adapter-react";
+import {
+  CLOAK_PROGRAM_ID,
+  CLOAK_PRODUCTION_RELAY_URL,
+  transact,
+  createUtxo,
+  createZeroUtxo,
+  generateUtxoKeypair,
+} from "@cloak.dev/sdk";
+import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 
+const { connection } = useConnection();
 const { publicKey, signTransaction, signMessage } = useWallet();
+
+const programId = CLOAK_PROGRAM_ID;
+const relayUrl = CLOAK_PRODUCTION_RELAY_URL;
 
 const owner = await generateUtxoKeypair();
 const output = await createUtxo(20_000_000n, owner);
@@ -125,6 +177,9 @@ const result = await transact(
     walletPublicKey: publicKey!,
   }
 );
+
+// The deposited note lives only in this result. Write it down first.
+await persistOutputs(result.outputUtxos);
 ```
 
 ```typescript Keypair bytes
@@ -136,6 +191,9 @@ import {
   generateUtxoKeypair,
 } from "@cloak.dev/sdk";
 import { Connection, Keypair } from "@solana/web3.js";
+
+/** The 64 raw secret-key bytes of the funding wallet, loaded however your service loads secrets. */
+declare const secretKeyBytes: Uint8Array;
 
 const connection = new Connection(process.env.SOLANA_RPC_URL!, "confirmed");
 const relayUrl = CLOAK_PRODUCTION_RELAY_URL;
@@ -158,6 +216,9 @@ const result = await transact(
     depositorKeypair,
   }
 );
+
+// The deposited note lives only in this result. Write it down first.
+await persistOutputs(result.outputUtxos);
 
 console.log(result.signature, result.commitmentIndices);
 ```
@@ -191,16 +252,26 @@ const walletOptions = {
   signMessage: signMessage!,   // signs the request preimage
 };
 
-await transfer(inputUtxos, recipientUtxoPublicKey, 30_000_000n, walletOptions);
-await partialWithdraw(inputUtxos, recipientWallet, 10_000_000n, walletOptions);
+const sent = await transfer(inputUtxos, recipientUtxoPublicKey, 30_000_000n, walletOptions);
+await persistOutputs(sent.outputUtxos); // your change note is in here
+
+const withdrawn = await partialWithdraw(inputUtxos, recipientWallet, 10_000_000n, walletOptions);
+await persistOutputs(withdrawn.outputUtxos); // the remainder that stayed shielded
+
+// fullWithdraw is the exemption: it leaves nothing shielded, so there is no change note.
 await fullWithdraw(inputUtxos, recipientWallet, walletOptions);
 ```
 
 ```typescript Keypair bytes
 import { transfer, partialWithdraw, fullWithdraw } from "@cloak.dev/sdk";
 
-await transfer(inputUtxos, recipientUtxoPublicKey, 30_000_000n, options);
-await partialWithdraw(inputUtxos, recipientWallet, 10_000_000n, options);
+const sent = await transfer(inputUtxos, recipientUtxoPublicKey, 30_000_000n, options);
+await persistOutputs(sent.outputUtxos); // your change note is in here
+
+const withdrawn = await partialWithdraw(inputUtxos, recipientWallet, 10_000_000n, options);
+await persistOutputs(withdrawn.outputUtxos); // the remainder that stayed shielded
+
+// fullWithdraw is the exemption: it leaves nothing shielded, so there is no change note.
 await fullWithdraw(inputUtxos, recipientWallet, options);
 ```
 
@@ -216,9 +287,16 @@ retry re-uses the same proof and the same signed request. See
 
 <CodeGroup>
 ```typescript Wallet adapter
-import { swapWithChange } from "@cloak.dev/sdk";
+import { swapWithChange, type UtxoSwapResult } from "@cloak.dev/sdk";
 
-await swapWithChange(
+/** Your wallet's chain-note viewing key, and your own durable write for the refund secret. */
+declare const nk: string;
+declare function saveSwapRefund(
+  swapStatePda: string,
+  refund: UtxoSwapResult["refund"],
+): Promise<void>;
+
+const swapped = await swapWithChange(
   inputUtxos,
   50_000_000n,
   outputMint,
@@ -231,15 +309,26 @@ await swapWithChange(
     walletPublicKey: publicKey!,
     signMessage: signMessage!,
     maxWalletApprovals: 3, // default 5
+    chainNoteViewingKeyNk: nk, // makes the refund below rebuildable from key material
   },
   publicKey!
 );
+
+await persistOutputs(swapped.outputUtxos); // the change note left by the swap
+await saveSwapRefund(swapped.swapStatePda, swapped.refund); // reclaims a timed-out swap
 ```
 
 ```typescript Keypair bytes
-import { swapWithChange } from "@cloak.dev/sdk";
+import { swapWithChange, type UtxoSwapResult } from "@cloak.dev/sdk";
 
-await swapWithChange(
+/** Your wallet's chain-note viewing key, and your own durable write for the refund secret. */
+declare const nk: string;
+declare function saveSwapRefund(
+  swapStatePda: string,
+  refund: UtxoSwapResult["refund"],
+): Promise<void>;
+
+const swapped = await swapWithChange(
   inputUtxos,
   50_000_000n, // swap amount (lamports)
   outputMint,
@@ -250,14 +339,26 @@ await swapWithChange(
     programId,
     relayUrl,
     depositorKeypair,
+    chainNoteViewingKeyNk: nk, // makes the refund below rebuildable from key material
   },
   recipientWallet
 );
+
+await persistOutputs(swapped.outputUtxos); // the change note left by the swap
+await saveSwapRefund(swapped.swapStatePda, swapped.refund); // reclaims a timed-out swap
 ```
 
 </CodeGroup>
 
 `swapWithChange` sends a `TransactSwap` payload (`proof + 264-byte public inputs + swap params`).
+
+A swap returns two things worth keeping, not one. `outputUtxos` carries the change note, exactly as
+every other flow does. `refund` is separate: it is the secret that reclaims the swap principal if
+the swap times out before it executes, and `swapStatePda` is the swap it belongs to. Persisting
+`refund` is always the fast path. When you passed `chainNoteViewingKeyNk`, the pair
+`discoverSwapRefunds` / `matchSwapRefundLeaf` can rebuild the same authorization from your `nk` and
+the swap's first input nullifier, so a lost copy is recoverable. When no `nk` was supplied, the
+returned object is the only copy that will ever exist, and persisting it is the only path.
 
 Swaps are the one flow that can prompt more than once: a swap re-proves on every stale-root retry,
 and each new proof is a new request needing a fresh approval. `maxWalletApprovals` caps that at `5`
@@ -285,6 +386,10 @@ If deposit account list is large, use v0 transactions with `addressLookupTableAc
 
 ## Operational notes
 
+- Every call hands its new notes back on `result.outputUtxos` and persists none of them. Write them
+  out with `serializeUtxo` before you report success. `fullWithdraw` is the exemption: it leaves
+  nothing shielded, so its outputs are padding rather than money. See
+  [every result carries notes you must persist](#every-result-carries-notes-you-must-persist).
 - Amounts use `bigint` in the UTXO API.
 - Proof retries are built in for stale roots (`0x1001`).
 - SDK-side Merkle reconstruction is preferred for older indices.
@@ -310,6 +415,7 @@ If deposit account list is large, use v0 transactions with `addressLookupTableAc
 
 ## Next
 
+- Storing the notes these calls return: [Wallet integration](/sdk/wallet-integration#where-your-notes-live-between-sessions)
 - Signing requests: [Request authentication](/sdk/request-authentication)
 - Protocol behavior: [Shield Pool Program](/protocol/shield-pool)
 - Runtime lifecycle: [Transaction Flows](/platform/transaction-flows)
