@@ -157,9 +157,221 @@ Notes:
 - Keep amount values as `bigint` end-to-end.
 - Use `cachedMerkleTree` from deposit for the immediate withdraw call.
 - Treat `isRootNotFoundError` as retryable with bounded backoff.
+- This example spends `deposited.outputUtxos` in the same breath as producing them, which is what
+  makes it short. A real wallet has to persist them instead: see
+  [where your notes live between sessions](#where-your-notes-live-between-sessions).
+
+## Where your notes live between sessions
+
+Every example above ends by feeding `deposited.outputUtxos` straight into the next call. A real
+wallet cannot do that. The user closes the tab, comes back tomorrow, and something has to know what
+they own.
+
+The SDK does not persist anything for you. `transact`, `transfer`, `partialWithdraw`, `fullWithdraw`
+and the swap helpers each return their new notes on `result.outputUtxos` and then forget them. That
+storage boundary is explicit, and closing it is your job.
+
+<Warning>
+Write `result.outputUtxos` to durable storage before you report success to the user. A note is
+spendable only with its full secrets, `(amount, owner pubkey, blinding, mint)`, and the `blinding`
+of a change note is fresh randomness generated inside `createUtxo`. It is never published anywhere
+that can be replayed. If your only copy is lost, that value is unspendable by anyone, permanently.
+No rescan, no seed phrase and no support path brings it back.
+</Warning>
+
+### The two storage exports, and how they relate
+
+| Export | Holds | Persists itself |
+|---|---|---|
+| `UtxoWallet` | the live `Utxo` set per mint, spent flags, balance, input selection | No. `serialize()` and the static `UtxoWallet.deserialize()` hand you a JSON string; where it goes is your choice |
+| `LocalStorageAdapter`, `MemoryStorageAdapter` (both implement `StorageAdapter`) | `CloakNote` records, plus wallet key material through `saveKeys` / `loadKeys` | `LocalStorageAdapter` writes to browser `localStorage`, keys `cloak_notes` and `cloak_wallet_keys` by default; `MemoryStorageAdapter` keeps everything in process and loses it on reload |
+
+`UtxoWallet` does not accept a `StorageAdapter`, and a `StorageAdapter` does not store `Utxo`
+objects. They cover different halves of the problem: `UtxoWallet` is the spendable note set, the
+adapters are a ready-made place to keep key material. The note set is the half that decides
+solvency.
+
+### A note set that survives a reload
+
+```typescript
+import {
+  LocalStorageAdapter,
+  UtxoWallet,
+  type CloakKeyPair,
+} from "@cloak.dev/sdk";
+
+const NOTES_KEY = "myapp.cloak.notes";
+const storage = new LocalStorageAdapter();
+
+function loadWallet(): UtxoWallet {
+  const saved = window.localStorage.getItem(NOTES_KEY);
+  return saved ? UtxoWallet.deserialize(saved) : new UtxoWallet();
+}
+
+function saveWallet(wallet: UtxoWallet): void {
+  window.localStorage.setItem(NOTES_KEY, wallet.serialize());
+}
+
+// Key material has a ready-made home on the adapter.
+async function loadKeys(): Promise<CloakKeyPair | null> {
+  return await storage.loadKeys();
+}
+```
+
+`serialize()` writes the bigints out as strings, so a plain `JSON.stringify` over raw `Utxo` objects
+is not a substitute; it throws on `bigint`. Use `serialize()` / `deserialize()` as the pair.
+
+Then record the result of every flow, in the same tick that the flow returns:
+
+```typescript
+import { transact } from "@cloak.dev/sdk";
+
+const wallet = loadWallet();
+
+const result = await transact(params, options);
+
+for (const utxo of result.outputUtxos) {
+  wallet.addUtxo(utxo, utxo.mintAddress);
+}
+saveWallet(wallet); // before any "done" is shown
+
+// On a spend, the inputs stop being yours.
+for (const spent of inputUtxos) {
+  wallet.markSpent(spent, spent.mintAddress);
+}
+for (const utxo of result.outputUtxos) {
+  wallet.addUtxo(utxo, utxo.mintAddress);
+}
+saveWallet(wallet);
+```
+
+<Note>
+`serialize()` carries amount, keypair, blinding, leaf `index` and the spent flag. It does not carry
+`commitment`, so notes coming back out of `deserialize()` have `commitment` undefined, and
+`verifyUtxos` reports every one of them as `skipped` rather than spent or unspent. Recompute before
+you reconcile against chain state:
+
+```typescript
+import { computeUtxoCommitment, NATIVE_SOL_MINT } from "@cloak.dev/sdk";
+
+for (const utxo of wallet.getUnspentUtxos(NATIVE_SOL_MINT)) {
+  if (utxo.commitment === undefined) {
+    utxo.commitment = await computeUtxoCommitment(utxo);
+  }
+}
+```
+</Note>
+
+### How `selectUtxos` consumes what storage returns
+
+`selectUtxos(available, targetAmount)` is a pure function over an array you supply. `available` is
+exactly what your store hands back: the unspent notes for one mint.
+
+```typescript
+import { NATIVE_SOL_MINT, selectUtxos, transfer } from "@cloak.dev/sdk";
+
+const available = wallet.getUnspentUtxos(NATIVE_SOL_MINT); // WalletUtxo[], extends Utxo
+const selected = selectUtxos(available, 30_000_000n);
+
+if (!selected) throw new Error("insufficient shielded balance");
+if (selected.length > 2) throw new Error("consolidate before sending");
+
+await transfer(selected, recipientUtxoPublicKey, 30_000_000n, walletOptions);
+```
+
+Two things it does not do:
+
+- It returns `null` when the balance is short, rather than throwing. A truthy check is the whole
+  error path.
+- It does not know about the circuit's two-input limit. It will happily return three notes, and
+  `transact` then throws `Maximum 2 input UTXOs allowed` before proving.
+  `partialWithdraw` and `fullWithdraw` consolidate for you, merging the two smallest notes
+  repeatedly until two remain. `transfer` does not, so cap the selection yourself.
+
+`UtxoWallet.selectInputs(amount, mint, strategy)` does the same job against the wallet's own
+bookkeeping and throws instead of returning `null`.
+
+<Warning>
+Do not build sends with `UtxoWallet.prepareSend` or `SimpleWallet`. `prepareSend` creates the
+recipient output from a freshly generated random keypair rather than from the recipient's key, so
+the recipient cannot spend what it produces, and `SimpleWallet.sync()` throws
+`Sync not yet implemented`. Use `transfer`, which derives the recipient output from the Cloak pubkey
+you pass it. `UtxoWallet` is sound for the parts used above: `addUtxo`, `markSpent`, `getBalance`,
+`getUnspentUtxos`, `getStats`, `selectInputs`, `serialize` and `deserialize`.
+</Warning>
+
+### What happens if that storage is lost
+
+Most of it does not come back. Be precise with yourself about which parts do:
+
+| What was lost | Recoverable from chain | Why |
+|---|---|---|
+| Change from your own send, withdrawal or swap | **No** | `transfer`, `partialWithdraw`, `fullWithdraw` and `swapWithChange` all build change with `createUtxo`, whose `blinding` is `randomFieldElement()` and is written nowhere on chain |
+| A deposit built with `createUtxo` | **No** | Same missing `blinding`. It appears in history as an amount, which is not a spendable note |
+| A deposit built with `createRecoverableDepositUtxo` | Yes | Secrets are a PRF of your `nk` and the salt the chain note already carries, so a cold scan can replay the derivation |
+| A note someone sent you, when the sender passed `recipientViewingPublicKey` | Yes | The sender sealed `amount` and `blinding` into an on-chain envelope addressed to your viewing key |
+| A swap input stranded by a timeout | Yes, if the swap was built with an `nk` | `discoverSwapRefunds` replays the same PRF shape over refund leaves. Older swaps, and any swap built without an `nk`, exist only in the `refund` field of the `UtxoSwapResult` you were handed |
+
+**`scanTransactions` is not note recovery.** It decrypts your own chain notes with `nk` and produces
+the history rows the site documents elsewhere: gross, fee, `netAmount` and a running balance, ready
+for `toComplianceReport`. Two of its fields are the deliberate exception and are kept out of
+`transactions` and `summary` precisely because they are secrets rather than history:
+`deliveredNotes` (inbound notes whose sender opted in) and `recoveredDepositNotes` (your own
+deposits, but only the ones built recoverably). Everything else it returns tells you a deposit of
+0.02 SOL happened. It does not give you something you can spend.
+
+The reason sits in the chain note. Every transaction posts one, sealed under the writer's own
+viewing key, and its plaintext is `{ timestamp, noteSalt, outAmount0, outPubkey0, isSendToSelfKey0 }`:
+the output note's amount and owner pubkey, and no `blinding`. A chain note
+alone therefore cannot rebuild a spendable note, which is the whole reason the recoverable-deposit
+shape exists. See
+[the on-chain chain note is not a delivery channel](/sdk/shielded-transfers#the-on-chain-chain-note-is-not-a-delivery-channel).
+
+`scanRecipientDeliveryNotes` recovers only notes sent **to** you by a sender who passed
+`recipientViewingPublicKey`. It never surfaces your own change, and it surfaces nothing at all when
+the sender omitted that option.
+
+An empty scan is not proof that nothing is stranded. It means nothing in the scanned window was
+derivable from this `nk`.
+
+### Making deposits recoverable
+
+If you want a deposit that a `(rpc, programId, nk)` scan can rebuild later, build the output note
+with `createRecoverableDepositUtxo` and hand the same salt to `transact`:
+
+```typescript
+import { createRecoverableDepositUtxo, transact } from "@cloak.dev/sdk";
+
+const { utxo, noteSalt } = await createRecoverableDepositUtxo(20_000_000n, nk);
+
+await transact(
+  { inputUtxos: [], outputUtxos: [utxo], externalAmount: 20_000_000n },
+  { ...options, chainNoteViewingKeyNk: nk, chainNoteSalt: noteSalt },
+);
+```
+
+The salt has to reach the chain note, which is what `chainNoteSalt` does, and `transact` refuses a
+`chainNoteSalt` that comes without an explicit `chainNoteViewingKeyNk`. Recovered notes then appear
+on `scanTransactions(...).recoveredDepositNotes`, in spendable form, authenticated by recomputing a
+commitment the deposit actually published.
+
+Pick one `nk` per wallet and use the same value in both places, at deposit time as
+`chainNoteViewingKeyNk` and at scan time as `viewingKeyNk`. `getNkFromUtxoPrivateKey(privateKey)`
+derives it from a UTXO private key, and `expandSpendKey(skSpend).nsk` derives it from a spend key.
+`deriveUtxoKeypairFromSpendKey(skSpend)` makes the UTXO keypair itself reproducible, so the keys
+need never be the thing you lose. The note set still has to be written down.
+
+<Note>
+Two devices sharing one note set will each believe a spent note is unspent, and the second spend
+fails with `DoubleSpend` (`0x1020`). `verifyUtxos(utxos, connection, programId)` partitions your
+local notes into `spent`, `unspent` and `skipped` in a single batched RPC call; run it on load and
+after any failure, and drop anything it reports as spent.
+</Note>
 
 ## UX requirements
 
+- Persist `result.outputUtxos` before you report a flow as successful. A lost change note is
+  unspendable value, not a resyncable cache.
 - Show progress during proof generation (`onProgress`, `onProofProgress`).
 - Handle stale-root retries gracefully (`isRootNotFoundError`).
 - Keep circuit files accessible in browser deployments.
@@ -169,6 +381,7 @@ Notes:
 ## Related pages
 
 - [Request authentication](/sdk/request-authentication)
+- [Shielded transfers](/sdk/shielded-transfers)
 - [Quickstart](/sdk/quickstart)
 - [UTXO Transactions](/sdk/utxo-transactions)
 - [Error Handling](/sdk/error-handling)

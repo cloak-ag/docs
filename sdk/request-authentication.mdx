@@ -251,11 +251,7 @@ Below that, `buildRelayAuthPreimage` gives you the bytes to sign without signing
 only shape a wallet adapter can work with:
 
 ```typescript
-import {
-  TRANSACT_AUTH_FIELDS,
-  buildRelayAuthPreimage,
-  canonicalJson,
-} from "@cloak.dev/sdk";
+import { TRANSACT_AUTH_FIELDS, buildRelayAuthPreimage } from "@cloak.dev/sdk";
 
 // `auth_signature` is base64. Do this without `Buffer`: it is a Node global, so a
 // browser bundle fails to compile against it and throws `Buffer is not defined` at
@@ -331,11 +327,21 @@ published build accepts exactly two values:
 
 - an origin on this build's allowlist, best written as the exported `CLOAK_PRODUCTION_RELAY_URL`
   rather than typed by hand. Anything else throws, naming the value and the allowlist.
-- `""`, meaning no endpoint at all: you sign and submit the deposit yourself.
+- `""`, the caller-signed direct-submission signal, meaning no endpoint at all: you sign and submit
+  yourself. On its own it still throws; see the warning below.
 
 There is no default. Omitting `relayUrl` yields `undefined`, never production. `riskQuoteUrl` is held
 to the same allowlist, because it is converted back into a base URL, so it must be an absolute URL on
 the allowlist rather than a relative path.
+
+<Warning>
+**`""` is not a working value by itself.** Omitting `relayUrl`, or passing `""`, makes every flow
+**including deposits** throw `Viewing key registration is mandatory: relayUrl is required.` before
+any network call. The direct-submission half only takes effect once
+`enforceViewingKeyRegistration` is **also** set to `false`, because the viewing-key gate defaults on
+and fires first. That pair is not something to reach for: with a signer present it submits a
+transfer or withdrawal under the user's own key, publicly linking it.
+</Warning>
 
 <Note>
 **A mistyped `relayUrl` is not a `401`, and the two failures live in different places.** A value

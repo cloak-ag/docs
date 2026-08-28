@@ -20,6 +20,25 @@ build against `@cloak.dev/sdk` and a mainnet or local target. This page stays pu
 devnet addresses and faucet remain discoverable.
 </Warning>
 
+<Warning>
+**Every example on this page is the server keypair path.** All of them pass `depositorKeypair`,
+which a browser wallet adapter cannot supply: an adapter holds no secret key. Deposits work on
+either path, but a send, a withdrawal or a swap is submitted for you and carries an **authenticated
+sender**, so from a browser you pass `signMessage` plus `walletPublicKey` instead. Copying
+`depositorKeypair` into a frontend is what produces a `401` on the first send after a deposit that
+looked fine. Read [Request authentication](/sdk/request-authentication) before you port any of this
+to a frontend. That contract is written against the mainnet `@cloak.dev/sdk`; `@cloak.dev/sdk-devnet`
+tracks an older release line, so move to the mainnet package first when you build the browser path.
+</Warning>
+
+| You are writing | Pass in the options object | Prompts the user |
+|---|---|---|
+| A Node service, a CLI, a script | `depositorKeypair` and `walletPublicKey` | no |
+| A browser app on wallet-adapter | `signMessage` and `walletPublicKey`, plus `signTransaction` for the deposit | yes, once per submitted request |
+
+Nothing else differs. The parameters, the amounts, the helpers and the results are identical on both
+paths; only the holder of the pen changes.
+
 ## Endpoints
 
 ```
@@ -755,9 +774,9 @@ When you ship to production, change the import and name the submission endpoint:
   });
 ```
 
-The mainnet SDK ships the production program ID and the 0.2.0 circuits paths as defaults. The submission endpoint is not defaulted, and no environment variable substitutes for it: pass `relayUrl` in your options. Omitting it, or passing an empty string, makes every flow throw `Viewing key registration is mandatory: relayUrl is required.` before the call touches the network, `swapWithChange` and deposits included. Nothing falls back to submitting under your own wallet on that path, so a missing `relayUrl` is a loud failure rather than a silent privacy loss. Also swap `DEVNET_MOCK_USDC_MINT` for Circle USDC (`EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v`) and use a mainnet RPC for your `Connection`. Cloak's mainnet `swapWithChange` routes through Jupiter (real liquidity); devnet routes through the Pyth-priced mock path.
+The mainnet SDK ships the production program ID and the 0.2.0 circuits paths as defaults. The submission endpoint is not defaulted, and no environment variable substitutes for it: pass `relayUrl` in your options. Omitting it, or passing an empty string, makes every flow throw `Viewing key registration is mandatory: relayUrl is required.` before the call touches the network, `swapWithChange` and deposits included, because viewing-key registration is enforced by default. Nothing falls back to submitting under your own wallet on that path, so a missing `relayUrl` is a loud failure rather than a silent privacy loss. Also swap `DEVNET_MOCK_USDC_MINT` for Circle USDC (`EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v`) and use a mainnet RPC for your `Connection`. Cloak's mainnet `swapWithChange` routes through Jupiter (real liquidity); devnet routes through the Pyth-priced mock path.
 
-The single exception is `enforceViewingKeyRegistration: false`. With enforcement off and no `relayUrl`, a transfer or withdrawal that also passes `depositorKeypair` is signed and submitted by that keypair instead of throwing, which publicly links the transaction to your wallet. Keep it at its default of `true` on mainnet; see [Shared runtime defaults](/sdk/introduction) for the full behavior.
+The single exception is `enforceViewingKeyRegistration: false`. With enforcement off and no `relayUrl`, a transfer or withdrawal that also passes `depositorKeypair` is signed and submitted by that keypair instead of throwing, which publicly links the transaction to your wallet. Keep it at its default of `true` on mainnet; see [Shared runtime values](/sdk/introduction#shared-runtime-values) for the full behavior.
 
 ## Limitations
 

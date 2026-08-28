@@ -149,6 +149,7 @@ const options = {
 ```ts
 import {
   CLOAK_PROGRAM_ID,
+  CLOAK_PRODUCTION_RELAY_URL,
   LocalStorageAdapter,
   getPublicKey,
   validateWalletConnected,
@@ -1025,11 +1026,11 @@ Pass the resulting tree into `TransactOptions.cachedMerkleTree` or set `useChain
 ### 6.13 Error handling + retry for stale roots
 
 ```ts
-import { isRootNotFoundError, parseError } from "@cloak.dev/sdk";
+import { fullWithdraw, isRootNotFoundError, parseError } from "@cloak.dev/sdk";
 
 for (let attempt = 0; attempt < 3; attempt++) {
   try {
-    await fullWithdraw(/* ... */);
+    await fullWithdraw(inputUtxos, recipient, options);
     break;
   } catch (err) {
     if (isRootNotFoundError(err)) {

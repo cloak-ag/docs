@@ -27,6 +27,7 @@ interface TransactParams {
   outputUtxos: Utxo[];
   recipient?: PublicKey;
   externalAmount?: bigint; // +deposit, -withdraw, 0=shield-to-shield
+  depositor?: PublicKey; // for deposits, the source of funds
 }
 ```
 
