@@ -31,7 +31,7 @@ This file is the canonical index for AI coding agents integrating with Cloak.
 - [Solana Kit integration](/sdk/kit-integration): Integrate Cloak SDK in Kit-standardized codebases.
 - [Core concepts](/sdk/core-concepts): UTXO model, fee semantics, viewing-key behavior, root retries.
 - [UTXO Transactions](/sdk/utxo-transactions): Primary production APIs (`transact`, `fullWithdraw`, `swapWithChange`).
-- [Wallet integration](/sdk/wallet-integration): wallet-adapter wiring, the two signing callbacks, and secure signing patterns.
+- [Wallet integration](/sdk/wallet-integration): wallet-adapter wiring, the two signing callbacks, secure signing patterns, and where a user's notes live between sessions: persisting `result.outputUtxos`, the `UtxoWallet` vs `StorageAdapter` split, and what is and is not recoverable once that storage is gone.
 - [Error handling](/sdk/error-handling): Retry categories and diagnostics strategy.
 - [API reference](/sdk/api-reference): Public exports and key type signatures.
 - [TypeScript SDK LLM reference](/sdk/llms.txt): Deep AI-oriented export map for all runtime surfaces.
@@ -86,6 +86,9 @@ This file is the canonical index for AI coding agents integrating with Cloak.
 - Keep tx amounts as `bigint` (TS) or `u64` / `i64` (Rust) end-to-end — no float math.
 - Private sends, withdrawals and swaps are submitted for the caller and carry an authenticated sender; deposits are wallet-signed straight to chain and carry none. In a browser pass `signMessage` + `walletPublicKey`; on a server pass `depositorKeypair`. Neither, and the call throws before proof generation. Never generate `depositorKeypair` for browser send/withdraw code, and never substitute an ephemeral or service key for the sender: it is the key screened for sanctions.
 - A private send or withdrawal prompts the wallet exactly once. Only swaps re-prompt, capped by `maxWalletApprovals` (default 5).
+- Every non-deposit flow returns `result.outputUtxos`, and one of those notes is the caller's own change. The SDK persists nothing for you: `createUtxo` draws the note's `blinding` from `randomFieldElement()` and writes it nowhere on chain, and the chain note carries no blinding either, so a change note that is not written to durable storage before you report success is permanently unspendable by anyone. No rescan, no seed phrase and no support path brings it back. `serializeUtxo` / `deserializeUtxo` is the persistence primitive (a 128-byte encoding carrying amount, private key, blinding, mint and index); `StorageAdapter` methods take `CloakNote` records, a different shape that is not interchangeable with those bytes. Full treatment: [where your notes live between sessions](/sdk/wallet-integration#where-your-notes-live-between-sessions).
+- Persist `UtxoSwapResult.refund` from `swapWithChange` / `swapUtxo` alongside the change note. It is the secret that reclaims the swap principal if the swap times out before settlement. `discoverSwapRefunds` can rebuild it later only when the swap was given an `nk`; without one, the returned object is the only copy that will ever exist.
+- Never present `UtxoWallet.prepareSend` or `SimpleWallet.send` as a send path, even though both are exported. Each builds the recipient output from a freshly generated random keypair, so the recipient cannot spend what it produces, and `SimpleWallet.sync()` throws `Sync not yet implemented`. Use `transfer` for shielded sends and `fullWithdraw` / `partialWithdraw` to exit the pool.
 - Only the submission endpoint is pinned (build-time allowlist). The RPC is the caller's own `Connection`; any non-loopback RPC works. Never tell an integrator they must use a Cloak RPC.
 - In `@cloak.dev/sdk` the pin accepts exactly two values for `relayUrl`: an allowlisted origin (name it with `CLOAK_PRODUCTION_RELAY_URL` rather than typing a host), or `""` for caller-signed direct submission. `""` only carries that meaning when `enforceViewingKeyRegistration: false` is set in the same options; on default options an empty or omitted `relayUrl` throws before any network call, on every flow including deposits. Standard integrations pass the origin, never the pair, which would submit a send or withdrawal under the user's own key and publicly link it.
 - Treat stale-root failures as retryable (both SDK transaction paths already do this by default).
@@ -102,6 +105,7 @@ This file is the canonical index for AI coding agents integrating with Cloak.
 - MUST use flow: `transact(...)` deposit then `fullWithdraw(...)` send.
 - MUST keep `programId` fixed to `CLOAK_PROGRAM_ID` internally; do not ask users to configure it.
 - MUST call `process.exit(0)` on success and `process.exit(1)` on failure.
+- MUST persist `result.outputUtxos` durably before reporting success in any flow that leaves change (`transfer`, `partialWithdraw`, `swapWithChange`), plus `UtxoSwapResult.refund` for swaps; the deposit-then-`fullWithdraw` flow above spends its note in the same process and is the one shape that needs no storage.
 - MUST NOT request `SENDER_PRIVATE_KEY` or any raw secret env var.
 - MUST NOT use `RECIPIENT_ADDRESS`/`SEND_LAMPORTS` env vars for the CLI contract.
 - MUST NOT use `AMOUNT_SOL` + float parsing; accept lamports input and keep amount math in `bigint`.

@@ -286,6 +286,20 @@ function swapWithChange(
   recipientWallet?: PublicKey,
 ): Promise<UtxoSwapResult>;
 
+// The swap result. It extends TransactResult, so it also carries `signature`, `outputUtxos`,
+// `commitmentIndices`, `merkleTree` and the rest of that shape.
+interface UtxoSwapResult extends TransactResult {
+  swapStatePda: string;      // SwapState PDA, base58
+  nullifier: string;         // hex nullifier the PDA is derived from
+  requestId?: string;        // request id for polling swap execution status
+  refund: {                  // the timeout-refund secret. MONEY. Persist it (see below).
+    privateKey: string;      // hex 32-byte field elements, all three
+    publicKey: string;
+    blinding: string;
+    derivedFromNk: boolean;  // true => also rediscoverable from `nk` (discoverSwapRefunds, §5.5)
+  };
+}
+
 function computeExtDataHash(recipient: PublicKey | null, relayerFee: bigint, relayer: PublicKey | null, maxFee?: bigint): Promise<bigint>;
 
 // Chain note v4. The tail binds noteSemantics = Poseidon(outAmount0, outPubkey0, isSendToSelfKey0)
@@ -319,6 +333,28 @@ const DEFAULT_TRANSACTION_CIRCUITS_URL: string | null; // ".../cloak-circuits/ci
 const TRANSACTION_CIRCUITS_VERSION: "0.2.0";
 ```
 
+**`UtxoSwapResult.refund` is the user's principal, not telemetry.** A swap locks the SOL in a
+SwapState PDA and only settles on a second transaction. If it times out before that, the close path
+returns the principal to the pool as an amount-bound note
+
+```
+R_fb = Poseidon(amountAfterFee, refund.publicKey, refund.blinding, WSOL)
+```
+
+where `amountAfterFee` is the amount the program actually locked, read authoritatively from the
+on-chain `SwapState.sol_amount` (the gross swap amount minus the on-chain program fee). Claiming it
+back requires `refund.privateKey`. Persist the whole `refund` object alongside the change note, in
+the same tick `swapUtxo` / `swapWithChange` returns.
+
+`derivedFromNk` says whether losing it is survivable. When it is `true`, the same secret can be
+rebuilt later from the wallet's `nk` plus the swap's public first input nullifier, which is what
+`discoverSwapRefunds` (§5.5) walks the chain for. When it is `false`, the returned object is the
+only copy that will ever exist. The `nk` in question is `TransactOptions.chainNoteViewingKeyNk` when
+you passed one; when you did not, the SDK falls back to
+`getNkFromUtxoPrivateKey(inputUtxos[0].keypair.privateKey)`, so the recovery scan then needs that
+same first input's private key. Pass an explicit `chainNoteViewingKeyNk` on every swap so the
+recovery key is one you already hold. Persisting `refund` stays the fast path either way.
+
 Key `TransactOptions` fields (most used):
 
 ```ts
@@ -331,11 +367,21 @@ interface TransactOptions {
                                           // enforceViewingKeyRegistration: false; on default
                                           // options "" throws like omitting it (§1, invariant 7).
 
-  // Signing (choose one):
-  depositorKeypair?: Keypair;             // server / script mode
-  signTransaction?: WalletAdapter["signTransaction"];
-  signMessage?: (msg: Uint8Array) => Promise<Uint8Array>;
-  walletPublicKey?: PublicKey;
+  // Signing. The RUNTIME picks the shape; it is not a free choice (invariant 13, §8 rule 15):
+  //   NODE / SERVER: depositorKeypair + walletPublicKey.
+  //   BROWSER:       signMessage + walletPublicKey on every relay-submitted flow (private send,
+  //                  withdraw, swap), plus signTransaction + depositorPublicKey on a deposit.
+  // A wallet adapter holds no secret key and can never produce a Keypair, so depositorKeypair in
+  // browser code is code that cannot run. Never generate it there, and never ask a browser user
+  // for a keypair.json path.
+  depositorKeypair?: Keypair;             // NODE / SERVER ONLY. Unreachable from a wallet adapter.
+  signTransaction?: WalletAdapter["signTransaction"]; // browser: signs the DEPOSIT transaction
+  signMessage?: (msg: Uint8Array) => Promise<Uint8Array>; // browser: authenticates relay-submitted
+                                          // flows AND the viewing-key challenge, so it is required
+                                          // in the browser on every flow, deposits included.
+  walletPublicKey?: PublicKey;            // the END USER'S real wallet, never an ephemeral or
+                                          // service key. Passing depositorKeypair together with a
+                                          // DIFFERENT walletPublicKey throws.
   depositorPublicKey?: PublicKey;
 
   // UX / observability:
@@ -560,6 +606,64 @@ wallet loses funds, so do not generalise from either half of it:
   writes it nowhere, and the chain note carries no blinding, so the change output of a send, a
   partial withdraw or a swap is unrecoverable the moment it is dropped. Persist every output UTXO
   with `serializeUtxo` (§5.2) as soon as the call returns. Scanning will not bring it back.
+- A swap's `UtxoSwapResult.refund` (§5.3) is a separate secret again, and it is the only way to
+  claim the principal back if the swap times out. It is the one item on this list with a key-only
+  fallback: `discoverSwapRefunds`, below, when the swap was built with an `nk`. Persist it anyway.
+
+**Swap timeout-refund discovery.** The recovery path for a `UtxoSwapResult.refund` (§5.3) that was
+never persisted: it rebuilds the stranded refund leaf from key material alone, with no relay, no
+local note store and no prior knowledge of the swap.
+
+```ts
+interface SwapRefundAuthorization { privateKey: bigint; publicKey: bigint; blinding: bigint; }
+
+interface RecoveredSwapRefund {
+  keypair: UtxoKeypair;
+  blinding: bigint;
+  amount: bigint;
+  commitment: bigint;        // R_fb, identical to the leaf the close path appended
+}
+
+interface DiscoveredSwapRefund extends RecoveredSwapRefund {
+  signature: string;         // the close transaction that appended the leaf
+  leafIndex: bigint;
+  inputNullifier: Uint8Array; // first input nullifier of the swap this refund belongs to
+  swapSignature?: string;    // the opening swap tx, when it fell inside the scanned window
+}
+
+function discoverSwapRefunds(
+  connection: Connection,
+  programId: PublicKey,
+  viewingKeyNk: Uint8Array,             // the SAME nk the swap was built with (§5.3)
+  options?: {
+    limit?: number;                     // program signatures to walk; omit or 0 for all history
+    untilSignature?: string;            // resume cursor from a previous run (exclusive)
+    batchSize?: number;                 // getTransaction concurrency, default 50
+    onStatus?: (status: string) => void;
+    poolMint?: PublicKey;               // swap input is wSOL-locked; the SOL default is correct
+  },
+): Promise<DiscoveredSwapRefund[]>;
+
+// The pieces it is built from, for a caller walking its own transactions instead.
+function deriveSwapRefundAuthorization(
+  viewingKeyNk: Uint8Array, inputNullifier: Uint8Array | bigint,
+): Promise<SwapRefundAuthorization>;
+function computeSwapRefundCommitment(
+  amountAfterFee: bigint, refundPublicKey: bigint, refundBlinding: bigint,
+): Promise<bigint>;
+function matchSwapRefundLeaf(params: {
+  viewingKeyNk: Uint8Array;
+  inputNullifier: Uint8Array | bigint;  // read from the swap's public inputs
+  amountAfterFee: bigint;               // the principal the close path returned
+  commitment: bigint | Uint8Array;      // R_fb as appended on chain
+}): Promise<RecoveredSwapRefund | null>; // null for every leaf that is not this wallet's
+```
+
+An empty result is NOT proof that a wallet has no stranded refund. `discoverSwapRefunds` finds only
+refunds whose authorization was DERIVED from an `nk`. A swap whose refund keypair and blinding came
+from raw randomness has no derivation to replay, and no key-only scan will ever find it; for those,
+the in-memory `UtxoSwapResult.refund` was the only copy. Never report "no stranded refunds" on the
+strength of an empty return.
 
 ### 5.6 Viewing keys + compliance keys
 
@@ -831,7 +935,21 @@ function setDebugMode(enabled: boolean): void;
 function formatSol(lamports: number | bigint): string;
 const sdkLogger: Logger;
 
-class MemoryStorageAdapter implements StorageAdapter {}
+// StorageAdapter stores `CloakNote` records and a `CloakKeyPair`. It does NOT store `Utxo`
+// objects, and it does not accept the bytes `serializeUtxo` returns; those are your own store's
+// problem (§9.3).
+interface StorageAdapter {
+  saveNote(note: CloakNote): Promise<void> | void;
+  loadAllNotes(): Promise<CloakNote[]> | CloakNote[];
+  updateNote(commitment: string, updates: Partial<CloakNote>): Promise<void> | void;
+  deleteNote(commitment: string): Promise<void> | void;
+  clearAllNotes(): Promise<void> | void;
+  saveKeys(keys: CloakKeyPair): Promise<void> | void;
+  loadKeys(): Promise<CloakKeyPair | null> | CloakKeyPair | null;
+  deleteKeys(): Promise<void> | void;
+}
+
+class MemoryStorageAdapter implements StorageAdapter {}   // in-process; lost on reload
 class LocalStorageAdapter implements StorageAdapter {
   constructor(notesKey?: string, keysKey?: string); // defaults: "cloak_notes", "cloak_wallet_keys"
 }
@@ -1251,6 +1369,20 @@ const swapResult = await swapWithChange(
 );
 ```
 
+**Persist `swapResult.outputUtxos[0]` AND `swapResult.refund` before you do anything else, in
+either form.** A swap hands back two pieces of the user's own money that exist only in that returned
+object. `outputUtxos[0]` is the shielded change note whenever the inputs did not sum to exactly
+`swapAmount`, which is the case in both recipes above, and a change note is the one thing NOTHING
+recovers: its blinding comes from
+`randomFieldElement()` and is written nowhere on chain, so scanning will never bring it back (§5.5).
+The `refund` object is the secret that claims the principal back if the swap times out before it
+executes (§5.3). Store the change note with `serializeUtxo` (§5.2) and the `refund` object beside
+it, the moment the call returns.
+
+Both recipes above pass `chainNoteViewingKeyNk: nk`, so the refund secret is derived from that `nk`
+and `discoverSwapRefunds` (§5.5) can rebuild it later from key material alone. That is a backstop,
+not a substitute for persisting it.
+
 ### 6.7 Compliance history scan + CSV export
 
 ```ts
@@ -1389,7 +1521,9 @@ do not adapt the Node one by hand.
 - Private shield-to-shield transfer (private send): section 6.4, including how to make the note
   discoverable by the recipient.
 - Fast-send user flow: section 6.5.
-- SOL -> SPL swap with shielded change: section 6.6.
+- SOL -> SPL swap with shielded change: section 6.6, including the two secrets a swap hands back
+  that must be persisted (the change note and `UtxoSwapResult.refund`).
+- Recovering a swap refund whose secret was never persisted: `discoverSwapRefunds`, section 5.5.
 - Compliance scan and CSV export: section 6.7.
 - Viewing-key registration: section 6.8.
 - Fee modeling (SOL + SPL): section 6.9.
@@ -1428,7 +1562,17 @@ When generating Cloak integration code, produce a file-by-file plan that:
 
 1. Declares an explicit `TransactOptions` factory (single source of truth for `connection` and signing; keep `programId` fixed to `CLOAK_PROGRAM_ID`).
 2. Exposes `deposit`, `transfer`, `partialWithdraw`, `fullWithdraw`, `swap`, and `scanHistory` primitives using the functions in §5.3, §5.2, §5.5.
-3. Persists UTXOs (at minimum: `serializeUtxo(...)`) + viewing key material via an explicit `StorageAdapter` boundary.
+3. Persists notes and key material through TWO boundaries, which are not interchangeable:
+   - **Notes.** Write `result.outputUtxos` yourself, as `serializeUtxo(...)` bytes (§5.2), in the
+     same tick the flow returns. Do NOT route them through a `StorageAdapter`: its methods are typed
+     on `CloakNote` (`saveNote`, `loadAllNotes`, `updateNote`, `deleteNote`), a different record
+     shape, and the public surface has no converter between the two. Passing `serializeUtxo` bytes to
+     `saveNote` does not type-check and does not persist a spendable note.
+   - **Key material.** `StorageAdapter.saveKeys` / `loadKeys` (a `CloakKeyPair`) is the ready-made
+     home, via `LocalStorageAdapter` or `MemoryStorageAdapter` (§5.13).
+   For swaps, `UtxoSwapResult.refund` (§5.3) is a third item and must be persisted too. The full
+   storage answer, including how the two boundaries divide, is
+   `/sdk/wallet-integration#where-your-notes-live-between-sessions`.
 4. Surfaces `onProgress` + `onProofProgress` into the UI layer.
 5. Maps relay/on-chain errors through `parseError` + `isRootNotFoundError` into a small typed error union.
 6. Includes a CSV export path using `formatComplianceCsv(toComplianceReport(scan))`.

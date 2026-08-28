@@ -46,14 +46,17 @@ import {
   generateUtxoKeypair,
   getNkFromUtxoPrivateKey,
   partialWithdraw,
+  serializeUtxo,
   swapWithChange,
   transact,
   scanTransactions,
   toComplianceReport,
+  type Utxo,
+  type UtxoSwapResult,
 } from "@cloak.dev/sdk";
 import { getAssociatedTokenAddressSync } from "@solana/spl-token";
 import { Connection, Keypair, PublicKey } from "@solana/web3.js";
-import { readFileSync } from "node:fs";
+import { appendFileSync, readFileSync } from "node:fs";
 
 const USDC_MINT = new PublicKey("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
 const USDT_MINT = new PublicKey("Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB");
@@ -79,6 +82,37 @@ const baseOptions = {
   walletPublicKey: signer.publicKey,
   chainNoteViewingKeyNk: viewingKeyNk,
 };
+
+// The SDK stores nothing for you. `serializeUtxo` is the 128-byte encoding that
+// carries everything a note needs to stay spendable: amount, private key,
+// blinding, mint and leaf index. Two append-only files stand in here for whatever
+// durable store your service already has.
+const NOTES_FILE = "./cloak-notes.jsonl";
+const SWAP_REFUNDS_FILE = "./cloak-swap-refunds.jsonl";
+
+function saveNotes(utxos: Utxo[]): void {
+  for (const utxo of utxos) {
+    if (utxo.amount === 0n) continue; // padding output, nothing to lose
+    const line = JSON.stringify({
+      mint: utxo.mintAddress.toBase58(),
+      amount: utxo.amount.toString(),
+      note: Buffer.from(serializeUtxo(utxo)).toString("base64"),
+    });
+    appendFileSync(NOTES_FILE, `${line}\n`);
+  }
+}
+
+// Swaps only. `refund` reclaims the swap input if the swap times out before it
+// settles, so it is stored next to the notes rather than inside them.
+function saveSwapRefund(
+  swapStatePda: string,
+  refund: UtxoSwapResult["refund"],
+): void {
+  appendFileSync(
+    SWAP_REFUNDS_FILE,
+    `${JSON.stringify({ swapStatePda, ...refund })}\n`,
+  );
+}
 ```
 
 <Note>
@@ -93,6 +127,17 @@ flow including deposits. `""` only means "I will submit this myself" when
 and fires either way. See the warning in [Cloak SDKs](/sdk/introduction) before you reach for that
 pair: it is a privacy hazard on a transfer or a withdrawal, not a configuration shortcut.
 </Note>
+
+<Warning>
+**Write `result.outputUtxos` down before you report success.** Every call on this page returns the
+notes it just created and then forgets them. A change note is your own money coming back, and its
+`blinding` is fresh randomness that `createUtxo` generates in memory and publishes nowhere, on chain
+or off. A note you did not store is unspendable by anyone, permanently: no rescan, no seed phrase and
+no support path brings it back. That is why every example below captures its result and calls
+`saveNotes` at the point where your service would commit to its own database. For the browser
+equivalent, and for the two storage exports the SDK ships, read
+[where your notes live between sessions](/sdk/wallet-integration#where-your-notes-live-between-sessions).
+</Warning>
 
 ## Send flow (SOL->SOL, USDC->USDC, USDT->USDT)
 
@@ -116,8 +161,12 @@ async function sendSameMint(args: {
     baseOptions,
   );
 
+  // Store the deposit note first. If the withdrawal below throws, this file is the
+  // only claim anyone has on the funds that just entered the pool.
+  saveNotes(deposited.outputUtxos);
+
   if (args.partialWithdrawAmount !== undefined) {
-    return partialWithdraw(
+    const withdrawn = await partialWithdraw(
       deposited.outputUtxos,
       args.recipientWallet,
       args.partialWithdrawAmount,
@@ -126,12 +175,26 @@ async function sendSameMint(args: {
         cachedMerkleTree: deposited.merkleTree,
       },
     );
+
+    // The recipient got their part; the remainder came back as a private change
+    // note. Store it before you tell anyone the payment succeeded.
+    saveNotes(withdrawn.outputUtxos);
+    return withdrawn;
   }
 
-  return fullWithdraw(deposited.outputUtxos, args.recipientWallet, {
-    ...baseOptions,
-    cachedMerkleTree: deposited.merkleTree,
-  });
+  const withdrawn = await fullWithdraw(
+    deposited.outputUtxos,
+    args.recipientWallet,
+    {
+      ...baseOptions,
+      cachedMerkleTree: deposited.merkleTree,
+    },
+  );
+
+  // A full withdrawal leaves no change, so `saveNotes` writes nothing here. Call it
+  // anyway: the call site should not have to know which flow produced change.
+  saveNotes(withdrawn.outputUtxos);
+  return withdrawn;
 }
 
 // SOL -> SOL (full withdrawal send)
@@ -229,6 +292,10 @@ export function useSendSameMint(connection: Connection, viewingKeyNk: Uint8Array
       walletOptions,
     );
 
+    // Persist `deposited.outputUtxos` here too, with the browser storage from
+    // /sdk/wallet-integration rather than a file. If the send below fails, that note
+    // is the only claim on the funds the user just deposited.
+
     // Send: submitted for you, so this is the call that needs the signed sender.
     try {
       return await fullWithdraw(deposited.outputUtxos, args.recipientWallet, {
@@ -275,7 +342,9 @@ const recipientUsdcAta = getAssociatedTokenAddressSync(
   recipientWallet,
 );
 
-await swapWithChange(
+saveNotes(swapDeposit.outputUtxos);
+
+const swapped = await swapWithChange(
   [swapDeposit.outputUtxos[0]],
   300_000_000n, // amount to swap
   USDC_MINT,
@@ -287,7 +356,22 @@ await swapWithChange(
   },
   recipientWallet,
 );
+
+// A swap hands back two things worth keeping, and they are not the same thing.
+saveNotes(swapped.outputUtxos); // the 300_000_000n of SOL you did not swap
+saveSwapRefund(swapped.swapStatePda, swapped.refund); // reclaims the input on a timeout
 ```
+
+<Warning>
+**`result.refund` is the other secret a swap produces, and dropping it is how a timed-out swap
+becomes unrecoverable.** If the swap does not settle, the program locks the principal behind an
+amount-bound refund note, and the values in `refund` are what spend it. Because `baseOptions` passes
+`chainNoteViewingKeyNk`, the secret here is derived from your `nk` and comes back with
+`derivedFromNk: true`, so `matchSwapRefundLeaf` can rebuild it from that key plus the swap's first
+input nullifier. Storing it is still the fast path, and when no `nk` was supplied the returned object
+is the only copy that will ever exist.
+Field-by-field detail is in the [API reference](/sdk/api-reference).
+</Warning>
 
 <Note>
 **Swaps are the one flow that can prompt more than once.** A swap re-proves on every stale-root
@@ -306,11 +390,22 @@ const payroll = [
   { wallet: Keypair.generate().publicKey, amount: 350_000_000n },
 ];
 
+const receipts: { wallet: string; signature: string }[] = [];
+
 for (const payment of payroll) {
-  await sendSameMint({
+  // `sendSameMint` stores the notes each iteration produces before it returns, which
+  // is what makes a failure halfway through survivable: the paid runs are settled and
+  // the failed run's deposit note is already on disk. A loop is the last place to
+  // await a flow and drop the result.
+  const paid = await sendSameMint({
     mint: NATIVE_SOL_MINT,
     amount: payment.amount,
     recipientWallet: payment.wallet,
+  });
+
+  receipts.push({
+    wallet: payment.wallet.toBase58(),
+    signature: paid.signature,
   });
 }
 ```
@@ -346,8 +441,9 @@ console.log(report.summary);
   <Card title="Request authentication" icon="signature" href="/sdk/request-authentication">
     The signed-sender contract for every submitted flow, on both paths.
   </Card>
-  <Card title="Wallet integration" icon="wallet" href="/sdk/wallet-integration">
-    Full wallet-adapter wiring, progress callbacks and stale-root retries.
+  <Card title="Wallet integration" icon="wallet" href="/sdk/wallet-integration#where-your-notes-live-between-sessions">
+    Where your notes live between sessions, plus the full wallet-adapter wiring, progress callbacks
+    and stale-root retries.
   </Card>
   <Card title="Error handling" icon="triangle-exclamation" href="/sdk/error-handling">
     `CloakError` categories, `parseError`, and the stale-root retry template.

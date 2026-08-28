@@ -81,12 +81,14 @@ import {
   CLOAK_PRODUCTION_RELAY_URL,
   CLOAK_PROGRAM_ID,
   NATIVE_SOL_MINT,
+  UtxoWallet,
   createUtxo,
   createZeroUtxo,
   explainRelayAuthRejection,
   generateUtxoKeypair,
   partialWithdraw,
   transact,
+  type Utxo,
 } from "@cloak.dev/sdk";
 import { address, createSolanaRpc } from "@solana/kit";
 import { useWallet } from "@solana/wallet-adapter-react";
@@ -101,6 +103,22 @@ const kitRpc = createSolanaRpc(rpcUrl);
 
 // web3 bridge for Cloak transaction paths.
 const connection = new Connection(rpcUrl, "confirmed");
+
+// Kit has no note store, and neither does the SDK. Every flow hands back new notes
+// on `result.outputUtxos` and forgets them, so this is the piece you own.
+const NOTES_KEY = "myapp.cloak.notes";
+
+function loadNotes(): UtxoWallet {
+  const saved = window.localStorage.getItem(NOTES_KEY);
+  return saved ? UtxoWallet.deserialize(saved) : new UtxoWallet();
+}
+
+function recordNotes(created: Utxo[], spent: Utxo[] = []): void {
+  const wallet = loadNotes();
+  for (const utxo of spent) wallet.markSpent(utxo, utxo.mintAddress);
+  for (const utxo of created) wallet.addUtxo(utxo, utxo.mintAddress);
+  window.localStorage.setItem(NOTES_KEY, wallet.serialize());
+}
 
 export function useCloakBridge() {
   const { publicKey, signTransaction, signMessage } = useWallet();
@@ -138,8 +156,12 @@ export function useCloakBridge() {
       },
     );
 
+    // Write the deposit note down before spending it. If the withdrawal below throws,
+    // this is the only record of the 0.02 SOL now sitting in the pool.
+    recordNotes(deposit.outputUtxos);
+
     try {
-      await partialWithdraw(
+      const withdrawal = await partialWithdraw(
         deposit.outputUtxos,
         new PublicKey(recipientAddress),
         10_000_000n,
@@ -153,6 +175,10 @@ export function useCloakBridge() {
           onProofProgress: (percent) => console.log(`withdraw proof ${percent}%`),
         },
       );
+
+      // `withdrawal.outputUtxos` holds the change: the ~0.01 SOL that stayed shielded.
+      // Persist it in the same tick, before any "done" reaches the user.
+      recordNotes(withdrawal.outputUtxos, deposit.outputUtxos);
     } catch (error) {
       const hint = explainRelayAuthRejection(String(error));
       throw hint ? new Error(hint, { cause: error }) : error;
@@ -165,6 +191,16 @@ export function useCloakBridge() {
   };
 }
 ```
+
+<Warning>
+**A change note that you do not persist is gone.** Every flow except a deposit returns
+`result.outputUtxos`, and one of those notes is the balance that stayed shielded, the user's own
+money. Its `blinding` is fresh randomness generated inside `createUtxo` and it is written nowhere on
+chain, so no rescan and no seed phrase brings it back. Awaiting `partialWithdraw`, `transfer` or
+`swapWithChange` without capturing the result destroys that value permanently. The full storage
+answer, including what `UtxoWallet.serialize()` does and does not carry, is
+[where your notes live between sessions](/sdk/wallet-integration#where-your-notes-live-between-sessions).
+</Warning>
 
 <Note>
 `walletPublicKey` must be the end user's own wallet, never an ephemeral or service-held key. It
@@ -187,15 +223,30 @@ import {
   createZeroUtxo,
   generateUtxoKeypair,
   partialWithdraw,
+  serializeUtxo,
   transact,
+  type Utxo,
 } from "@cloak.dev/sdk";
 import { address, createSolanaRpc } from "@solana/kit";
-import { Connection, Keypair } from "@solana/web3.js";
-import { readFileSync } from "node:fs";
+import { Connection, Keypair, PublicKey } from "@solana/web3.js";
+import { appendFileSync, readFileSync } from "node:fs";
 
 const rpcUrl = process.env.SOLANA_RPC_URL!;
 const relayUrl = CLOAK_PRODUCTION_RELAY_URL;
 const programId = CLOAK_PROGRAM_ID;
+
+// `serializeUtxo` is the persistence primitive: 128 bytes carrying amount, private key,
+// blinding, mint and leaf index. `deserializeUtxo` reads it back. Nothing else can.
+const NOTES_PATH = process.env.CLOAK_NOTES_PATH ?? "./cloak-notes.txt";
+
+function recordNotes(utxos: Utxo[]): void {
+  appendFileSync(
+    NOTES_PATH,
+    utxos
+      .map((utxo) => `${Buffer.from(serializeUtxo(utxo)).toString("base64")}\n`)
+      .join(""),
+  );
+}
 
 const kitRpc = createSolanaRpc(rpcUrl);
 const connection = new Connection(rpcUrl, "confirmed");
@@ -225,9 +276,15 @@ const deposit = await transact(
   },
 );
 
-await partialWithdraw(
+recordNotes(deposit.outputUtxos);
+
+// A real address you control. A freshly generated one has no private key anywhere,
+// so withdrawing to it burns the amount that leaves the pool.
+const recipient = new PublicKey(process.env.WITHDRAW_RECIPIENT!);
+
+const withdrawal = await partialWithdraw(
   deposit.outputUtxos,
-  Keypair.generate().publicKey,
+  recipient,
   10_000_000n,
   {
     connection,
@@ -239,6 +296,9 @@ await partialWithdraw(
   },
 );
 
+// The change note. Losing this line loses the ~0.01 SOL that stayed shielded.
+recordNotes(withdrawal.outputUtxos);
+
 const { value: after } = await kitRpc
   .getBalance(address(signer.publicKey.toBase58()))
   .send();
@@ -246,6 +306,16 @@ console.log(before.toString(), after.toString());
 ```
 
 A keypair signs in microseconds and never prompts.
+
+Treat that notes file the way you treat the keypair file. Each line carries the note's private key
+and blinding, so whoever can read it can spend the note.
+
+The append-only file above is enough for a one-shot script: a note that has already been spent
+fails loudly on its nullifier if you try to spend it twice. A long-lived service needs to track
+spends as well, which is what `UtxoWallet.markSpent` is for. Both shapes, and the reconciliation
+gap where `UtxoWallet.serialize()` drops `commitment` and `verifyUtxos` then reports those notes as
+`skipped`, are covered in
+[where your notes live between sessions](/sdk/wallet-integration#where-your-notes-live-between-sessions).
 
 ## Related pages
 
@@ -261,5 +331,8 @@ A keypair signs in microseconds and never prompts.
   </Card>
   <Card title="Error handling" icon="triangle-exclamation" href="/sdk/error-handling">
     `CloakError` categories, `parseError`, and the stale-root retry template.
+  </Card>
+  <Card title="Note storage" icon="floppy-disk" href="/sdk/wallet-integration#where-your-notes-live-between-sessions">
+    Where change notes have to be written down, and what each storage export carries.
   </Card>
 </CardGroup>

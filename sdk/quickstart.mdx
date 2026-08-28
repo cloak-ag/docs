@@ -21,7 +21,7 @@ This snippet covers:
 - partial withdrawal (keep change private)
 
 ```typescript
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import {
   CLOAK_PRODUCTION_RELAY_URL,
   CLOAK_PROGRAM_ID,
@@ -31,6 +31,7 @@ import {
   fullWithdraw,
   generateUtxoKeypair,
   partialWithdraw,
+  serializeUtxo,
   transact,
 } from "@cloak.dev/sdk";
 import { Connection, Keypair } from "@solana/web3.js";
@@ -93,18 +94,37 @@ const withdrawOptions = {
 const withdrawEverything: boolean = true;
 
 if (withdrawEverything) {
-  // Full withdrawal: sends all spendable value externally.
+  // Full withdrawal: sends all spendable value externally, so nothing is left
+  // shielded and there is no change note to keep.
   await fullWithdraw(deposited.outputUtxos, recipient, withdrawOptions);
 } else {
   // Partial withdrawal: withdraw a portion, keep private change in shielded state.
-  await partialWithdraw(
+  const withdrawal = await partialWithdraw(
     deposited.outputUtxos,
     recipient,
     200_000_000n,
     withdrawOptions,
   );
+
+  // Persist the change note before anything else can go wrong. This is the 0.8
+  // SOL you did not withdraw, and its blinding lives only in this process, so a
+  // change note you never store is gone for good.
+  const changeNotes = withdrawal.outputUtxos.filter((utxo) => utxo.amount > 0n);
+  for (const [i, note] of changeNotes.entries()) {
+    writeFileSync(`change-${withdrawal.signature}-${i}.note`, serializeUtxo(note));
+  }
 }
 ```
+
+<Warning>
+Every call that leaves value shielded returns `outputUtxos`, and those notes are your own money.
+Nothing on chain carries a note's blinding, so a note you drop cannot be rescanned or recovered by
+anyone, including us. The deposit note above gets away with it only because this script spends it in
+the same run; split the two steps and you must store it too. `serializeUtxo` gives you the 128-byte
+encoding that `deserializeUtxo` turns back into a spendable note, and files are just the simplest
+possible sink for it. Pick a real one before you have users: [where your notes live between
+sessions](/sdk/wallet-integration#where-your-notes-live-between-sessions).
+</Warning>
 
 ## One-file CLI contract (recommended for one-shot scripts)
 
@@ -175,4 +195,6 @@ Worked example (`gross = 50_000_000`, i.e. `0.05 SOL`):
 
 Recommended first-run sender balance for this smoke test: `0.07 SOL` or higher.
 
-Next: [Code Examples](/sdk/examples)
+Next: [Code Examples](/sdk/examples), then [where your notes live between
+sessions](/sdk/wallet-integration#where-your-notes-live-between-sessions) for a real home for the
+change notes this snippet writes to files.
