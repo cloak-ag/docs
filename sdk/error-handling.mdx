@@ -72,7 +72,11 @@ try {
 ```
 
 ```typescript Wallet adapter
-import { isRootNotFoundError, RootNotFoundError } from "@cloak.dev/sdk";
+import {
+  isRootNotFoundError,
+  partialWithdraw,
+  RootNotFoundError,
+} from "@cloak.dev/sdk";
 
 try {
   await partialWithdraw(inputUtxos, recipient, 10_000_000n, {

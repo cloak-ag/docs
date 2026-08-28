@@ -203,6 +203,8 @@ Swaps are the exception, because a swap re-proves on every retry and each new pr
 that needs a fresh approval. `maxWalletApprovals` caps how many times one swap may ask:
 
 ```typescript
+import { swapWithChange } from "@cloak.dev/sdk";
+
 await swapWithChange(inputUtxos, amount, outputMint, recipientAta, minOutput, {
   connection,
   programId,
@@ -359,6 +361,66 @@ turned away. Only that second case belongs on this page.
 any paid endpoint works. The one exception is a **loopback** RPC (`localhost`, `127.0.0.1`), which a
 production build refuses because a production artifact talking to a local validator is always a
 mistake. "You have to use Cloak's RPC" is a misreading of this. You do not.
+</Note>
+
+### One more origin: the circuits bundle
+
+**A proof is generated on the end user's own device, so the proving artifacts have to reach it.**
+On the first proof of a page's life the SDK fetches two files from the bundle base this build was
+compiled against, exported as `DEFAULT_TRANSACTION_CIRCUITS_URL`:
+
+```
+https://storage.googleapis.com/cloak-circuits/circuits/0.2.0/transaction_js/transaction.wasm    3.2 MB
+https://storage.googleapis.com/cloak-circuits/circuits/0.2.0/transaction_final.zkey            19.7 MB
+```
+
+Just under 23 MB together, and those sizes are exact rather than approximate: both files are
+hash-pinned in the SDK build and re-checked against the pinned digests before a byte of either
+reaches the prover, so bytes of any other size do not prove.
+
+**This one reaches deposits too.** Request authentication is the mechanism a deposit skips; proof
+generation is not. Every row of the table at the top of this page proves, so a policy that blocks the
+bundle breaks the [Quickstart](/sdk/quickstart) deposit as well, on the very first call you make.
+
+<Warning>
+**A strict Content-Security-Policy has to name this origin.** The artifacts arrive over an ordinary
+`fetch`, so `connect-src` is the directive that governs them, and the witness generator is then
+compiled as WebAssembly inside the page, which a strict `script-src` has to permit separately:
+
+```
+connect-src 'self' https://storage.googleapis.com ...;
+script-src  'self' 'wasm-unsafe-eval' ...;
+```
+
+Miss the `connect-src` entry and the browser refuses the request before it leaves the page. The
+failure then surfaces from inside proof generation as a failed fetch naming the artifact URL, which
+points at the SDK rather than at the policy that actually blocked it. The line that names your
+policy is in the browser console, not in the error you catch.
+</Warning>
+
+**Caching is in memory and per page load.** Verified artifact bytes are memoised for the life of the
+process and keyed by base, so a user who sends three times downloads once, not three times. The SDK
+keeps no persistent cache of its own: a reload starts from an empty memo, and whether anything is
+actually re-downloaded is left to the browser's ordinary HTTP cache. If you would rather pay that
+cost on mount than at the first click, warm it yourself; on success the check memoises the same bytes
+the prove path later reads.
+
+```typescript
+import { getCircuitsPath, verifyAllCircuits } from "@cloak.dev/sdk";
+
+// Fire and forget on mount. The first proof then finds the bytes already loaded.
+void verifyAllCircuits(getCircuitsPath());
+```
+
+<Note>
+**This is one asset origin, not a claim on your infrastructure.** The request carries no body, no
+headers of yours and none of your user's data; it is a static download of the public ceremony bundle,
+and the digest pin is why fetching it from a Cloak-controlled host is safe rather than trusting.
+It differs from the RPC in one way worth knowing before you plan around it: like the submission
+endpoint, the base is fixed when the SDK is built, so re-serving the artifacts from your own CDN is a
+source edit and a rebuild, not a call option. `setCircuitsPath()` does accept a local directory
+holding the same two files, which covers an offline or air-gapped Node process, but a browser has no
+filesystem to read and refuses that shape.
 </Note>
 
 ### Developing against a local stack
