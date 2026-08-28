@@ -24,7 +24,8 @@ Use this page to point coding agents at the right Cloak docs before they write c
 2. `/llms-full.txt`
 3. `/sdk/llms.txt`
 4. `/sdk/quickstart`
-5. `/sdk/utxo-transactions`
+5. `/sdk/request-authentication`
+6. `/sdk/utxo-transactions`
 
 ### Rust integrations
 
@@ -53,6 +54,7 @@ Read these docs first and follow them exactly:
 - `/llms-full.txt`
 - `/sdk/llms.txt`
 - `/sdk/quickstart`
+- `/sdk/request-authentication`
 - `/sdk/utxo-transactions`
 - `/sdk/wallet-integration`
 
@@ -61,14 +63,18 @@ Build requirements:
 2) Implement deposit then full withdraw (send) flow:
    - deposit with `transact(...)`
    - send with `fullWithdraw(...)`
-3) Include one integration path using keypair bytes and one using wallet-adapter where relevant.
+3) Include one integration path using keypair bytes and one using wallet-adapter where relevant. Follow `/sdk/request-authentication` for the wallet-adapter path.
 4) Add progress and error states suitable for production UX.
 5) Never log secrets (private keys, viewing keys (`nk`), raw note payloads, seed material).
    Transaction signatures are public and may be logged for support/debugging.
 6) Rely on SDK default stale-root handling for standard flows; do not add custom retry loops unless explicitly requested.
-7) Use SDK defaults for program and circuits. The relay has no default: pass `relayUrl` on every `transact` / `fullWithdraw` call, sourced from the `CLOAK_RELAY_URL` env var. Do not ask end users to configure program or circuits.
-8) For script-only tasks, default to keypair path + lamports CLI (`<recipientPubkey> <lamports>`).
-9) For script-only tasks, parse recipient/amount from CLI args (not env) and exit explicitly (`process.exit(0|1)`).
+7) Use SDK defaults for program and circuits, and do not ask end users to configure them. The relay has no SDK default: pass `relayUrl` explicitly on every `transact` / `fullWithdraw` call. The SDK reads no environment variable for it, so if you want the value configurable, read `CLOAK_RELAY_URL` in your own code and pass it as `relayUrl`. Omitting `relayUrl` throws `Viewing key registration is mandatory: relayUrl is required.` before any network call, deposits included.
+8) Never pass `relayUrl: ""` to "skip the relay". With the default `enforceViewingKeyRegistration` it throws the same error as omitting it, and it only signals caller-signed direct submission when `enforceViewingKeyRegistration: false` is set as well. That combination submits a send or withdrawal under the user's own key and publicly links it, so do not generate it.
+9) In browser code, authenticate the sender with `signMessage` + `walletPublicKey` in the transact options. Never emit `depositorKeypair` in browser send or withdraw code.
+10) Never substitute the authenticated sender with an ephemeral or service key. That key is the one screened, so it must be the end user's own wallet key.
+11) Never tell the user they must use a particular RPC provider. `SOLANA_RPC_URL` is the app owner's choice.
+12) For script-only tasks, default to keypair path + lamports CLI (`<recipientPubkey> <lamports>`).
+13) For script-only tasks, parse recipient/amount from CLI args (not env) and exit explicitly (`process.exit(0|1)`).
 
 Return format:
 - capability matrix (`used` / `not used`) for: note API, UTXO API, scanner/compliance, viewing keys/metadata encryption, relay/proof/Merkle helpers, utility modules
@@ -124,6 +130,8 @@ Shared across both SDKs:
 - No secret leakage in logs or telemetry.
 - Docs references are included in the implementation notes.
 - No custom retry wrappers (the SDK handles stale-root + blockhash + transient transport).
+- The authenticated sender is the end user's own wallet key, never an ephemeral or service key.
+- The RPC endpoint is presented as the app owner's choice, not as a required provider.
 
 TypeScript-specific:
 
@@ -131,6 +139,8 @@ TypeScript-specific:
 - No raw private key env var (`SENDER_PRIVATE_KEY`) and no float amount parsing (`AMOUNT_SOL`, `parseFloat`).
 - No `RECIPIENT_ADDRESS`/`SEND_LAMPORTS` env contract for one-file scripts; use CLI args.
 - Script exits explicitly on success/failure (`process.exit(0|1)`).
+- Browser send/withdraw code passes `signMessage` + `walletPublicKey`, never `depositorKeypair`.
+- `relayUrl` is passed explicitly on every call and is never `""`.
 
 Rust-specific:
 
@@ -176,4 +186,5 @@ Example short prompts that should still produce valid output:
 - [Rust SDK LLM Reference](/sdk/rust/llms.txt)
 - [TypeScript Quickstart](/sdk/quickstart)
 - [Rust Quickstart](/sdk/rust/quickstart)
+- [Request Authentication (TS)](/sdk/request-authentication)
 - [UTXO Transactions (TS)](/sdk/utxo-transactions)

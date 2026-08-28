@@ -20,7 +20,7 @@ All are exported from `@cloak.dev/sdk`.
 ## Transaction semantics
 
 ```typescript
-import type { Utxo, TransactParams, TransactOptions } from "@cloak.dev/sdk";
+import type { Utxo } from "@cloak.dev/sdk";
 
 interface TransactParams {
   inputUtxos: Utxo[];
@@ -71,12 +71,65 @@ const keypair = await generateUtxoKeypair();
 const utxo = await createUtxo(100_000_000n, keypair, NATIVE_SOL_MINT);
 ```
 
+## Choosing a signer
+
+Every example below comes in two tabs. Which one you need is decided by where your code runs, not
+by which call you are making.
+
+- **Wallet adapter** (browser): you hold no secret key, so you pass the end user's
+  `walletPublicKey` together with the adapter's `signMessage`. That pair does two jobs: it signs
+  the viewing-key registration message, which is enforced by default, and it produces the
+  authenticated sender that every request submitted on your behalf carries. A deposit additionally
+  needs `signTransaction`, because a deposit is signed by the funding wallet and posted straight to
+  the chain.
+- **Keypair bytes** (Node, server, CLI): `depositorKeypair` covers all of it and never prompts.
+
+Deposits are the reason this bites late. A deposit works with `signTransaction` alone and carries no
+authenticated sender, so the deposit below can succeed while the very next call, the private send,
+is the first one that needs `signMessage` and `walletPublicKey`. Leave either of them out on a
+transfer, a withdrawal or a swap and the call throws before it generates a proof.
+
+<Note>
+[Request authentication](/sdk/request-authentication) is the full contract for that signed sender:
+the exact options, the 300-second approval window, how many wallet prompts each flow costs, and
+`explainRelayAuthRejection` for turning a rejection into something a user can act on.
+</Note>
+
 ## Deposit example (`transact`)
 
 <CodeGroup>
+```typescript Wallet adapter
+import { transact, createUtxo, createZeroUtxo, generateUtxoKeypair } from "@cloak.dev/sdk";
+import { useWallet } from "@solana/wallet-adapter-react";
+
+const { publicKey, signTransaction, signMessage } = useWallet();
+
+const owner = await generateUtxoKeypair();
+const output = await createUtxo(20_000_000n, owner);
+
+const result = await transact(
+  {
+    inputUtxos: [await createZeroUtxo()],
+    outputUtxos: [output],
+    externalAmount: 20_000_000n,
+    depositor: publicKey!,
+  },
+  {
+    connection,
+    programId,
+    relayUrl,
+    signTransaction: signTransaction!, // signs the deposit transaction itself
+    signMessage: signMessage!,         // viewing-key registration, and the signed sender later
+    depositorPublicKey: publicKey!,
+    walletPublicKey: publicKey!,
+  }
+);
+```
+
 ```typescript Keypair bytes
 import {
   CLOAK_PROGRAM_ID,
+  CLOAK_PRODUCTION_RELAY_URL,
   transact,
   createUtxo,
   generateUtxoKeypair,
@@ -84,7 +137,7 @@ import {
 import { Connection, Keypair } from "@solana/web3.js";
 
 const connection = new Connection(process.env.SOLANA_RPC_URL!, "confirmed");
-const relayUrl = process.env.CLOAK_RELAY_URL!;
+const relayUrl = CLOAK_PRODUCTION_RELAY_URL;
 const programId = CLOAK_PROGRAM_ID;
 const depositorKeypair = Keypair.fromSecretKey(secretKeyBytes);
 
@@ -108,39 +161,40 @@ const result = await transact(
 console.log(result.signature, result.commitmentIndices);
 ```
 
-```typescript Wallet adapter
-import { transact, createUtxo, createZeroUtxo, generateUtxoKeypair } from "@cloak.dev/sdk";
-import { useWallet } from "@solana/wallet-adapter-react";
-
-const { publicKey, signTransaction, signMessage } = useWallet();
-
-const owner = await generateUtxoKeypair();
-const output = await createUtxo(20_000_000n, owner);
-
-const result = await transact(
-  {
-    inputUtxos: [await createZeroUtxo()],
-    outputUtxos: [output],
-    externalAmount: 20_000_000n,
-    depositor: publicKey!,
-  },
-  {
-    connection,
-    programId,
-    relayUrl,
-    signTransaction: signTransaction!,
-    signMessage: signMessage!,
-    depositorPublicKey: publicKey!,
-    walletPublicKey: publicKey!,
-  }
-);
-```
-
 </CodeGroup>
+
+<Note>
+`relayUrl` is the exported `CLOAK_PRODUCTION_RELAY_URL`. The SDK reads no environment variable for
+it, and the published build accepts only an origin on its allowlist, so any other value throws
+locally before a request leaves the process. `CLOAK_RELAY_URL` is a convention the SDK's own
+examples and scripts read themselves and pass in as `relayUrl`. See
+[which endpoint the SDK talks to](/sdk/request-authentication#which-endpoint-the-sdk-talks-to-and-which-rpc-you-use).
+</Note>
 
 ## Withdraw and transfer helpers
 
+These three are submitted on your behalf, so each request carries an authenticated sender. In the
+browser that is what `walletPublicKey` and `signMessage` are for, and there is no `signTransaction`
+in sight because you are not signing a transaction here. The key you pass becomes the request's
+sender, so it must be the end user's own wallet, never a session or service key.
+
 <CodeGroup>
+```typescript Wallet adapter
+import { transfer, partialWithdraw, fullWithdraw } from "@cloak.dev/sdk";
+
+const walletOptions = {
+  connection,
+  programId,
+  relayUrl,
+  walletPublicKey: publicKey!, // becomes the request's authenticated sender
+  signMessage: signMessage!,   // signs the request preimage
+};
+
+await transfer(inputUtxos, recipientUtxoPublicKey, 30_000_000n, walletOptions);
+await partialWithdraw(inputUtxos, recipientWallet, 10_000_000n, walletOptions);
+await fullWithdraw(inputUtxos, recipientWallet, walletOptions);
+```
+
 ```typescript Keypair bytes
 import { transfer, partialWithdraw, fullWithdraw } from "@cloak.dev/sdk";
 
@@ -149,29 +203,38 @@ await partialWithdraw(inputUtxos, recipientWallet, 10_000_000n, options);
 await fullWithdraw(inputUtxos, recipientWallet, options);
 ```
 
-```typescript Wallet adapter
-import { transfer, partialWithdraw, fullWithdraw } from "@cloak.dev/sdk";
-
-const walletOptions = {
-  connection,
-  programId,
-  relayUrl,
-  walletPublicKey: publicKey!,
-  signMessage: signMessage!,
-};
-
-await transfer(inputUtxos, recipientUtxoPublicKey, 30_000_000n, walletOptions);
-await partialWithdraw(inputUtxos, recipientWallet, 10_000_000n, walletOptions);
-await fullWithdraw(inputUtxos, recipientWallet, walletOptions);
-```
-
 </CodeGroup>
 
 `partialWithdraw`/`fullWithdraw` use negative `externalAmount` semantics.
 
+Each of these asks the wallet to sign exactly once, whatever happens on the network: a stale-root
+retry re-uses the same proof and the same signed request. See
+[how many wallet prompts to expect](/sdk/request-authentication#how-many-wallet-prompts-to-expect).
+
 ## Swap example
 
 <CodeGroup>
+```typescript Wallet adapter
+import { swapWithChange } from "@cloak.dev/sdk";
+
+await swapWithChange(
+  inputUtxos,
+  50_000_000n,
+  outputMint,
+  recipientAta,
+  1_000_000n,
+  {
+    connection,
+    programId,
+    relayUrl,
+    walletPublicKey: publicKey!,
+    signMessage: signMessage!,
+    maxWalletApprovals: 3, // default 5
+  },
+  publicKey!
+);
+```
+
 ```typescript Keypair bytes
 import { swapWithChange } from "@cloak.dev/sdk";
 
@@ -191,29 +254,14 @@ await swapWithChange(
 );
 ```
 
-```typescript Wallet adapter
-import { swapWithChange } from "@cloak.dev/sdk";
-
-await swapWithChange(
-  inputUtxos,
-  50_000_000n,
-  outputMint,
-  recipientAta,
-  1_000_000n,
-  {
-    connection,
-    programId,
-    relayUrl,
-    walletPublicKey: publicKey!,
-    signMessage: signMessage!,
-  },
-  publicKey!
-);
-```
-
 </CodeGroup>
 
 `swapWithChange` sends a `TransactSwap` payload (`proof + 264-byte public inputs + swap params`).
+
+Swaps are the one flow that can prompt more than once: a swap re-proves on every stale-root retry,
+and each new proof is a new request needing a fresh approval. `maxWalletApprovals` caps that at `5`
+by default, wallet-adapter path only. A `depositorKeypair` never prompts. Details in
+[request authentication](/sdk/request-authentication#how-many-wallet-prompts-to-expect).
 
 ## Viewing-key registration requirements
 
@@ -254,9 +302,14 @@ If deposit account list is large, use v0 transactions with `addressLookupTableAc
   `UtxoAlreadySpentError` before any proof is generated. Catch it and call `verifyUtxos()` to
   reconcile your local notes with chain state.
 - `viewing key not found`: re-run a transaction with registration enabled, then rescan history.
+- `Unauthorized`, a bare `401`, or `requires an authenticated sender` on a transfer, withdrawal or
+  swap: the call had no usable signer, or only half of one. In the browser pass `signMessage`
+  **and** `walletPublicKey`; on a server pass `depositorKeypair`. Full diagnosis in
+  [Request authentication](/sdk/request-authentication).
 
 ## Next
 
+- Signing requests: [Request authentication](/sdk/request-authentication)
 - Protocol behavior: [Shield Pool Program](/protocol/shield-pool)
 - Runtime lifecycle: [Transaction Flows](/platform/transaction-flows)
 - Full SDK exports: [API Reference](/sdk/api-reference)

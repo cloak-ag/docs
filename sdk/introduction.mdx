@@ -31,23 +31,30 @@ Cloak ships two first-party SDKs targeting the same on-chain protocol. Pick the 
 
 Both SDKs speak the same protocol and produce the same 264-byte public inputs. Migrating between them is straightforward once you understand the shared primitives.
 
-## Shared runtime defaults
+## Shared runtime values
 
-| Setting | Value |
-|---|---|
-| Program ID | `zh1eLd6rSphLejbFfJEneUwzHRfMKxgzrgkfwA6qRkW` |
-| Relay URL | No default. Pass `relayUrl` on every call; on mainnet the value is `https://api.cloak.ag` |
-| Circuits base URL | `https://storage.googleapis.com/cloak-circuits/circuits/0.2.0` (ceremony bundle; artifacts are hash-verified before proving) |
-| Merkle tree height | 32 |
-| Circuit arity | 2 inputs / 2 outputs |
-| Proof format | 256-byte Groth16 (pinocchio) |
-| Public inputs | 264 bytes |
+The last column says who supplies each value. Cloak hosts the program and the circuits bundle, and
+those two are the only values the SDK fills in on its own. Your RPC and your `relayUrl` are
+yours to pass, and there is no Cloak-hosted RPC to point at.
+
+| Setting | Value | Applied by |
+|---|---|---|
+| Program ID | `zh1eLd6rSphLejbFfJEneUwzHRfMKxgzrgkfwA6qRkW` | SDK default |
+| Solana RPC | Your own endpoint. You construct the `Connection` and pass it as `connection`; Cloak hosts no RPC and requires no particular provider | You |
+| Relay URL | Not a default: the SDK applies none and reads no environment variable. Pass `relayUrl` on every call; on mainnet the value is `https://api.cloak.ag` | You, every call |
+| Circuits base URL | `https://storage.googleapis.com/cloak-circuits/circuits/0.2.0` (ceremony bundle; artifacts are hash-verified before proving) | SDK default |
+| Merkle tree height | 32 | Protocol constant |
+| Circuit arity | 2 inputs / 2 outputs | Protocol constant |
+| Proof format | 256-byte Groth16 (pinocchio) | Protocol constant |
+| Public inputs | 264 bytes | Protocol constant |
 
 The requirement is identical in a browser bundle and on Node: `relayUrl` is an option you pass, on every `transact` call, including shield, send and withdraw, and on the swap helpers. The SDK reads no environment variable for it, so exporting `CLOAK_RELAY_URL` in a Node process does nothing by itself; read that variable in your own code and pass the value as `relayUrl` if you like the convention. Omitting the option, or passing an empty string, throws `Viewing key registration is mandatory: relayUrl is required.` before the call touches the network. Every flow behaves that way, deposits included, and nothing falls back to another deployment.
 
 <Warning>
 `enforceViewingKeyRegistration: false` is the one option that changes this outcome, and it opens a
-privacy hazard. With enforcement off and no `relayUrl`, a transfer or withdrawal that carries a
+privacy hazard. `""` is the caller-signed direct-submission signal, and it only takes effect once
+enforcement is off, because the viewing-key gate fires first. With enforcement off and no
+`relayUrl`, omitted or passed as `""`, a transfer or withdrawal that carries a
 signer (`depositorKeypair`, or `signTransaction` plus `depositorPublicKey`) is signed and submitted
 by that signer instead of throwing: your own wallet broadcasts it, which publicly links the
 transfer or withdrawal to you. Leave the option at its default of `true` unless you have deliberately
@@ -71,7 +78,8 @@ Before you write code, skim the language-agnostic primer:
 Start here for web3.js and Solana Kit integrations:
 
 - [Quickstart](/sdk/quickstart) — minimal end-to-end SOL send.
-- [Code examples](/sdk/examples) — send, swap, payroll, history.
+- [Request authentication](/sdk/request-authentication) covers the signed sender that every flow except deposit carries, wired from a browser wallet adapter or from a server keypair. Read it before your first private send.
+- [Code examples](/sdk/examples) — send, swap, payroll, history. The snippets sign with a server keypair; a browser wallet signs the way request authentication describes.
 - [API reference](/sdk/api-reference) — the full exported surface: functions, classes, and constants.
 
 Install (current release: `@cloak.dev/sdk` 0.2.0):

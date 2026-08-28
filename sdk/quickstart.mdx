@@ -21,7 +21,9 @@ This snippet covers:
 - partial withdrawal (keep change private)
 
 ```typescript
+import { readFileSync } from "node:fs";
 import {
+  CLOAK_PRODUCTION_RELAY_URL,
   CLOAK_PROGRAM_ID,
   NATIVE_SOL_MINT,
   createUtxo,
@@ -37,8 +39,23 @@ const connection = new Connection(
   "https://api.mainnet-beta.solana.com",
   "confirmed",
 );
-const relayUrl = process.env.CLOAK_RELAY_URL ?? "https://api.cloak.ag";
-const signer = Keypair.fromSecretKey(/* Uint8Array secret key */);
+
+// `relayUrl` has no default and the SDK reads no environment variable for it.
+// Pass the endpoint explicitly on every call. This build accepts exactly one
+// origin, `CLOAK_PRODUCTION_RELAY_URL` ("https://api.cloak.ag"); any other host
+// throws before a request is made.
+const relayUrl = CLOAK_PRODUCTION_RELAY_URL;
+
+// Placeholder: point KEYPAIR_PATH at your own keypair file. Never inline a
+// secret key, and never read one from a raw env var.
+const keypairPath = process.env.KEYPAIR_PATH;
+if (!keypairPath) {
+  throw new Error("Set KEYPAIR_PATH to a Solana keypair file.");
+}
+const secretKeyBytes = Uint8Array.from(
+  JSON.parse(readFileSync(keypairPath, "utf8")) as number[],
+);
+const signer = Keypair.fromSecretKey(secretKeyBytes);
 
 const amount = 1_000_000_000n; // 1 SOL
 const owner = await generateUtxoKeypair();
@@ -62,25 +79,31 @@ const deposited = await transact(
 
 const recipient = Keypair.generate().publicKey;
 
-// Full withdrawal: sends all spendable value externally.
-await fullWithdraw(deposited.outputUtxos, recipient, {
+const withdrawOptions = {
   connection,
   programId: CLOAK_PROGRAM_ID,
   relayUrl,
   depositorKeypair: signer,
   walletPublicKey: signer.publicKey,
   cachedMerkleTree: deposited.merkleTree,
-});
+};
 
-// OR partial withdrawal: withdraw a portion, keep private change in shielded state.
-// await partialWithdraw(deposited.outputUtxos, recipient, 200_000_000n, {
-//   connection,
-//   programId: CLOAK_PROGRAM_ID,
-//   relayUrl,
-//   depositorKeypair: signer,
-//   walletPublicKey: signer.publicKey,
-//   cachedMerkleTree: deposited.merkleTree,
-// });
+// Pick one. Both are submitted for you and both need an authenticated sender,
+// which `depositorKeypair` supplies here.
+const withdrawEverything: boolean = true;
+
+if (withdrawEverything) {
+  // Full withdrawal: sends all spendable value externally.
+  await fullWithdraw(deposited.outputUtxos, recipient, withdrawOptions);
+} else {
+  // Partial withdrawal: withdraw a portion, keep private change in shielded state.
+  await partialWithdraw(
+    deposited.outputUtxos,
+    recipient,
+    200_000_000n,
+    withdrawOptions,
+  );
+}
 ```
 
 ## One-file CLI contract (recommended for one-shot scripts)
@@ -89,12 +112,17 @@ For minimal script generation, keep this exact interface:
 
 - file: `send-sol-private.ts`
 - command: `npx tsx send-sol-private.ts <recipientPubkey> <lamports>`
-- env vars: `SOLANA_RPC_URL`, `KEYPAIR_PATH`, optional `CLOAK_RELAY_URL`
+- env vars **your script** reads: `SOLANA_RPC_URL`, `KEYPAIR_PATH`, optional `CLOAK_RELAY_URL`
 
 Guardrails:
 
 - keep tx amounts as `bigint`
 - use `KEYPAIR_PATH` (file-based keypair), not raw private key env vars
+- pass `relayUrl` explicitly on every call. The SDK reads no environment variable for it, so
+  `CLOAK_RELAY_URL` is purely a convention for your own script: your code reads it and passes the
+  value through. The only value this build accepts is `CLOAK_PRODUCTION_RELAY_URL`
+  (`https://api.cloak.ag`), so treat the env var as a label, not a switch, and prefer importing the
+  constant
 - do not parse SOL decimals with float math (`parseFloat`, `AMOUNT_SOL`)
 - read recipient/amount from `process.argv` (`<recipientPubkey> <lamports>`), not `RECIPIENT_ADDRESS`/`SEND_LAMPORTS` env vars
 - keep `programId` fixed to `CLOAK_PROGRAM_ID` internally
@@ -107,6 +135,10 @@ Use this when you want a first real send with explicit runtime values.
 
 ```bash
 export SOLANA_RPC_URL="https://api.mainnet-beta.solana.com"
+
+# Optional, and only if your script reads it and passes the value as `relayUrl`.
+# The SDK itself never looks at this variable, and this build accepts no other
+# value, so importing CLOAK_PRODUCTION_RELAY_URL is the simpler path.
 export CLOAK_RELAY_URL="https://api.cloak.ag"
 
 # KEYPAIR_PATH must resolve to an absolute path at runtime. The shell expands
@@ -125,7 +157,7 @@ solana balance "$(solana-keygen pubkey "$KEYPAIR_PATH")" --url "$SOLANA_RPC_URL"
 Run your script entrypoint that wraps the snippet above:
 
 ```bash
-npx tsx send.ts "<recipient-wallet-pubkey>" "50000000"
+npx tsx send-sol-private.ts "<recipient-wallet-pubkey>" "50000000"
 ```
 
 ## Funding and net amount

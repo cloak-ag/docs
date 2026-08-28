@@ -81,12 +81,13 @@ This file is the canonical index for AI coding agents integrating with Cloak.
 ## Integration Tips For Agents
 
 - Pick the SDK that matches the host app: TypeScript for web/Node, Rust for server/CLI/program clients.
-- Use SDK defaults for program and circuits in standard integrations; the only accepted circuits bundle is `circuits/0.2.0` (ceremony), so never hand-write a `0.1.0` URL. `relayUrl` has no default and must be passed on every flow.
+- Use SDK defaults for program and circuits in standard integrations; the only accepted circuits bundle is `circuits/0.2.0` (ceremony), so never hand-write a `0.1.0` URL. `relayUrl` has no default and must be passed on every flow; see the submission-endpoint bullets below for the only two values it accepts.
 - Fees are enforced on-chain from each pool's `PoolConfig`: SOL 0.005 fixed + 0.3%; USDC/USDT 0.45 fixed + 0.3%; withdrawals and swaps only. Minimum deposit 0.01 SOL / 1.00 USDC / 1.00 USDT.
 - Keep tx amounts as `bigint` (TS) or `u64` / `i64` (Rust) end-to-end — no float math.
 - Private sends, withdrawals and swaps are submitted for the caller and carry an authenticated sender; deposits are wallet-signed straight to chain and carry none. In a browser pass `signMessage` + `walletPublicKey`; on a server pass `depositorKeypair`. Neither, and the call throws before proof generation. Never generate `depositorKeypair` for browser send/withdraw code, and never substitute an ephemeral or service key for the sender: it is the key screened for sanctions.
 - A private send or withdrawal prompts the wallet exactly once. Only swaps re-prompt, capped by `maxWalletApprovals` (default 5).
 - Only the submission endpoint is pinned (build-time allowlist). The RPC is the caller's own `Connection`; any non-loopback RPC works. Never tell an integrator they must use a Cloak RPC.
+- In `@cloak.dev/sdk` the pin accepts exactly two values for `relayUrl`: an allowlisted origin (name it with `CLOAK_PRODUCTION_RELAY_URL` rather than typing a host), or `""` for caller-signed direct submission. `""` only carries that meaning when `enforceViewingKeyRegistration: false` is set in the same options; on default options an empty or omitted `relayUrl` throws before any network call, on every flow including deposits. Standard integrations pass the origin, never the pair, which would submit a send or withdrawal under the user's own key and publicly link it.
 - Treat stale-root failures as retryable (both SDK transaction paths already do this by default).
 - Never log private keys, viewing keys (`nk`), seed material, or raw note payloads.
 - Transaction signatures are public and can be logged for support/debugging.

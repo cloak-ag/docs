@@ -180,6 +180,7 @@ These are intentionally repeated here because agents often miss them. They apply
 10. Proving artifacts: only the `circuits/0.2.0` ceremony bundle is accepted by the program (zkey `9da7db8c…68d25`, wasm `02ec02e9…8aa2b`); the SDK verifies digests before proving. Never hand-write a `0.1.0` URL. See `/releases/2026-08-mainnet`.
 11. Private sends, withdrawals and swaps are submitted on the caller's behalf and each request carries an authenticated sender; deposits are wallet-signed straight to chain and carry none. Browser: pass `signMessage` + `walletPublicKey`. Server: pass `depositorKeypair`. With neither, the call throws before proof generation. Never generate `depositorKeypair` in browser send/withdraw code (a wallet adapter cannot supply one), and never substitute an ephemeral or service key for the sender: it is the key screened for sanctions. A send or withdrawal prompts once; only swaps re-prompt, capped by `maxWalletApprovals` (default 5). See `/sdk/request-authentication`.
 12. Only the submission endpoint is pinned, at SDK build time. The RPC is the caller's own `Connection` and any non-loopback RPC is fine; a production build refuses only a loopback RPC. Never tell an integrator they must use a Cloak-operated RPC.
+13. TypeScript-specific, and the single most misread pair of facts in these docs. `@cloak.dev/sdk` accepts exactly two values for `relayUrl`: an origin on the build-time allowlist (name it with `CLOAK_PRODUCTION_RELAY_URL` instead of typing a host), or `""` for caller-signed direct submission. Both of the following are true, and the second sentence is the condition that reconciles them: (a) omitting `relayUrl`, or passing `""`, throws `Viewing key registration is mandatory: relayUrl is required.` before any network call, on every flow including deposits; (b) `""` only behaves as the direct-submission signal when `enforceViewingKeyRegistration: false` is set in the same `TransactOptions`, because the viewing-key gate defaults ON and runs first. Standard integrations pass the allowlisted origin and nothing else. Never generate the `""` plus `enforceViewingKeyRegistration: false` pairing for a private send, withdrawal or swap: it submits under the end user's own key and publicly links the transaction to them, which is the opposite of what the flow exists for. See `/sdk/llms.txt` §1 and invariant 7.
 
 For full signature-level details, use `/sdk/llms.txt` (TypeScript) or `/sdk/rust/llms.txt` (Rust).
 
@@ -220,9 +221,12 @@ import {
   transact,
 } from "@cloak.dev/sdk";
 import { Connection, Keypair } from "@solana/web3.js";
+import { readFileSync } from "node:fs";
 
 const connection = new Connection("https://api.mainnet-beta.solana.com", "confirmed");
-const signer = Keypair.fromSecretKey(/* Uint8Array secret key */);
+const signer = Keypair.fromSecretKey(
+  Uint8Array.from(JSON.parse(readFileSync(process.env.KEYPAIR_PATH!, "utf8"))),
+);
 
 const amount = 1_000_000_000n; // 1 SOL
 const owner = await generateUtxoKeypair();
@@ -327,7 +331,7 @@ async fn main() -> anyhow::Result<()> {
 - saves the `UtxoKeypair` durably (required to spend the note later)
 - threads `cached_merkle_tree` + `address_lookup_table_accounts` between transacts
 - no secret logging; enables `RUST_LOG=cloak_sdk=debug` for troubleshooting only
-- uses SDK defaults for program/circuits (no user-facing config); passes `relayUrl` explicitly, since it has no default
+- uses SDK defaults for program/circuits (no user-facing config); sets `opts.relay_url` explicitly, since it has no default
 - does not add custom retry loops — the SDK retries RootNotFound/BlockhashExpired/StaleProofState
 - loads signer from `KEYPAIR_PATH` (Solana JSON keypair file); does not accept raw secret bytes via env
 
@@ -344,7 +348,7 @@ For script tasks, generate one keypair-only file with CLI shape `npx tsx send-so
 Use env vars `SOLANA_RPC_URL` and `KEYPAIR_PATH` only.
 Do not generate `SENDER_PRIVATE_KEY` or `AMOUNT_SOL` float parsing.
 Do not use `RECIPIENT_ADDRESS` or `SEND_LAMPORTS` env inputs for one-file CLI scripts.
-Use SDK defaults for program and circuits. `relayUrl` has no default and must be passed on every flow.
+Use SDK defaults for program and circuits. `relayUrl` has no default and must be passed on every flow, as an allowlisted origin; never pair `relayUrl: ""` with `enforceViewingKeyRegistration: false`.
 Do not log secrets.
 Add progress + error UX.
 Rely on SDK stale-root retries for standard flows.

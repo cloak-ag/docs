@@ -24,10 +24,10 @@ Use this file as your primary SDK briefing and only fall back to the friendlier 
 - Runtime: Node `>=18` and modern browsers. ESM and CJS both shipped (`dist/index.js`, `dist/index.cjs`).
 - Types: `dist/index.d.ts`
 - Program ID (default, mainnet): `zh1eLd6rSphLejbFfJEneUwzHRfMKxgzrgkfwA6qRkW`
-- Devnet program ID: `Zc1kHfp4rajSMeASFDwFFgkHRjv7dFQuLheJoQus27h` (served by the local-only `@cloak.dev/sdk-devnet` fork — see `docs/operations/devnet.md`; NOT available through the published `@cloak.dev/sdk` NPM package).
+- Devnet program ID: `Zc1kHfp4rajSMeASFDwFFgkHRjv7dFQuLheJoQus27h` (served by the local-only `@cloak.dev/sdk-devnet` fork — see `/development/devnet`; NOT available through the published `@cloak.dev/sdk` NPM package).
 - Circuits: the 0.2.0 bundle base is pinned into this SDK build (`DEFAULT_TRANSACTION_CIRCUITS_URL`), so standard integrations configure nothing. Override with `setCircuitsPath()` or `CLOAK_CIRCUITS_PATH`.
-- Submission endpoint: NOT defaulted, by design, so a local or test run can never silently reach production. Pass `relayUrl` in `TransactOptions` on every flow. The SDK reads no environment variable for it; `CLOAK_RELAY_URL` is a convention used by the SDK's own examples and scripts, which read it themselves and pass the value as `relayUrl`. Omitting `relayUrl`, or passing `relayUrl: ""`, makes `transact` / `transfer` / `partialWithdraw` / `fullWithdraw` / `swapUtxo` / `swapWithChange` AND deposits (`externalAmount > 0n`) all throw the same error, before any network call: `Viewing key registration is mandatory: relayUrl is required.` There is no silent fallback to self-submission on the default path, for any flow. (`swapUtxo` also contains a `relayUrl is required for swapUtxo` throw, but it sits far past the check above and is unreachable unless registration enforcement is turned off; see invariant 7.)
-- Endpoint pinning: `relayUrl` no longer SELECTS the endpoint. The allowed origins are fixed when this SDK is built (`RELAY_ORIGIN_ALLOWLIST` in `src/config/relay.ts`). Only two values are accepted: an origin on that allowlist (say `CLOAK_PRODUCTION_RELAY_URL` rather than typing a host), or `""` for caller-signed direct submission. Anything else throws, naming the value and the allowlist. It is not an environment variable because an env var resolves in the consumer process, which is exactly what the pin constrains. To develop against a local stack, REPLACE (never append) the allowlist entry and rebuild.
+- Submission endpoint: NOT defaulted, by design, so a local or test run can never silently reach production. Pass `relayUrl` in `TransactOptions` on every flow. The SDK reads no environment variable for it; `CLOAK_RELAY_URL` is a convention used by the SDK's own examples and scripts, which read it themselves and pass the value as `relayUrl`. Omitting `relayUrl`, or passing `relayUrl: ""`, makes `transact` / `transfer` / `partialWithdraw` / `fullWithdraw` / `swapUtxo` / `swapWithChange` AND deposits (`externalAmount > 0n`) all throw the same error, before any network call: `Viewing key registration is mandatory: relayUrl is required.` There is no silent fallback to self-submission on the default path, for any flow. The endpoint-pinning bullet below also describes `""` as the caller-signed direct-submission signal; both statements are true and this is the condition that reconciles them: `""` carries that meaning ONLY when `enforceViewingKeyRegistration: false` is passed in the same `TransactOptions`. The viewing-key gate defaults ON and runs first, so on default options `""` never reaches the code that would read it as a signal. Turning the gate off to reach direct submission is unsafe for sends, withdrawals and swaps; see invariant 7. (`swapUtxo` also contains a `relayUrl is required for swapUtxo` throw, but it sits far past the check above and is unreachable unless registration enforcement is turned off; see invariant 7.)
+- Endpoint pinning: `relayUrl` no longer SELECTS the endpoint. The allowed origins are fixed when this SDK is built (`RELAY_ORIGIN_ALLOWLIST` in `src/config/relay.ts`). Only two values pass the pin: an origin on that allowlist (say `CLOAK_PRODUCTION_RELAY_URL` rather than typing a host), or `""` for caller-signed direct submission. Anything else throws, naming the value and the allowlist. Passing the pin is not the same as reaching submission: `""` only ever behaves as the direct-submission signal when `enforceViewingKeyRegistration: false` is set in the same `TransactOptions`, because the viewing-key gate runs earlier and, on default options, throws `Viewing key registration is mandatory: relayUrl is required.` for every flow including deposits. So an allowlisted origin is the only value a standard integration passes; see invariant 7 before considering the other one. It is not an environment variable because an env var resolves in the consumer process, which is exactly what the pin constrains. To develop against a local stack, REPLACE (never append) the allowlist entry and rebuild.
 - RPC is NOT pinned. The caller builds the `Connection`; the SDK never inspects, replaces or proxies it, and ANY non-loopback RPC is fine. A production build refuses only a LOOPBACK RPC (`localhost` / `127.0.0.1`), through `BUILD_ALLOWS_LOCAL_ENDPOINTS`, which is derived from the same allowlist. Never state or imply that an integrator must use a Cloak-operated RPC; that is false.
 - Authenticated sender: every relay-submitted flow (private send, withdraw, swap) signs its request body with the END USER'S OWN wallet. Deposits do not, being wallet-signed straight to chain. See invariant 13, §5.8 and `/sdk/request-authentication`.
 - Hashing: BN254 Poseidon (via `@lightprotocol/hasher.rs`) + BLAKE3.
@@ -60,10 +60,10 @@ npm install @solana/spl-token @solana/kit
    - SPL (USDC/USDT, 6 decimals): `450_000` base units fixed (`0.45` token) + `0.3 %` variable, charged in the withdrawn token. The SDK does not compute SPL fees; there is no SPL fee helper.
    - Fees only apply on withdrawal/swap paths. Deposits and shield-to-shield transfers pay zero protocol fee.
    - Minimum deposit: `10_000_000` lamports for SOL, `1_000_000` base units for USDC/USDT.
-7. Viewing-key registration is required before scanner/compliance flows can decrypt chain notes. `enforceViewingKeyRegistration: false` in `TransactOptions` is the only thing that turns that check off, and it defaults to enabled. Do NOT combine it with an omitted or empty `relayUrl`: with the check off and a signer present (`depositorKeypair`, or `signTransaction` + `depositorPublicKey`), `transact` / `transfer` / `partialWithdraw` / `fullWithdraw` submit directly, signed and paid by the user's own key, which links the transaction to that key and loses the privacy the flow exists for. With the check off, no relay and no signer, the call does not fail cleanly either: it reports the problem through `onProgress` and then throws a misleading `commitment indices missing: [-1, -1]` error. Deposits are the one flow where direct submission is correct: they always submit under the depositor's key by design, and require `depositorKeypair` or `signTransaction` + `depositorPublicKey`.
+7. Viewing-key registration is required before scanner/compliance flows can decrypt chain notes. `enforceViewingKeyRegistration: false` in `TransactOptions` is the only thing that turns that check off, and it defaults to enabled. It is also the flag that gates `relayUrl: ""`: with the check on (the default) an empty or omitted `relayUrl` throws before any network call, and only with the check off does `""` act as the caller-signed direct-submission signal described in §1. Do NOT combine it with an omitted or empty `relayUrl`: with the check off and a signer present (`depositorKeypair`, or `signTransaction` + `depositorPublicKey`), `transact` / `transfer` / `partialWithdraw` / `fullWithdraw` submit directly, signed and paid by the user's own key, which links the transaction to that key and loses the privacy the flow exists for. With the check off, no relay and no signer, the call does not fail cleanly either: it reports the problem through `onProgress` and then throws a misleading `commitment indices missing: [-1, -1]` error. Deposits are the one flow where direct submission is correct: they always submit under the depositor's key by design, and require `depositorKeypair` or `signTransaction` + `depositorPublicKey`.
 8. Merkle root freshness: treat `RootNotFound` / stale-root errors as retryable. SDK transaction paths already retry these by default; use `preflightCheck` / `waitForRoot` only for advanced/operator flows.
 9. Never log secrets: spend keys, viewing keys (`nk`), UTXO private keys, blindings, signed messages, note payloads.
-10. Standard integrations should use SDK defaults for program and circuits. Only override for custom/operator deployments. There is no relay default: `relayUrl` is required on every flow.
+10. Standard integrations should use SDK defaults for program and circuits. Only override for custom/operator deployments. There is no submission-endpoint default: `relayUrl` is required on every flow, and for a standard integration the value is always an allowlisted origin. The other value the pin accepts, `""`, is inert unless invariant 7's check is turned off, and turning it off is not a recipe for a send, withdrawal or swap.
 11. In low-level UTXO calls, keep `programId` fixed to `CLOAK_PROGRAM_ID` in one place and do not expose it as user configuration.
 12. Minimal scripts should use `KEYPAIR_PATH` + `<lamports>` input; do not use raw secret env vars or float amount parsing.
 13. Relay-submitted flows require an authenticated sender, checked BEFORE any proof work:
@@ -123,7 +123,7 @@ class CloakError extends Error {
 ### 4a. Node.js with a Keypair (server / script)
 
 ```ts
-import { CLOAK_PROGRAM_ID, setDebugMode } from "@cloak.dev/sdk";
+import { CLOAK_PROGRAM_ID, CLOAK_PRODUCTION_RELAY_URL, setDebugMode } from "@cloak.dev/sdk";
 import { Connection, Keypair } from "@solana/web3.js";
 import { readFileSync } from "fs";
 
@@ -138,7 +138,7 @@ setDebugMode(true);
 const options = {
   connection,
   programId: CLOAK_PROGRAM_ID,
-  relayUrl: process.env.CLOAK_RELAY_URL!,
+  relayUrl: CLOAK_PRODUCTION_RELAY_URL,
   depositorKeypair: signer,
   walletPublicKey: signer.publicKey,
 };
@@ -164,7 +164,7 @@ const storage = new LocalStorageAdapter();
 const options = {
   connection,
   programId: CLOAK_PROGRAM_ID,
-  relayUrl: process.env.NEXT_PUBLIC_CLOAK_RELAY_URL!,
+  relayUrl: CLOAK_PRODUCTION_RELAY_URL,
   signTransaction: wallet.signTransaction!, // signs the DEPOSIT transaction
   signMessage: wallet.signMessage!, // authenticates send/withdraw/swap requests + viewing-key registration
   depositorPublicKey: getPublicKey(wallet),
@@ -308,7 +308,11 @@ Key `TransactOptions` fields (most used):
 interface TransactOptions {
   connection: Connection;
   programId: PublicKey;
-  relayUrl?: string;                      // NO default, see §1; required on every flow
+  relayUrl?: string;                      // NO default, see §1; required on every flow.
+                                          // Pass an allowlisted origin. "" is the caller-signed
+                                          // direct-submission signal ONLY with
+                                          // enforceViewingKeyRegistration: false; on default
+                                          // options "" throws like omitting it (§1, invariant 7).
 
   // Signing (choose one):
   depositorKeypair?: Keypair;             // server / script mode
@@ -991,7 +995,7 @@ const vk = deriveViewingKeyFromUtxoPrivateKey(utxoKeypair.privateKey);
 const compliancePublic = await fetchCompliancePublic(); // your own source of truth
 
 const bundle = await encryptTransactionMetadata(
-  { tx_type: "withdraw", commitment, amount: "1000000000", recipient: recipient.publicKey.toBase58(), timestamp: Date.now() },
+  { txType: "withdraw", commitment, amount: 1000000000, recipient: recipient.publicKey.toBase58(), timestamp: Date.now() },
   vk.publicKey,
   compliancePublic,
   { userPubkey: sender.publicKey },
@@ -1067,7 +1071,7 @@ Use section 6 directly as your public, copy-paste integration source:
 3. Never bypass `viewingKeyNk` when calling `scanTransactions` — it cannot return anything without it.
 4. Never change `externalAmount` semantics; treat deposit/withdraw/transfer as three distinct modes derived from that field.
 5. Never call `transact` with raw `number` amounts. Always `BigInt(...)` at API boundaries.
-6. Use SDK defaults for program and circuits in standard integrations. `relayUrl` has no default and must be passed on every flow.
+6. Use SDK defaults for program and circuits in standard integrations. `relayUrl` has no default and must be passed on every flow, as an allowlisted origin. Never generate `relayUrl: ""` together with `enforceViewingKeyRegistration: false` for a send, withdrawal or swap: that pairing is what makes `""` mean direct submission, and it submits under the user's own key, publicly linking the transaction.
 7. Prefer `scanTransactions` + `toComplianceReport` for user history UX. Do not re-invent compliance endpoints.
 8. For mutating paths in the browser, prefer the wallet adapter (`signTransaction` / `signMessage`). Reserve `depositorKeypair` for Node scripts.
 9. Do not add manual stale-root retry loops by default in app scripts; SDK transaction paths already handle these retries.

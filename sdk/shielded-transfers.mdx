@@ -12,6 +12,10 @@ The one thing that surprises everyone: a shielded transfer is a **bearer instrum
 This is **not** the consumer app's [private send](/guide/private-send), which delivers **liquid SOL to a public Solana address** (that's a withdrawal). A shielded transfer keeps the recipient *inside* the pool. It's an SDK-level capability; no first-party web UI exposes it yet.
 </Note>
 
+<Note>
+**Who signs.** A shielded transfer is not posted by your wallet the way a deposit is: it is submitted for you, so the request carries an **authenticated sender**, a signature over the request body from the end user's own wallet. On a server you pass `depositorKeypair`. In a **browser** you pass `signMessage` and `walletPublicKey` from your wallet adapter instead, because an adapter has no secret key to hand over. The examples on this page use the server form; [Request authentication](/sdk/request-authentication) is the full contract, including the browser wiring, the 300-second approval window and `explainRelayAuthRejection`.
+</Note>
+
 ## Walkthrough: Alice pays Bob 0.06 SOL, privately
 
 Alice and Bob each have **two separate identities** — this distinction is the whole ballgame:
@@ -136,6 +140,8 @@ One commitment nullified, two appended, `public_amount = 0`. An observer sees tw
 
 Bob shares two public values once, up front. After that the SDK delivers: the send seals the note's secrets to Bob's viewing key and publishes them on chain, and Bob's scan picks them up.
 
+This version runs **server-side**, so both calls authenticate with a local `depositorKeypair`. From a browser, everything else stays identical and that one option is replaced by `signMessage` + `walletPublicKey`: see [the wallet-adapter version](#browser-the-same-send-from-a-wallet-adapter) right below, or [Request authentication](/sdk/request-authentication) for the whole contract.
+
 ```ts
 import {
   NATIVE_SOL_MINT,
@@ -155,6 +161,8 @@ const bobPubkey = bob.publicKey;                          // ← handoff #1a: Bo
 const bobViewingPublicKey = deriveViewingKeyFromNk(bobNk).publicKey; // ← handoff #1b: Bob → Alice
 
 // ── Sender (Alice) ───────────────────────────────────────────────────
+// `alice` is Alice's Cloak keypair (the one that owns aliceNote); `aliceWallet`
+// is her Solana wallet, and it is the wallet that authenticates this request.
 // Alice holds a funded note `aliceNote` in the pool and moves 0.06 SOL of it
 // to Bob. externalAmount is 0, so nothing leaves the pool — only ownership.
 await transfer(
@@ -163,8 +171,8 @@ await transfer(
   60_000_000n,             // 0.06 SOL
   {
     connection, programId, relayUrl,
-    depositorKeypair: aliceWallet,
-    walletPublicKey: aliceWallet.publicKey,
+    depositorKeypair: aliceWallet,          // server signer; a browser passes signMessage instead
+    walletPublicKey: aliceWallet.publicKey, // the authenticated sender, either way
     chainNoteViewingKeyNk: getNkFromUtxoPrivateKey(alice.privateKey), // Alice's OWN nk
     recipientViewingPublicKey: bobViewingPublicKey,  // opt in to recipient discovery
   },
@@ -189,8 +197,8 @@ const claimable = {
 };
 await fullWithdraw([claimable], bobWallet.publicKey, {   // ← funds land at bobWallet (any address)
   connection, programId, relayUrl,
-  depositorKeypair: feePayer,             // a signer for the withdraw path
-  walletPublicKey: feePayer.publicKey,
+  depositorKeypair: bobWallet,            // Bob's OWN wallet authenticates his withdrawal
+  walletPublicKey: bobWallet.publicKey,   // never a service key: this is the screened sender
   chainNoteViewingKeyNk: bobNk,           // Bob's OWN nk
 });
 ```
@@ -199,11 +207,56 @@ await fullWithdraw([claimable], bobWallet.publicKey, {   // ← funds land at bo
 Drop `recipientViewingPublicKey` and you are back on the **bearer** path: Alice must read the recipient note out of `transfer`'s `outputUtxos` (the one at index 0) and hand Bob its amount and blinding off-chain herself. Without either the envelope or that hand-off, the note is orphaned — Bob owns a commitment he has no secrets for, and no scan will surface it.
 </Note>
 
+### Browser: the same send from a wallet adapter
+
+A wallet adapter has no secret key to give you, so there is no `depositorKeypair` to pass. You hand the SDK the wallet's `signMessage` plus the connected `walletPublicKey`, and the SDK builds and signs the request with them. Nothing else about the send changes: same inputs, same recipient Cloak pubkey, same `recipientViewingPublicKey` opt-in.
+
+```tsx
+import {
+  explainRelayAuthRejection,
+  getNkFromUtxoPrivateKey,
+  transfer,
+} from "@cloak.dev/sdk";
+import { useWallet } from "@solana/wallet-adapter-react";
+
+const { publicKey, signMessage } = useWallet();
+
+// Not every adapter implements signMessage. Check before you offer the action.
+if (!publicKey || !signMessage) {
+  throw new Error("Connect a wallet that supports message signing.");
+}
+
+try {
+  await transfer([aliceNote], bobPubkey, 60_000_000n, {
+    connection, programId, relayUrl,
+
+    // ── replaces depositorKeypair: the user's own wallet signs the request ──
+    walletPublicKey: publicKey,   // becomes the request's authenticated sender
+    signMessage,                  // returns the 64-byte ed25519 detached signature
+    // ───────────────────────────────────────────────────────────────────────
+
+    chainNoteViewingKeyNk: getNkFromUtxoPrivateKey(alice.privateKey), // Alice's OWN nk
+    recipientViewingPublicKey: bobViewingPublicKey, // opt in to recipient discovery
+  });
+} catch (error) {
+  const hint = explainRelayAuthRejection(String(error));
+  throw hint ? new Error(hint, { cause: error }) : error;
+}
+```
+
+Two things a browser integration should design around, both covered in full on [Request authentication](/sdk/request-authentication):
+
+- **The user sees exactly one prompt.** A shielded transfer signs once, and a stale-root retry re-uses the same proof and the same signed request, so no second dialog appears.
+- **The signed timestamp expires.** `REQUEST_AUTH_MAX_AGE_SECONDS` is `300` and the SDK holds a little of that back for serializing and shipping the request, leaving roughly 285 seconds to approve. An approval dialog left sitting on a desk comes back to a dead request: nothing was submitted and nothing is at risk, but the whole send, proof included, has to be started again.
+
 ## Where next
 
 <CardGroup cols={2}>
   <Card title="UTXO Transactions" icon="vault" href="/sdk/utxo-transactions">
     The `transfer` / `transact` API, `externalAmount` semantics, and fees.
+  </Card>
+  <Card title="Request authentication" icon="signature" href="/sdk/request-authentication">
+    Who signs a shielded transfer, the browser wallet-adapter wiring, and the approval window.
   </Card>
   <Card title="Payment links" icon="link" href="/guide/payment-links">
     The productized version that needs nothing from the recipient up front, with a refund path.

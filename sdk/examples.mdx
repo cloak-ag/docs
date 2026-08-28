@@ -1,6 +1,6 @@
 ---
 title: "Code Examples"
-description: "Concise mainnet examples for send, swap, payroll, and compliance history"
+description: "Mainnet examples for send, swap, payroll and compliance history, on both the server keypair path and the browser wallet-adapter path"
 icon: "code-branch"
 ---
 
@@ -8,10 +8,36 @@ All examples use the current default program ID:
 
 - `zh1eLd6rSphLejbFfJEneUwzHRfMKxgzrgkfwA6qRkW`
 
+## Pick your path before you copy anything
+
+<Warning>
+**Everything under [Shared setup](#shared-setup) is the server keypair path.** It passes
+`depositorKeypair`, which a browser wallet adapter cannot supply: an adapter holds no secret key.
+Deposits work on either path, but every other flow here is submitted for you and carries an
+**authenticated sender**, so from a browser you pass `signMessage` plus `walletPublicKey` instead.
+Copying `depositorKeypair` into a frontend is what produces a `401` on the first send after a deposit
+that looked fine. Read [Request authentication](/sdk/request-authentication) first, or start from
+[the wallet-adapter version of the send flow](#the-same-send-from-a-browser-wallet-adapter) below.
+</Warning>
+
+| You are writing | Pass in `TransactOptions` | Prompts the user |
+|---|---|---|
+| A Node service, a CLI, a script | `depositorKeypair` and `walletPublicKey` | no |
+| A browser app on wallet-adapter | `signMessage` and `walletPublicKey`, plus `signTransaction` for the deposit | yes, once per submitted request |
+
+Nothing else differs. The parameters, the amounts, the helpers and the results are identical on both
+paths; only the holder of the pen changes.
+
+<Card title="Request authentication" icon="signature" href="/sdk/request-authentication">
+  Which flows need a signed sender, the 300-second approval window, how many wallet prompts to
+  expect, and what to do when a request is rejected.
+</Card>
+
 ## Shared setup
 
 ```typescript
 import {
+  CLOAK_PRODUCTION_RELAY_URL,
   CLOAK_PROGRAM_ID,
   NATIVE_SOL_MINT,
   createUtxo,
@@ -27,27 +53,46 @@ import {
 } from "@cloak.dev/sdk";
 import { getAssociatedTokenAddressSync } from "@solana/spl-token";
 import { Connection, Keypair, PublicKey } from "@solana/web3.js";
+import { readFileSync } from "node:fs";
 
 const USDC_MINT = new PublicKey("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
 const USDT_MINT = new PublicKey("Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB");
 
+// Your own RPC. Cloak never inspects, replaces or proxies it.
 const connection = new Connection(
   "https://api.mainnet-beta.solana.com",
   "confirmed",
 );
-const signer = Keypair.fromSecretKey(/* Uint8Array secret key */);
+const signer = Keypair.fromSecretKey(
+  Uint8Array.from(JSON.parse(readFileSync(process.env.KEYPAIR_PATH!, "utf8"))),
+);
 const scanKeypair = await generateUtxoKeypair();
 const viewingKeyNk = getNkFromUtxoPrivateKey(scanKeypair.privateKey);
 
+// Server keypair path: `depositorKeypair` signs both the deposit transaction and
+// every submitted request, without prompting.
 const baseOptions = {
   connection,
   programId: CLOAK_PROGRAM_ID,
-  relayUrl: process.env.CLOAK_RELAY_URL ?? "https://api.cloak.ag",
+  relayUrl: CLOAK_PRODUCTION_RELAY_URL,
   depositorKeypair: signer,
   walletPublicKey: signer.publicKey,
   chainNoteViewingKeyNk: viewingKeyNk,
 };
 ```
+
+<Note>
+**`relayUrl` is a value you pass on every call, and it is not read from the environment.** The SDK
+reads no environment variable for it, so exporting `CLOAK_RELAY_URL` does nothing on its own. If you
+like that convention, read the variable in your own code and pass the value as `relayUrl`; the value
+still has to be an origin on this build's allowlist, which is exactly what the exported
+`CLOAK_PRODUCTION_RELAY_URL` is. Omitting `relayUrl`, or passing `""`, throws
+`Viewing key registration is mandatory: relayUrl is required.` before any network call, on every
+flow including deposits. `""` only means "I will submit this myself" when
+`enforceViewingKeyRegistration` is **also** set to `false`, because the viewing-key gate runs first
+and fires either way. See the warning in [Cloak SDKs](/sdk/introduction) before you reach for that
+pair: it is a privacy hazard on a transfer or a withdrawal, not a configuration shortcut.
+</Note>
 
 ## Send flow (SOL->SOL, USDC->USDC, USDT->USDT)
 
@@ -119,6 +164,95 @@ await sendSameMint({
 });
 ```
 
+## The same send from a browser wallet adapter
+
+Same functions, same arguments, same results. The only change is the two signing options: the deposit
+is signed by `signTransaction` and submitted directly by the wallet, and the withdrawal is
+authenticated by `signMessage` over the request, with `walletPublicKey` as the sender.
+
+```tsx
+import {
+  CLOAK_PRODUCTION_RELAY_URL,
+  CLOAK_PROGRAM_ID,
+  createUtxo,
+  createZeroUtxo,
+  explainRelayAuthRejection,
+  fullWithdraw,
+  generateUtxoKeypair,
+  transact,
+} from "@cloak.dev/sdk";
+import { useWallet } from "@solana/wallet-adapter-react";
+import { Connection, PublicKey } from "@solana/web3.js";
+
+export function useSendSameMint(connection: Connection, viewingKeyNk: Uint8Array) {
+  const { publicKey, signTransaction, signMessage } = useWallet();
+
+  return async function sendSameMint(args: {
+    mint: PublicKey;
+    amount: bigint;
+    recipientWallet: PublicKey;
+  }) {
+    // Not every adapter implements signMessage. Check before you offer the action, so
+    // the user is never asked to approve and then told their wallet cannot sign.
+    if (!publicKey || !signTransaction || !signMessage) {
+      throw new Error("Connect a wallet that supports message signing.");
+    }
+
+    const walletOptions = {
+      connection,
+      programId: CLOAK_PROGRAM_ID,
+      relayUrl: CLOAK_PRODUCTION_RELAY_URL,
+
+      // ── the wallet-adapter replacement for `depositorKeypair` ──
+      signTransaction, // signs the deposit transaction
+      signMessage, // signs the request preimage on submitted flows
+      depositorPublicKey: publicKey,
+      walletPublicKey: publicKey, // becomes the request's authenticated `sender`
+      // ──────────────────────────────────────────────────────────
+
+      chainNoteViewingKeyNk: viewingKeyNk,
+      onProgress: (status: string) => console.log(status),
+      onProofProgress: (percent: number) => console.log(`proof ${percent}%`),
+    };
+
+    const owner = await generateUtxoKeypair();
+    const output = await createUtxo(args.amount, owner, args.mint);
+
+    // Deposit: signed by the wallet, submitted directly. No authenticated sender.
+    const deposited = await transact(
+      {
+        inputUtxos: [await createZeroUtxo(args.mint)],
+        outputUtxos: [output],
+        externalAmount: args.amount,
+        depositor: publicKey,
+      },
+      walletOptions,
+    );
+
+    // Send: submitted for you, so this is the call that needs the signed sender.
+    try {
+      return await fullWithdraw(deposited.outputUtxos, args.recipientWallet, {
+        ...walletOptions,
+        cachedMerkleTree: deposited.merkleTree,
+      });
+    } catch (error) {
+      const hint = explainRelayAuthRejection(String(error));
+      throw hint ? new Error(hint, { cause: error }) : error;
+    }
+  };
+}
+```
+
+`partialWithdraw` and `swapWithChange` take the same `walletOptions` object; swap it in wherever the
+server examples spread `baseOptions`.
+
+<Note>
+`walletPublicKey` and `depositorPublicKey` are the same end user here, which is why both are set to
+`publicKey`. Passing two different keys throws: the SDK uses one key for the request's sender, for
+screening and for viewing-key registration, so splitting it would authenticate one person and screen
+another.
+</Note>
+
 ## SOL swap flow (SOL -> token)
 
 ```typescript
@@ -155,6 +289,14 @@ await swapWithChange(
 );
 ```
 
+<Note>
+**Swaps are the one flow that can prompt more than once.** A swap re-proves on every stale-root
+retry, and each new proof is a new request that needs a fresh approval, so on the wallet-adapter path
+add `maxWalletApprovals` (default `5`, floored at `1`) to cap how many dialogs one swap may raise. A
+`depositorKeypair` never prompts. Sends and withdrawals sign exactly once on either path, whatever
+happens on the network.
+</Note>
+
 ## Payroll flow (multi-recipient private payouts)
 
 ```typescript
@@ -173,10 +315,19 @@ for (const payment of payroll) {
 }
 ```
 
+<Warning>
+**A loop like this belongs on the server path.** Each iteration is a deposit plus a submitted send,
+so on a wallet adapter it is two approval dialogs per recipient, in sequence, and each request has to
+be approved inside its window: the user has 285 seconds from the moment they are asked, not from the
+moment the run started. A payroll of any size run from a browser tab will strand itself on an
+unattended prompt.
+</Warning>
+
 ## History + compliance scan
 
 ```typescript
 // Reuse the same `viewingKeyNk` configured in your transaction options.
+// This is a read-only scan: it signs nothing and prompts nobody, on either path.
 
 const scan = await scanTransactions({
   connection,
@@ -188,3 +339,20 @@ const scan = await scanTransactions({
 const report = toComplianceReport(scan);
 console.log(report.summary);
 ```
+
+## Related pages
+
+<CardGroup cols={2}>
+  <Card title="Request authentication" icon="signature" href="/sdk/request-authentication">
+    The signed-sender contract for every submitted flow, on both paths.
+  </Card>
+  <Card title="Wallet integration" icon="wallet" href="/sdk/wallet-integration">
+    Full wallet-adapter wiring, progress callbacks and stale-root retries.
+  </Card>
+  <Card title="Error handling" icon="triangle-exclamation" href="/sdk/error-handling">
+    `CloakError` categories, `parseError`, and the stale-root retry template.
+  </Card>
+  <Card title="API reference" icon="code" href="/sdk/api-reference">
+    The full exported surface, including every symbol on this page.
+  </Card>
+</CardGroup>

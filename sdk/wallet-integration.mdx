@@ -61,6 +61,7 @@ implements it, and finding out after a Groth16 proof has already been computed i
 
 ```typescript
 import {
+  CLOAK_PRODUCTION_RELAY_URL,
   CLOAK_PROGRAM_ID,
   NATIVE_SOL_MINT,
   createUtxo,
@@ -73,7 +74,7 @@ import {
 import { Connection, PublicKey } from "@solana/web3.js";
 
 const connection = new Connection(process.env.SOLANA_RPC_URL!, "confirmed");
-const relayUrl = process.env.CLOAK_RELAY_URL!;
+const relayUrl = CLOAK_PRODUCTION_RELAY_URL;
 const programId = CLOAK_PROGRAM_ID;
 
 async function sendWithWalletAdapter({
@@ -145,6 +146,14 @@ async function sendWithWalletAdapter({
 
 Notes:
 
+- `relayUrl` comes from the exported `CLOAK_PRODUCTION_RELAY_URL`, not from an environment read.
+  The SDK reads no environment variable for the submission endpoint, so exporting `CLOAK_RELAY_URL`
+  does nothing on its own; if you want the value configurable, read your own build-time variable in
+  your app and pass the result as `relayUrl`. Whatever you pass still has to be an origin on this
+  build's allowlist. On the default path, where `enforceViewingKeyRegistration` stays on, omitting
+  `relayUrl` or passing `""` throws `Viewing key registration is mandatory: relayUrl is required.`
+  before anything reaches the network, deposits included. See
+  [which endpoint the SDK talks to](/sdk/request-authentication#which-endpoint-the-sdk-talks-to-and-which-rpc-you-use).
 - Keep amount values as `bigint` end-to-end.
 - Use `cachedMerkleTree` from deposit for the immediate withdraw call.
 - Treat `isRootNotFoundError` as retryable with bounded backoff.

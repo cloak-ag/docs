@@ -53,16 +53,17 @@ import {
   CLOAK_PROGRAM_ID,
   CLOAK_PRODUCTION_RELAY_URL,
   explainRelayAuthRejection,
-  fullWithdraw,
+  transfer,
   type Utxo,
 } from "@cloak.dev/sdk";
 import { useWallet } from "@solana/wallet-adapter-react";
-import { Connection, PublicKey } from "@solana/web3.js";
+import { Connection } from "@solana/web3.js";
 
 export function usePrivateSend(connection: Connection) {
   const { publicKey, signMessage } = useWallet();
 
-  return async function send(notes: Utxo[], recipient: string) {
+  // `recipientPubkey` is the recipient's Cloak pubkey, not a Solana wallet address.
+  return async function send(notes: Utxo[], recipientPubkey: bigint, amount: bigint) {
     // Not every adapter implements signMessage. Check before you offer the action,
     // so the user is never asked to prove and then told their wallet cannot sign.
     if (!publicKey || !signMessage) {
@@ -70,7 +71,7 @@ export function usePrivateSend(connection: Connection) {
     }
 
     try {
-      return await fullWithdraw(notes, new PublicKey(recipient), {
+      return await transfer(notes, recipientPubkey, amount, {
         connection,
         programId: CLOAK_PROGRAM_ID,
         relayUrl: CLOAK_PRODUCTION_RELAY_URL,
@@ -256,6 +257,12 @@ import {
   canonicalJson,
 } from "@cloak.dev/sdk";
 
+// `auth_signature` is base64. Do this without `Buffer`: it is a Node global, so a
+// browser bundle fails to compile against it and throws `Buffer is not defined` at
+// runtime unless you have polyfilled it. `btoa` is present in browsers and in Node.
+const toBase64 = (bytes: Uint8Array) =>
+  btoa(String.fromCharCode(...Array.from(bytes)));
+
 const preimage = buildRelayAuthPreimage(
   "/transact",          // the exact path you POST to
   programId,
@@ -275,7 +282,7 @@ await fetch(`${relayUrl}/transact`, {
     sender: preimage.sender,
     auth_issued_at: preimage.auth_issued_at,
     auth_nonce: preimage.auth_nonce,
-    auth_signature: Buffer.from(signature).toString("base64"),
+    auth_signature: toBase64(signature),
   }),
 });
 ```
@@ -329,6 +336,16 @@ published build accepts exactly two values:
 There is no default. Omitting `relayUrl` yields `undefined`, never production. `riskQuoteUrl` is held
 to the same allowlist, because it is converted back into a base URL, so it must be an absolute URL on
 the allowlist rather than a relative path.
+
+<Note>
+**A mistyped `relayUrl` is not a `401`, and the two failures live in different places.** A value
+off the allowlist throws **locally**, naming the value you passed and the allowlist, before anything
+is signed and before any request leaves the process. Nothing was submitted and nothing was refused,
+so authentication is not what went wrong; import `CLOAK_PRODUCTION_RELAY_URL` instead of typing the
+string. A `401`, an `Unauthorized`, or a rejection that `explainRelayAuthRejection` can explain means
+the opposite: the endpoint was accepted, the request arrived, and the **signed sender** is what was
+turned away. Only that second case belongs on this page.
+</Note>
 
 <Note>
 **Your RPC is entirely your own choice.** The pin covers the submission endpoint only. You build the

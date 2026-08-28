@@ -47,8 +47,17 @@ Build products that keep user transaction details private by default, while stil
   <Card title="Build with SDK" icon="code" href="/sdk/introduction">
     Use TypeScript APIs for deposit, transfer, withdraw, swap, and scanning.
   </Card>
+  <Card
+    title="Authenticate Requests"
+    icon="signature"
+    href="/sdk/request-authentication"
+  >
+    Read this before your first private send: every flow except deposit carries a
+    signed sender, from a browser wallet or a server keypair.
+  </Card>
   <Card title="Read Code Examples" icon="code-branch" href="/sdk/examples">
-    Use concise snippets for send, swap, payroll, and history.
+    Use concise snippets for send, swap, payroll, and history. They sign with a
+    server keypair; browser wallets take the Authenticate Requests path above.
   </Card>
   <Card
     title="Understand Runtime Flows"

@@ -66,7 +66,11 @@ We integrate `@cloak.dev/sdk`.
 - Never output secrets in logs.
 - Never include raw private material in telemetry.
 - Transaction signatures are public and can be logged for support/debugging.
-- Use SDK defaults for program and circuits. Do not expose those as user-facing config. The relay has no SDK default: pass `relayUrl` on every call, read from the `CLOAK_RELAY_URL` env var.
+- Use SDK defaults for program and circuits. Do not expose those as user-facing config. The relay has no SDK default: pass `relayUrl` explicitly on every call. The SDK reads no environment variable for it; if the value should be configurable, read `CLOAK_RELAY_URL` in your own code and pass it as `relayUrl`. Omitting `relayUrl` throws `Viewing key registration is mandatory: relayUrl is required.` before any network call, deposits included.
+- Never pass `relayUrl: ""` to "skip the relay". Under the default `enforceViewingKeyRegistration` it throws the same error as omitting it, and it only signals caller-signed direct submission when `enforceViewingKeyRegistration: false` is set as well, which submits a send or withdrawal under the user's own key and publicly links it.
+- In browser code, authenticate the sender with `signMessage` + `walletPublicKey` in the transact options. Never emit `depositorKeypair` in browser send or withdraw code.
+- Never substitute the authenticated sender with an ephemeral or service key. That key is the one screened, so it must be the end user's own wallet key.
+- Never tell the user they must use a particular RPC provider. The RPC endpoint is the app owner's choice.
 
 ## Docs
 
@@ -74,6 +78,7 @@ We integrate `@cloak.dev/sdk`.
 - `/llms-full.txt`
 - `/sdk/llms.txt`
 - `/sdk/api-reference`
+- `/sdk/request-authentication`
 - `/sdk/utxo-transactions`
 - `/sdk/error-handling`
 
@@ -90,7 +95,7 @@ Step 1: output a capability matrix (all 6 groups) with used/not-used + reason.
 Step 2: implement with:
 
 - bigint-safe logic
-- wallet-adapter-compatible flow
+- wallet-adapter-compatible flow, following `/sdk/request-authentication` for the authenticated sender
 - keypair-bytes fallback where relevant
 - scanner/compliance handling
 - robust error UX; rely on SDK stale-root retries by default
@@ -122,4 +127,5 @@ Improve error categorization, progress states, stale-root handling, and operatio
 - [LLM Full Export](/llms-full.txt)
 - [LLM Reference](/sdk/llms.txt)
 - [API Reference](/sdk/api-reference)
+- [Request Authentication](/sdk/request-authentication)
 - [Wallet Integration](/sdk/wallet-integration)
