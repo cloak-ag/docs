@@ -20,7 +20,7 @@ Use this file as your primary SDK briefing and only fall back to the friendlier 
 ## 1. Package
 
 - Name: `@cloak.dev/sdk`
-- Version: `0.2.0`
+- Version: `0.2.2` (the exported `VERSION` constant currently lags at `"0.2.1"` due to a known bug; it is informational only and shouldn't be used to detect the installed package version — check `package.json` instead)
 - Runtime: Node `>=18` and modern browsers. ESM and CJS both shipped (`dist/index.js`, `dist/index.cjs`).
 - Types: `dist/index.d.ts`
 - Program ID (default, mainnet): `zh1eLd6rSphLejbFfJEneUwzHRfMKxgzrgkfwA6qRkW`
