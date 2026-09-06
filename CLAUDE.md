@@ -55,9 +55,13 @@ Open the preview URL `mint dev` prints. Nothing else to build or install.
   keypair file/path as if it were an app-facing flow.
 - Do not name the audit firm publicly in any page. Describe remediations
   and findings without attribution.
-- Use the SDK's actual published version numbers: `0.2.0` is the current
-  live release referenced throughout (`sdk/introduction.mdx`,
-  `sdk/api-reference.mdx`, `llms.txt`); `0.2.2` is pending and should only
-  be described as pending, not as shipped, until it is actually released.
+- Use the SDK's actual published version numbers: `0.2.2` is the current
+  live release (published 2026-09-06), referenced in `sdk/introduction.mdx`,
+  `sdk/api-reference.mdx`, and `sdk/llms.txt`. The exported `VERSION`
+  constant currently lags at `"0.2.1"` due to a known SDK bug — don't
+  document it as the package version; see the Versioned exports section of
+  `sdk/api-reference.mdx` for how that's phrased. The circuits bundle
+  version (`circuits/0.2.0`, ceremony `cloak-transaction-0.2.0`) is a
+  separate number and did not change in 0.2.2 — don't bump those.
 - Prefer documenting implemented behavior over planned behavior (see
   `README.md`).
