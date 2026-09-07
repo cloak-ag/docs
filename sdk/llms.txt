@@ -217,7 +217,7 @@ There is no client class. The transaction entry points are free functions, liste
 
 - `CLOAK_PROGRAM_ID`: `PublicKey`, mainnet program
 - `NATIVE_SOL_MINT`: `PublicKey`, SOL pool mint identity
-- `VERSION`: string, `"0.2.0"`
+- `VERSION`: string, currently `"0.2.1"` -- lags the published package version (`0.2.2`) due to a known bug; informational only, don't use it to detect the installed package version (check `package.json` instead)
 - `setDebugMode(enabled: boolean)`: global SDK logging switch
 - `LocalStorageAdapter` / `MemoryStorageAdapter`: `StorageAdapter` implementations (see §5.13)
 
