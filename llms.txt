@@ -56,6 +56,8 @@ on the TypeScript SDK `@cloak.dev/sdk`, in the browser, in Node, and in server-s
 - [What is Cloak?](/guide/what-is-cloak): Plain-language positioning — what Cloak does and who it's for.
 - [How Cloak works](/guide/how-it-works): The four user flows — shield, private send, private swap, unshield.
 - [Your private balance and backup file](/guide/private-balance): Custody model — UTXOs, the backup file, loss and recovery semantics.
+- [Bridging in from another chain](/guide/bridge): Bringing USDC from Polygon, Ethereum, Base, Arbitrum or Sui in as a private balance; one-time receiving address, costs, timing, recovery.
+- [Bridge routes and what each one guarantees](/guide/bridge-routes): The two routes compared — signed vs unsigned deposit address, refund path vs none, and the trust neither removes.
 - [Fees](/guide/fees): Who pays what per action; free shielding, 0.3% plus a fixed fee (0.005 SOL or 0.45 USDC/USDT) to leave the pool.
 - [Payment links](/guide/payment-links): Single-use bearer links — pay without the recipient's address, or get paid without revealing yours.
 - [Security](/guide/security): Audit status, threat model, what Cloak cannot do, governance.

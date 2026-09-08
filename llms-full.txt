@@ -108,9 +108,13 @@ integration questions. They are authoritative for user-facing wording.
 - `/guide/what-is-cloak`
   - Purpose: plain-language positioning and live capability list.
 - `/guide/how-it-works`
-  - Purpose: the four user flows (shield, private send, private swap, unshield) without protocol internals.
+  - Purpose: the four user flows (shield, private send, private swap, unshield) without protocol internals; bridging in is covered on its own page, `/guide/bridge`.
 - `/guide/private-balance`
   - Purpose: canonical custody model — private balance, UTXOs, backup file, loss/recovery semantics.
+- `/guide/bridge`
+  - Purpose: user-facing bridge flow — USDC in from Polygon/Ethereum/Base/Arbitrum/Sui, the one-time receiving address derived from the user's own keys, mandatory shield on arrival, costs, timing, under/overpayment, recovery.
+- `/guide/bridge-routes`
+  - Purpose: the two bridge routes compared — 1Click signs the deposit address and recipient (client-verifiable) and refunds an unfillable order; Jupiter Universal Deposit signs nothing and has no refund path. Custody in transit is disclosed, not removed.
 - `/guide/fees`
   - Purpose: user-facing who-pays fee table (free shielding; SOL 0.005 SOL + 0.3%; USDC/USDT 0.45 token + 0.3% on the way out).
 - `/guide/payment-links`

@@ -16,8 +16,8 @@ Open the preview URL `mint dev` prints. Nothing else to build or install.
 ## Where things live
 
 - `guide/` — the user-facing guide tab: what-is-cloak, how-it-works, private
-  balance, private send, fees, payment links, security, compliance, verified
-  addresses, FAQ, glossary, wallets and tokens.
+  balance, bridge, private send, fees, payment links, security, bridge routes,
+  compliance, verified addresses, FAQ, glossary, wallets and tokens.
 - `learn/` — plain-language explainers (privacy, zero-knowledge, proof of
   funds).
 - `sdk/` — `@cloak.dev/sdk` guides and API reference.
@@ -38,8 +38,22 @@ Open the preview URL `mint dev` prints. Nothing else to build or install.
 ## Rules for this content
 
 - The product name is **Cloak**, never "Cloak Labs".
-- The published surface is **shield, unshield, private send, and private
-  swap** only. Do not add or imply other product surfaces.
+- The published surface is **shield, unshield, private send, private swap,
+  and bridging in from another chain** only. Do not add or imply other product
+  surfaces.
+- Bridge pages (`guide/bridge.mdx`, `guide/bridge-routes.mdx`) state route
+  guarantees, and the two routes are not interchangeable: 1Click signs the
+  deposit address and the recipient (so a client can verify it independently)
+  and refunds an order it cannot fill; Jupiter Universal Deposit signs nothing
+  and has no refund path at all. Never flatten that into one "verified" badge,
+  never rank the two on output amount, and never describe the money as
+  trustless in transit — every route here custodies it between chains. Chain
+  and asset coverage differs per route; source it from the app's own chain
+  list, not from memory.
+- The cost of getting a bridged deposit into the pool is a **Solana network
+  cost covered out of the bridged amount**. It is not a Cloak fee, not a
+  third-party fee, and no operator is named — the only fee Cloak charges is the
+  on-chain program fee, and arriving carries none.
 - Never document the relay (the submission/relay service) as a user-facing
   component, and never list its endpoints or internal responsibilities. The
   SDK's `relayUrl` option (a client-side parameter every flow requires) is
@@ -65,3 +79,14 @@ Open the preview URL `mint dev` prints. Nothing else to build or install.
   separate number and did not change in 0.2.2 — don't bump those.
 - Prefer documenting implemented behavior over planned behavior (see
   `README.md`).
+- Never state a figure you did not read from source or observe. Where a number
+  is genuinely unknown, omit it or leave a clearly marked placeholder for the
+  team — an invented "typical" number is the defect this rule exists to stop.
+
+## Deploys
+
+Mintlify publishes this site from the project's deployment branch; there is no
+CI in this repo. Work lands on a topic branch, goes to `staging` first, and
+reaches production on merge to `main`. Local gates are `mint validate` and
+`mint broken-links`. The full staging path, and the dashboard settings only an
+admin can make, are in `README.md`.
