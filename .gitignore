@@ -4,3 +4,7 @@ yarn.lock
 
 # `mint export` static air-gapped build output
 export.zip
+# Vercel / Next.js
+.next/
+node_modules/
+out/
