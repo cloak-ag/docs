@@ -11,6 +11,7 @@ Getting in is free, and staying in is free. Leaving costs 0.3% plus a small fixe
 | Action | Protocol fee | Gas & submission |
 | --- | --- | --- |
 | Shield (deposit) | **Free** | Your wallet signs & pays network gas |
+| [Bridge in](/guide/bridge) from another chain | **Free** — arriving carries no protocol fee | The route charges its own cut on the origin side; Solana network costs come out of the bridged amount, so your wallet pays nothing |
 | Shielded→shielded transfer (funds stay inside the pool; available via the SDK) | **Free** | Submitted for you; no gas from your wallet |
 | Private send to an address — SOL | **0.005 SOL fixed + 0.3%** | Submitted for you; no gas from your wallet |
 | Private send to an address — USDC/USDT | **0.45 USDC/USDT fixed + 0.3%** | Submitted for you; no gas from your wallet |
@@ -23,6 +24,8 @@ Getting in is free, and staying in is free. Leaving costs 0.3% plus a small fixe
 **Recipients receive exactly what you enter.** Type 1 SOL, and the recipient gets 1 SOL. The fee is added on top and comes out of your private balance — nothing is deducted on the receiving end.
 
 **Only the program charges you.** Fees are set per pool in the program's on-chain configuration and collected on-chain by the Cloak program into a treasury account. Nothing else in the system charges you — no service margin, no spread, no hidden markup.
+
+**Bridged funds arrive free of protocol fees, and leave on the standard terms.** A bridge deposit is a deposit, so nothing is charged to arrive. Two costs sit outside Cloak's fee table and are quoted to you before you send: the route's own cut on the origin side, and the Solana network cost of getting the tokens into the pool, which comes out of the bridged amount because you arrive on Solana holding no SOL. Details in [Bridging in](/guide/bridge#what-it-costs).
 
 **Your wallet pays gas once — when shielding.** Shielding is an ordinary wallet transaction, so your wallet signs it and pays normal network gas. Everything you do from your private balance afterward — send, swap, unshield — is submitted for you: your wallet pays no gas and never appears as sender.
 

@@ -19,6 +19,7 @@
               "guide/what-is-cloak",
               "guide/how-it-works",
               "guide/private-balance",
+              "guide/bridge",
               "guide/private-send",
               "guide/fees",
               "guide/payment-links"
@@ -28,6 +29,7 @@
             "group": "Trust & safety",
             "pages": [
               "guide/security",
+              "guide/bridge-routes",
               "guide/compliance",
               "guide/verified-addresses"
             ]

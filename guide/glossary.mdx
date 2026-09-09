@@ -14,6 +14,8 @@ Three terms carry most of the weight: **private balance**, **UTXOs**, and **back
 
 **Backup file** — A JSON file, downloaded from Backup & Restore, that restores your private balance on any device. It is a bearer instrument and a point-in-time snapshot: anyone holding it can withdraw your funds, so guard it like cash and re-export it after new activity.
 
+**Bridge (bridging in)** — Bringing an asset held on another chain into your Cloak private balance. You send USDC on Polygon, Ethereum, Base, Arbitrum, or Sui; a route delivers Solana USDC to a one-time receiving address derived from your own keys, and it is shielded from there — so no public Solana wallet of yours holds it on the way ([bridging in](/guide/bridge)).
+
 **Change** — The UTXO that comes back to you when you spend more than a payment needs, like coins handed back at a register. Every private transaction creates up to two new UTXOs: one for the payment, one for your change.
 
 **Commitment** — The sealed on-chain record of a UTXO, proving it exists without revealing its amount or owner. The chain stores commitments; the details stay with you.
@@ -25,6 +27,8 @@ Three terms carry most of the weight: **private balance**, **UTXOs**, and **back
 **Note** — The friendly name for a UTXO; the app and these docs use both. See **UTXO**.
 
 **Nullifier** — A one-time tag published when a UTXO is spent, guaranteeing the same UTXO can never be spent twice — without revealing which one it was.
+
+**One-time receiving address** — The single-use Solana address a bridge deposit lands at, derived from your own Cloak keys rather than stored anywhere. It is used for one deposit, and Cloak can find it again from your keys alone, on any device ([bridging in](/guide/bridge)).
 
 **Payment link** — A single-use link funded from a shielded deposit; whoever holds the link can claim the funds to their own wallet, no address exchange needed ([payment links](/guide/payment-links)). Treat this link like cash — and note that unclaimed links are not included in your backup file.
 
@@ -39,6 +43,8 @@ Three terms carry most of the weight: **private balance**, **UTXOs**, and **back
 **Private swap** — Swapping shielded SOL into any Jupiter-verified token, delivered to an address you choose as a normal public balance. The link back to your funding wallet stays hidden; routing goes through Jupiter for the best price.
 
 **Proof of funds** — Showing a counterparty that you hold or received funds by disclosing your own history with a viewing key. Disclosure covers your transactions only — never anyone else's ([prove your funds privately](/learn/prove-your-funds-privately)).
+
+**Route (bridge route)** — One of the paths a bridge deposit can take from another chain into Cloak. Routes differ in the chains they serve, whether they sign the deposit address so you can verify it yourself, and whether they refund an order they cannot fill ([bridge routes](/guide/bridge-routes)).
 
 **Screening** — An automatic check of every transaction against sanctions and high-risk lists before broadcast, run with Range, Cloak's screening partner. Flagged transactions are blocked with a support path; on the happy path you never see it.
 

@@ -27,6 +27,7 @@ Your wallet is not a recovery root. Connecting the same wallet on a new device d
 | Action | Supported tokens |
 | --- | --- |
 | Shield & private send | SOL, USDC, USDT |
+| [Bridge in](/guide/bridge) from another chain | USDC in, USDC out — it lands in your USDC private balance |
 | Payroll | USDC, USDT |
 | Payment links | SOL, USDC, USDT |
 | Private swap — input | SOL only |
@@ -39,6 +40,18 @@ Two details worth knowing before you plan a flow:
 - Private swap takes shielded SOL in and delivers the output token to any recipient address you choose, as a normal public token balance. The link back to your funding wallet stays hidden.
 - Unshielding is not a separate screen or token list: you withdraw by sending from your private balance to your own wallet address, with the same tokens and fees as a private send.
 
+## Chains you can bridge from
+
+| Origin chain | You send | Routes available |
+| --- | --- | --- |
+| Polygon | USDC | NEAR Intents (1Click) |
+| Ethereum | USDC | NEAR Intents (1Click), Jupiter Universal Deposit |
+| Base | USDC | NEAR Intents (1Click), Jupiter Universal Deposit |
+| Arbitrum | USDC | NEAR Intents (1Click), Jupiter Universal Deposit |
+| Sui | USDC | Jupiter Universal Deposit |
+
+The two routes cover different chains, and they differ in more than coverage — one signs its deposit address and refunds an order it cannot fill, the other does neither. [Bridge routes and what each one guarantees](/guide/bridge-routes) is the comparison.
+
 ## Minimums
 
 | Action | Minimum |
@@ -46,6 +59,7 @@ Two details worth knowing before you plan a flow:
 | Shield SOL | 0.01 SOL |
 | Private swap | 0.01 SOL |
 | Shield USDC or USDT | 1.00 USDC / 1.00 USDT |
+| Bridge in | the route's own minimum, plus enough to clear the 1.00 USDC shield minimum after costs — the app refuses a quote it could not shield, before showing you an address |
 
 Minimums are protocol rules, not charges — what you actually pay per action lives on the fees page.
 
