@@ -4,8 +4,8 @@ import matter from 'gray-matter';
 import { MDXRemote } from 'next-mdx-remote/rsc';
 import remarkGfm from 'remark-gfm';
 import Link from 'next/link';
-import config from '../../../docs.json';
-import * as Components from '../../components';
+import config from '../../docs.json';
+import * as Components from '../components';
 
 type Page = { title?: string; description?: string; pages: string[] };
 const root = process.cwd();
