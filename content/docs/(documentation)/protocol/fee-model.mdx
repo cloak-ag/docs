@@ -1,0 +1,68 @@
+---
+title: "Fee Model"
+description: "How the deployed program computes gross, fee, and net amounts per flow and pool kind"
+icon: "Receipt"
+---
+
+Fees are collected strictly on-chain by the shield-pool program into the mint-scoped treasury
+PDA, using the fixed and variable fee stored in each pool's `PoolConfig`. No other component
+assesses or deducts fees.
+
+Fees apply **only to flows that move value out of the pool** (`publicAmount < 0`: withdrawals and
+swaps). Deposits and shield-to-shield transfers charge no fee.
+
+## Constants
+
+- SOL pool fixed fee: `5_000_000` lamports (`0.005 SOL`)
+- SPL pool fixed fee (USDC/USDT): `450_000` base units (`0.45 USDC` / `0.45 USDT`), charged in
+  the withdrawn token
+- Variable fee (all pools): `gross * 3 / 1000` (0.30%)
+- Minimum deposit: `10_000_000` lamports (`0.01 SOL`) on the SOL pool; `1_000_000` base units
+  (`1.00 USDC` / `1.00 USDT`) on the SPL pools
+
+## Per-flow behavior
+
+- **Deposit (`publicAmount > 0`)**: no fee. The full deposit amount moves into the pool and the
+  output commitments encode the full amount.
+- **Shield-to-shield transfer (`publicAmount = 0`)**: no fee. No external value moves; the output
+  commitments sum to the inputs.
+- **Withdrawal (`publicAmount < 0`)**: the destination receives `net = gross - fee`; the treasury
+  PDA receives `fee`.
+- **Swap (`TransactSwap`, SOL pool only)**: `fee = fixed + variable` is taken from the gross SOL
+  at the first transaction; the remainder (`gross - fee`) is what gets swapped.
+
+## Fee math
+
+SOL pool (withdraw/swap):
+
+```
+fee = 5_000_000 + gross * 3 / 1000
+```
+
+SPL pools (withdraw):
+
+```
+fee = 450_000 + gross * 3 / 1000
+```
+
+## Worked examples
+
+Withdraw `1 SOL` (`1_000_000_000` lamports) gross:
+
+- Fixed: `5_000_000` lamports
+- Variable: `1_000_000_000 * 3 / 1000 = 3_000_000` lamports
+- Fee: `8_000_000` lamports — net to recipient: `992_000_000` lamports
+
+Withdraw `100 USDC` (`100_000_000` base units) gross:
+
+- Fixed: `450_000` base units (`0.45 USDC`)
+- Variable: `100_000_000 * 3 / 1000 = 300_000` base units (`0.30 USDC`)
+- Fee: `750_000` base units (`0.75 USDC`) — net to recipient: `99_250_000` base units
+
+<Tip>
+The Cloak app presents this in reverse: the user enters what the recipient should receive, and
+the app grosses up so `net` equals the entered amount. At the program level the invariant is
+always `net = gross - fee`.
+</Tip>
+
+For a user-facing summary with a who-pays table, see [Fees](/guide/fees).

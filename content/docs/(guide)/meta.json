@@ -1,0 +1,28 @@
+{
+  "title": "Guide",
+  "description": "What Cloak is and how to use it",
+  "icon": "BookOpen",
+  "root": true,
+  "pages": [
+    "---Start here---",
+    "./guide/what-is-cloak",
+    "./guide/how-it-works",
+    "./guide/private-balance",
+    "./guide/private-send",
+    "./guide/fees",
+    "./guide/payment-links",
+    "---Trust & safety---",
+    "./guide/security",
+    "./guide/compliance",
+    "./guide/verified-addresses",
+    "---Learn---",
+    "./learn/wallet-public-diary",
+    "./learn/zero-knowledge-without-the-math",
+    "./learn/privacy-is-not-anonymity",
+    "./learn/prove-your-funds-privately",
+    "---Reference---",
+    "./guide/faq",
+    "./guide/glossary",
+    "./guide/wallets-and-tokens"
+  ]
+}

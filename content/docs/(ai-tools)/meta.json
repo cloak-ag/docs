@@ -1,0 +1,13 @@
+{
+  "title": "AI Tools",
+  "description": "IDE and assistant setup",
+  "icon": "Bot",
+  "root": true,
+  "pages": [
+    "---IDE Setup---",
+    "./ai-tools/ai-integration",
+    "./ai-tools/cursor",
+    "./ai-tools/claude-code",
+    "./ai-tools/windsurf"
+  ]
+}

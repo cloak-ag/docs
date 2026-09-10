@@ -1,0 +1,88 @@
+---
+title: "Core concepts"
+description: "Current primitives: UTXOs, fees, viewing keys, scanner, and root retries"
+icon: "Lightbulb"
+---
+
+## Canonical transaction path
+
+The active runtime path is UTXO transactions through:
+
+- `transact` for deposit/withdraw/transfer
+- `swapWithChange` / `swapUtxo` for swap flows
+- SDK-managed submit and status lifecycle
+
+The UTXO free functions are the only transaction path in 0.2.0. The note-model client class was removed; `transact` / `transfer` / `partialWithdraw` / `fullWithdraw` / `swapWithChange` replace it.
+
+## Commitments and Merkle tree
+
+Each deposit/output creates a Poseidon commitment and appends it to the on-chain Merkle tree.
+
+- Height: `32`
+- Root history: `100` recent roots
+
+Proof generation needs:
+
+- Leaf index
+- Path elements/indices
+- A root still present in root history
+
+## Nullifiers
+
+Spending creates a nullifier. The program rejects a reused nullifier.
+
+This is the core double-spend guard for both note and UTXO flows.
+
+## Stale-root retries
+
+If your proof root is no longer in history, transactions can fail with `RootNotFound` (`0x1001`).
+
+The SDK includes retry paths that:
+
+- fetch fresh Merkle data
+- regenerate proof
+- resubmit
+
+## Fee model: gross, fee, net
+
+Fees are enforced on-chain by the program from a per-pool `PoolConfig`; the SDK reads the live
+config before building a fee-bearing proof. Fees apply only when value leaves the pool
+(`externalAmount < 0`); deposits and shielded→shielded transfers are fee-free.
+
+For SOL withdrawals/swaps:
+
+- `gross` = absolute public withdrawal amount
+- `fee` = `5_000_000` lamports fixed (0.005 SOL) + `gross * 3 / 1000`
+- `net` = `gross - fee`
+
+For SPL (USDC/USDT) withdrawals:
+
+- `fee` = `450_000` base units fixed (0.45 USDC/USDT) + `floor(gross * 3 / 1000)` (0.3%), charged in the withdrawn token
+
+Minimum deposit: `10_000_000` lamports (`0.01 SOL`) on the SOL pool; `1_000_000` base units
+(`1.00 token`) on the USDC and USDT pools. See [Fee Model](/protocol/fee-model).
+
+## Proof data shapes
+
+- UTXO transact and swap requests use `264`-byte public inputs:
+  `root + publicAmount + extDataHash + mint + nullifiers + commitments + chainNoteHash`.
+- Proof bytes are always `256` bytes (Groth16).
+
+## Viewing key registration
+
+- SDK flows enforce viewing-key registration by default before protocol transactions.
+- Registration is a signed wallet challenge bound to a 32-byte viewing key (`nk`).
+- Registration is cached in-process to avoid repeat calls.
+
+## Chain-native scanner and cache model
+
+- `scanTransactions` reads chain transactions directly from RPC.
+- It decrypts compact chain notes with viewing key `nk` and verifies `chainNoteHash` integrity.
+- It computes per-tx `gross`, `fee`, `netAmount`, and running balance.
+- Client apps can store encrypted report snapshots locally and expose explicit cache clear + rescan.
+
+## Related pages
+
+- UTXO details: [UTXO Transactions](/sdk/utxo-transactions)
+- Protocol rules: [Shield Pool Program](/protocol/shield-pool)
+- Runtime flow: [Transaction Flows](/platform/transaction-flows)

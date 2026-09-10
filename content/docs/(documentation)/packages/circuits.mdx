@@ -1,0 +1,57 @@
+---
+title: "Circuits Package"
+description: "How transaction circuits are built and consumed across SDK and programs"
+icon: "FileCode"
+---
+
+`packages/` contains the zk circuit toolchain used by Cloak.
+
+## Canonical transaction circuit
+
+- File: `packages/circuits/transaction.circom`
+- Template: `Transaction(32, 2, 2)`
+- Public signals: `root`, `publicAmount`, `extDataHash`, `mintAddress`, `inputNullifier`, `outputCommitment`, `chainNoteHash`
+
+This is the circuit shape consumed by both SDK and on-chain verifier logic.
+
+## Build pipeline
+
+`packages/justfile` orchestrates:
+
+- circom compile
+- Groth16 setup/beacon
+- verification key export
+- artifact copy for SDK/web consumers
+- vkey conversion for on-chain binary include
+
+## Important scripts
+
+- `packages/scripts/convert-vkey.ts`: transforms JSON vkey into verifier binary layout
+- Artifact publishing: circuit artifacts and the manifest are published to the hosted
+  circuits bucket (`storage.googleapis.com/cloak-circuits`) consumed by the SDK
+
+## Published bundle: `circuits/0.2.0` (ceremony)
+
+The deployed program is keyed by the multi-party trusted-setup ceremony `cloak-transaction-0.2.0`
+(6 named contributors plus a public final beacon; 42,672 constraints, 9 public inputs).
+
+| Artifact | sha256 |
+|---|---|
+| `transaction_final.zkey` | `9da7db8cb1370fc497d36a0365f1f107ab0b0c13ca66fa9f0287e5f96ee68d25` |
+| `transaction_js/transaction.wasm` | `02ec02e954ae3932827ad9de51afa597ca95569aa97fec8410879c937a58aa2b` |
+| `transaction.vkey.bin` (embedded in the program) | `d65073d44064ed3be10d79e52d60a06d6be6d6c01afcd5ce52cdfcfc97c5585d` |
+| `transaction.vkey.json` | `deb40e7b94eae17db2975d23dcf26c26db2a36a4f02d14a25830dee3e88fb93c` |
+
+Base URL: `https://storage.googleapis.com/cloak-circuits/circuits/0.2.0/`. The SDK verifies these
+digests before proving (the TypeScript SDK pins them in `src/config/circuit-release.ts`). The older
+`circuits/0.1.0` artifacts are no longer accepted by the program.
+
+## Consumer surfaces
+
+- SDK proof generation reads circuit artifacts for witness/proof generation
+- Program build includes converted verifier key binary
+- Tests and integration fixtures depend on artifact consistency
+
+## Operational note
+
+Keep artifact paths and copy steps synchronized across `packages`, `sdk`, and `programs`; mismatched paths are a common source of runtime proof-loading failures.
