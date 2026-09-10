@@ -1,0 +1,52 @@
+---
+title: "Fees"
+description: "The complete cost of using Cloak — who pays what, and when"
+icon: "Coins"
+---
+
+Getting in is free, and staying in is free. Leaving costs 0.3% plus a small fixed fee: 0.005 SOL when what's leaving is SOL, and 0.45 USDC or USDT when it's a stablecoin.
+
+## The who-pays table
+
+| Action | Protocol fee | Gas & submission |
+| --- | --- | --- |
+| Shield (deposit) | **Free** | Your wallet signs & pays network gas |
+| Shielded→shielded transfer (funds stay inside the pool; available via the SDK) | **Free** | Submitted for you; no gas from your wallet |
+| Private send to an address — SOL | **0.005 SOL fixed + 0.3%** | Submitted for you; no gas from your wallet |
+| Private send to an address — USDC/USDT | **0.45 USDC/USDT fixed + 0.3%** | Submitted for you; no gas from your wallet |
+| Withdraw to your own wallet | same as private send | same |
+| Private swap (SOL input) | **0.005 SOL fixed + 0.3%** of the SOL swapped (Jupiter price impact/slippage separate) | Submitted for you; no gas from your wallet |
+| [Payment link](/guide/payment-links) | Free to create; the standard send fee applies once, at claim | Claim is submitted for the recipient; no gas from their wallet |
+
+## What the numbers mean
+
+**Recipients receive exactly what you enter.** Type 1 SOL, and the recipient gets 1 SOL. The fee is added on top and comes out of your private balance — nothing is deducted on the receiving end.
+
+**Only the program charges you.** Fees are set per pool in the program's on-chain configuration and collected on-chain by the Cloak program into a treasury account. Nothing else in the system charges you — no service margin, no spread, no hidden markup.
+
+**Your wallet pays gas once — when shielding.** Shielding is an ordinary wallet transaction, so your wallet signs it and pays normal network gas. Everything you do from your private balance afterward — send, swap, unshield — is submitted for you: your wallet pays no gas and never appears as sender.
+
+<Accordion title="Why does a private send carry the withdraw fee?">
+  Because sending to a public address is, mechanically, a private withdrawal. Funds leave the pool and land at an address anyone can see — the fee applies to money leaving the pool, not to the act of sending. Transfers that stay shielded→shielded never leave the pool and are free at the protocol level; that path is available today through the [SDK](/sdk/introduction).
+</Accordion>
+
+<Tip>
+  Other Solana privacy protocols charge a flat 1% on every withdrawal. Cloak charges 0.3% plus a fixed fee of 0.005 SOL for SOL, or 0.45 USDC/USDT for stablecoins.
+</Tip>
+
+## Two worked examples
+
+**Send 1 SOL.** The recipient receives exactly 1 SOL. The fee is 0.005 SOL fixed + 0.003 SOL (0.3% of 1 SOL), so your private balance decreases by 1.008 SOL.
+
+**Send 100 USDC.** The recipient receives exactly 100 USDC. The fee is 0.45 USDC fixed + 0.30 USDC (0.3% of 100 USDC), so your private balance decreases by 100.75 USDC.
+
+## Where next
+
+<CardGroup cols={2}>
+  <Card title="How it works" icon="Workflow" href="/guide/how-it-works">
+    Walk through shield, send, swap, and unshield end to end.
+  </Card>
+  <Card title="Wallets & tokens" icon="Wallet" href="/guide/wallets-and-tokens">
+    Supported wallets, plus the tokens and per-token pools behind them.
+  </Card>
+</CardGroup>

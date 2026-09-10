@@ -1,0 +1,53 @@
+---
+title: "Prove where your funds came from — privately"
+description: "Proof of funds with viewing keys — a complete, exportable history you disclose only to the people you choose"
+icon: "Scale"
+---
+
+Sooner or later, someone with a legitimate reason to ask wants to know where your money came from. An accountant closing your books. An auditor. A counterparty deciding whether to do business with you. On public rails, answering them has always meant the same trade: to prove one thing, you expose everything.
+
+## The old way: one question, your whole history
+
+Hand over a bank export and it shows every transaction on the account — salary, rent, the donation you would rather keep to yourself. Share a Solana explorer link and it is worse: the wallet's entire history, past and future, laid out for whoever asked — and for whoever they forward the link to. A public wallet has no scope control. There is no way to answer "where did these funds come from?" without also answering a hundred questions nobody asked.
+
+If that sounds abstract, read [why your wallet is a public diary](/learn/wallet-public-diary) first. This page is about the way out.
+
+## Read access is not spend access
+
+Cloak separates the question from the exposure. When you first sign in, your wallet's signature registers a **viewing key** — a read-only key that can decrypt your own transaction history: the amounts, the fees, the recipients, transaction by transaction. Read access and spend authority are cryptographically separate: a viewing key can reveal what happened, but it can never move funds.
+
+The key is yours, so the choice is yours. Cloak cannot see your balance without your viewing key — and neither can a chain-watcher or other users of the pool. Disclosure is something you do, deliberately, for a specific recipient — not a switch someone else can flip.
+
+Private by default. Auditable when required.
+
+## What a disclosure contains
+
+In the app, open **History & Compliance**: your viewing key rescans the on-chain record and exports a CSV or PDF report of your deposits, transfers, and withdrawals — gross, fee, and net per transaction, with a running balance across the whole history. The shape an accountant actually wants, not a pile of transaction hashes; the full report spec is on the [Compliance](/guide/compliance) page.
+
+## What it does not expose
+
+A disclosure is scoped in both directions:
+
+- **Nothing about anyone else.** Your report reveals your transactions only — never anything about other users of the pool.
+- **Nothing in public.** Exporting a report publishes nothing to a public page and nothing back on-chain. It produces a file, and you decide who receives it.
+
+Privacy isn't hiding — it's choosing who gets the receipt. A proof of funds is exactly that: the receipt, handed to the one party who needs it.
+
+## When you would reach for it
+
+An audit. Tax season. A counterparty check before a deal. A dispute over whether a payment happened. Any moment someone legitimate needs an answer about your funds — and nobody needs your whole history to get it. The use-case-by-use-case breakdown lives on the [Compliance](/guide/compliance) page.
+
+## Screening happens either way
+
+One honest note on where proof of funds fits. Disclosure is voluntary; sanctions screening is not. Every Cloak transaction is screened before broadcast against sanctions and high-risk lists through Range, the screening partner, and flagged transactions are blocked. On the happy path you never notice it. A disclosure complements that screening — it answers a person's question about your funds. It does not replace the checks that run on every transaction regardless.
+
+## Where next
+
+<CardGroup cols={2}>
+  <Card title="Compliance" icon="Scale" href="/guide/compliance">
+    Viewing keys, compliance reports, and Range screening in full.
+  </Card>
+  <Card title="Security" icon="ShieldHalf" href="/guide/security">
+    The threat model — and what Cloak cannot do, stated plainly.
+  </Card>
+</CardGroup>

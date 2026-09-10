@@ -1,12 +1,26 @@
+import { RootProvider } from 'fumadocs-ui/provider/next';
 import type { Metadata } from 'next';
-import './styles.css';
+import { Inter } from 'next/font/google';
+import { appName, siteUrl } from '@/lib/shared';
+import './global.css';
+
+const inter = Inter({
+  subsets: ['latin'],
+});
 
 export const metadata: Metadata = {
-  title: { default: 'Cloak Documentation', template: '%s · Cloak' },
-  description: 'Cloak documentation',
+  metadataBase: new URL(siteUrl),
+  title: { default: appName, template: '%s · Cloak' },
+  description: 'Cloak documentation: user guide, SDK reference, platform and program architecture.',
   icons: { icon: '/favicon.svg' },
 };
 
-export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="en"><body>{children}</body></html>;
+export default function Layout({ children }: LayoutProps<'/'>) {
+  return (
+    <html lang="en" className={inter.className} suppressHydrationWarning>
+      <body className="flex flex-col min-h-screen">
+        <RootProvider>{children}</RootProvider>
+      </body>
+    </html>
+  );
 }

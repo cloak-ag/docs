@@ -1,0 +1,61 @@
+---
+title: "Supported wallets and tokens"
+description: "Reference tables for the wallets Cloak connects to and the tokens each flow supports"
+icon: "Wallet"
+---
+
+Cloak works with the wallets Solana users already carry, and it keeps the token list deliberately short: SOL, USDC, and USDT go in; any Jupiter-verified token can come out through private swap. The tables below are the complete reference.
+
+## Wallets
+
+Your wallet does two things in Cloak: it signs a sign-in message, and it signs shield deposits (paying normal network gas for those). Everything you do from your private balance afterward — private sends, private swaps — is submitted for you: your wallet pays no gas and never appears as sender.
+
+| Wallet | Support |
+| --- | --- |
+| Phantom | Full support. Connect and shield. |
+| Solflare | Full support. |
+| Ledger | Supported. A hardware-wallet mode is available at deposit, so you can shield directly from a Ledger-secured account. |
+| Solana Mobile (Seeker / Android) | Supported via Mobile Wallet Adapter — connect from a mobile wallet on Seeker or any Android device. |
+| Any Wallet Standard wallet | Auto-detected. If your wallet implements the Solana Wallet Standard (Backpack, for example), it appears in the connect list without any extra setup. |
+
+<Tip>
+Your wallet is not a recovery root. Connecting the same wallet on a new device does not restore a private balance — your backup file does. Your backup file is the money; see [Your private balance](/guide/private-balance) before you shield anything you would mind losing.
+</Tip>
+
+## Tokens by action
+
+| Action | Supported tokens |
+| --- | --- |
+| Shield & private send | SOL, USDC, USDT |
+| Payroll | USDC, USDT |
+| Payment links | SOL, USDC, USDT |
+| Private swap — input | SOL only |
+| Private swap — output | Any Jupiter-verified token. Defaults shown: USDC, USDT, ZEC, BONK; the full list is searchable in the app. |
+
+Each token has its own shielded pool, so your private balance is really one balance per token — shielded SOL, USDC, and USDT never mix.
+
+Two details worth knowing before you plan a flow:
+
+- Private swap takes shielded SOL in and delivers the output token to any recipient address you choose, as a normal public token balance. The link back to your funding wallet stays hidden.
+- Unshielding is not a separate screen or token list: you withdraw by sending from your private balance to your own wallet address, with the same tokens and fees as a private send.
+
+## Minimums
+
+| Action | Minimum |
+| --- | --- |
+| Shield SOL | 0.01 SOL |
+| Private swap | 0.01 SOL |
+| Shield USDC or USDT | 1.00 USDC / 1.00 USDT |
+
+Minimums are protocol rules, not charges — what you actually pay per action lives on the fees page.
+
+## Where next
+
+<CardGroup cols={2}>
+  <Card title="Fees" icon="Coins" href="/guide/fees">
+    The who-pays table: what each action costs and who covers the gas.
+  </Card>
+  <Card title="How Cloak works" icon="Route" href="/guide/how-it-works">
+    Shield, send, swap, unshield — the four flows, step by step.
+  </Card>
+</CardGroup>

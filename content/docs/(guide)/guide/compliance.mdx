@@ -1,0 +1,73 @@
+---
+title: "Compliance and proof of funds"
+description: "Viewing keys, exportable compliance reports, and pre-broadcast screening on Cloak"
+icon: "ClipboardCheck"
+---
+
+Private by default. Auditable when required.
+
+Privacy that can't answer an auditor is a liability. If holding a private balance means you can never show where your funds came from, you haven't solved a problem — you've traded it for a worse one. Cloak's privacy is designed to answer: you decide when to disclose, to whom, and the record you hand over is verifiable against on-chain data. Privacy isn't hiding — it's choosing who gets the receipt.
+
+## Viewing keys, in plain language
+
+A viewing key is a read-only key created when you first sign in — your wallet signs a sign-in message, and the key is registered from that signature. It can decrypt your own transaction history: the amount, fee, and recipient of each transaction you made.
+
+What it can never do is move funds. Read access and spend authority are cryptographically separate, so someone holding your viewing key can read your history but cannot touch your private balance. That separation is the whole point: you can give an auditor visibility into your history without handing over any control.
+
+For the underlying design, see [viewing keys and compliance](/architecture/viewing-keys-compliance).
+
+## What a report shows
+
+In the app, open **History &amp; Compliance**. It uses your viewing key to rescan your history directly from on-chain data, then exports a compliance report as CSV or PDF. The report covers:
+
+- **Deposits, transfers, and withdrawals** — each recorded per transaction
+- **Gross, fee, and net** for each transaction
+- **A running balance** across the whole history
+
+That is a self-consistent, on-chain-verifiable record an accountant or auditor can work with — not screenshots, not your word for it.
+
+<Tip>
+A rescan rebuilds your transaction *history* for reporting. It does not restore a spendable balance — that's what your [backup file](/guide/private-balance) is for.
+</Tip>
+
+## What disclosure does not expose
+
+Your disclosure is yours alone. Sharing your history — or your viewing key — reveals your transactions and nothing else. Other users of the pool stay exactly as private as they were before. An auditor who reads your report learns what you did, not who else was in the pool or what they did.
+
+## When you'd use it
+
+<CardGroup cols={2}>
+  <Card title="Audits" icon="Search">
+    Hand over an on-chain-verifiable record of your deposits, transfers, and withdrawals without giving up control of your funds.
+  </Card>
+  <Card title="Tax reporting" icon="FileText">
+    Export every deposit, transfer, and withdrawal with fees broken out, ready for your accountant.
+  </Card>
+  <Card title="Counterparty due diligence" icon="Handshake">
+    Prove source of funds to a business partner or counterparty that needs to know where money came from.
+  </Card>
+  <Card title="Disputes" icon="Scale">
+    Show exactly what was sent, to whom, when, and net of fees — settled by the record, not by memory.
+  </Card>
+</CardGroup>
+
+## Screening before broadcast
+
+Every Cloak transaction is screened against sanctions and high-risk lists through Range, Cloak's screening partner. Deposits are screened on-chain — a signed risk assessment is bound to each deposit and checked by the program — and withdrawals and swaps are screened before they are authorized. If a transaction is flagged, it is blocked and surfaced to you with a path to support. Otherwise you never see it — screening is invisible on the happy path and adds nothing to your workflow.
+
+This matters for the pool as a whole, not only for you: screening at the door is part of why a Cloak disclosure is worth something to the person reading it.
+
+## What Cloak can and can't see
+
+Cloak can't see your balance without your viewing key, can't spend your funds, and can't recover or seize them. That's the design. Disclosure on Cloak is always your action — there is no back door for us to open, because we never had the keys in the first place.
+
+## Where next
+
+<CardGroup cols={2}>
+  <Card title="Security" icon="ShieldHalf" href="/guide/security">
+    The threat model, audit status, and what Cloak cannot do.
+  </Card>
+  <Card title="Prove your funds privately" icon="FileBadge" href="/learn/prove-your-funds-privately">
+    A walkthrough of proof of funds with viewing keys.
+  </Card>
+</CardGroup>

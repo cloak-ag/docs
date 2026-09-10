@@ -1,0 +1,113 @@
+---
+title: "Shield Pool Program"
+description: "Program behavior that SDK and app integrators need to know"
+icon: "Cpu"
+---
+
+## Program identifier
+
+- `zh1eLd6rSphLejbFfJEneUwzHRfMKxgzrgkfwA6qRkW`
+
+## Deployed artifact (since 2026-08-24)
+
+- SBF ELF sha256 `d0f68613a08d7e0913aea67d95f04598bc070911a0e84fedd43cc6bfa18e6cf6` (239,032 bytes)
+- Built from `cloak-ag/programs` commit `7b0ab7cadca07aea483f4633eef3e7a0f03718de` (audited source
+  commit `68b0d92fb23151c1455d446545e00d446f9505ca`, contract version
+  `cloak-shield-pool/post-audit-v3/variant-ii`)
+- Upgrade authority: Squads multisig vault `F6HWeX5i2KjYQag6wCtxzQXeGewv6vXZihZR3EWdRL7s` (3-of-4, 1-hour time lock)
+- Verification recipe and circuit hashes: [Release notes 2026-08](/releases/2026-08-mainnet)
+
+## Instruction surface
+
+- `0`: `Transact` (deposit, withdraw, shielded transfer)
+- `1`: `TransactSwap` (swap flow entrypoint)
+- `2`: `Initialize` (mint-scoped pool bootstrap)
+- `3`: `PrepareSwapSol`
+- `4`: `ExecuteSwap`
+- `5`: `CloseSwapState`
+- `6`: `CollectTreasury`
+
+SDK consumers typically interact through `Transact` and `TransactSwap`.
+
+## Public input layout
+
+`Transact` and `TransactSwap` both use a `264`-byte public input blob:
+
+- `root[32]`
+- `publicAmount[8]` (`i64`, LE)
+- `extDataHash[32]`
+- `mintAddress[32]`
+- `inputNullifiers[64]` (2 x 32)
+- `outputCommitments[64]` (2 x 32)
+- `chainNoteHash[32]`
+
+This matches the transaction circuit constraints.
+
+## Fees and amount semantics
+
+Fees are read from each pool's on-chain `PoolConfig` (fixed amount + variable ratio); the
+values below are the deployed defaults.
+
+- `FIXED_FEE_LAMPORTS = 5_000_000` (0.005 SOL, SOL pool)
+- `DEFAULT_SPL_FIXED_FEE_RAW_UNITS = 450_000` (0.45 USDC / USDT, SPL pools)
+- Variable fee: `amount * 3 / 1000` (0.3%, all pools)
+- `MIN_DEPOSIT_LAMPORTS = 10_000_000` (0.01 SOL)
+- `MIN_DEPOSIT_SPL_BASE_UNITS = 1_000_000` (1.00 USDC / USDT)
+
+Withdrawal and swap math:
+
+- `gross = abs(publicAmount)`
+- `fee = fixed + gross * 3 / 1000` (`fixed` = `5_000_000` lamports or `450_000` base units)
+- `net = gross - fee`
+
+The program enforces sufficient withdrawal amount so `net > 0`.
+
+## Merkle tree and nullifiers
+
+- Tree height: `32`
+- Root history size: `100`
+- Nullifier PDA seed model: `["nullifier", pool_pubkey, nullifier_hash]`
+
+Mint-scoped PDAs:
+
+- Pool: `["pool", mint]`
+- Treasury: `["treasury", mint]`
+- Merkle tree: `["merkle_tree", mint]`
+
+## Execution model
+
+### `Transact`
+
+- Verifies 256-byte Groth16 proof against the embedded transaction verifying key (ceremony `cloak-transaction-0.2.0`, sha256 `d65073d44064ed3be10d79e52d60a06d6be6d6c01afcd5ce52cdfcfc97c5585d`).
+- Validates root exists in root history ring.
+- Creates nullifier PDAs for non-zero input nullifiers (double-spend protection).
+- Appends non-zero output commitments to Merkle tree.
+- Applies external transfer based on `publicAmount`:
+  - positive: deposit from payer to pool
+  - negative: withdrawal from pool to recipient + fee to treasury
+  - zero: pure shield transfer (no external SOL movement)
+- Deposits carry a signed risk quote bound to the deposit, checked on-chain.
+- Withdrawals and swaps carry a signed withdraw authorization when a withdraw authorizer is set on the pool.
+
+### `TransactSwap`
+
+- Runs the same proof/nullifier/commitment checks as `Transact`.
+- Requires negative `publicAmount` (swap is a withdrawal path).
+- Creates `SwapState` for the follow-up settlement path.
+
+## Circuit assumptions the program relies on
+
+- Transaction circuit is fixed to 2 inputs / 2 outputs.
+- Tree depth is fixed to 32 levels.
+- Circuit enforces value conservation: `sum(inputs) + publicAmount = sum(outputs)`.
+- Circuit includes `chainNoteHash` binding constraints for chain-note integrity.
+
+## Error mapping
+
+For SDK-side mapping utilities, see `ShieldPoolErrors` in [Error Handling](/sdk/error-handling).
+
+## Common failure modes
+
+- `0x1001 RootNotFound`: proof used an old root no longer in ring history.
+- `0x1020`/nullifier-already-used: input already spent (or reused test nullifier).
+- Invalid instruction data: wrong public input length (must be 264 bytes).

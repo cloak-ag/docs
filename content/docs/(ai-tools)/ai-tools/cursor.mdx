@@ -1,0 +1,133 @@
+---
+title: "Cursor setup"
+description: "Cursor rules and prompts for fast, correct Cloak SDK builds"
+icon: "MousePointerClick"
+---
+
+Use this setup to keep Cursor focused on real SDK contracts and production-safe app behavior. The prompts below use the Cloak SDK (`@cloak.dev/sdk`).
+
+## Quick launch
+
+<CardGroup cols={3}>
+<Card title="Use in Cursor" icon="MousePointerClick" href="/ai-tools/cursor#2-starter-prompt">
+Open the Cursor starter prompt.
+</Card>
+
+<Card
+  title="Use in Claude Code"
+  icon="Bot"
+  href="/ai-tools/claude-code#2-starter-prompt"
+>
+  Open the Claude starter prompt.
+</Card>
+
+<Card title="Use in Windsurf" icon="Wind" href="/ai-tools/windsurf#2-starter-prompt">
+Open the Windsurf starter prompt.
+</Card>
+</CardGroup>
+
+## 1) Rules file
+
+Create `.cursor/rules.md`:
+
+<Accordion title="View .cursor/rules.md template">
+
+# Cursor Rules for SDK
+
+This project integrates `@cloak.dev/sdk`.
+
+## Fixed integration constants
+
+- Program ID: `zh1eLd6rSphLejbFfJEneUwzHRfMKxgzrgkfwA6qRkW`
+- Circuit base URL: `https://storage.googleapis.com/cloak-circuits/circuits/0.2.0` (ceremony bundle, and the SDK default). Never hand-write the string: use the exported `DEFAULT_CIRCUITS_URL` constant, or `resolveCircuitsBase()` when a base may be overridden. Never use `0.1.0`: the program no longer accepts those artifacts.
+
+## SDK capability coverage (must evaluate all)
+
+1. Note API free functions (`generateNoteFromWallet`, `parseNote`, `serializeNote`, `exportNote`)
+2. UTXO primitives + transaction API
+3. scanner/compliance API
+4. viewing-key + metadata encryption API
+5. relay/proof/Merkle helpers
+6. fees/errors/network/wallet/storage utilities
+
+## Required behavior
+
+- UTXO path is primary for new integrations.
+- Amounts are `bigint` in tx logic.
+- Viewing-key registration is enforced inside the SDK transaction flows (`transact`, `transfer`, `partialWithdraw`, `fullWithdraw`, `swapWithChange`); do not add an app-level registration step and do not disable it. Call the exported `registerViewingKey` only for standalone compliance or history scanning.
+- Keep history cache-first with explicit rescan.
+
+## Safety
+
+- Never log private keys, viewing keys (`nk`), seed material, or raw note payloads.
+- Transaction signatures are public and can be logged for support/debugging.
+- Use SDK defaults for program and circuits. Do not expose those as user-facing config. The relay has no SDK default: pass `relayUrl` explicitly on every call. The SDK reads no environment variable for it; if the value should be configurable, read `CLOAK_RELAY_URL` in your own code and pass it as `relayUrl`. Omitting `relayUrl` throws `Viewing key registration is mandatory: relayUrl is required.` before any network call, deposits included.
+- Never pass `relayUrl: ""` to "skip the relay". Under the default `enforceViewingKeyRegistration` it throws the same error as omitting it, and it only signals caller-signed direct submission when `enforceViewingKeyRegistration: false` is set as well, which submits a send or withdrawal under the user's own key and publicly links it.
+- In browser code, authenticate the sender with `signMessage` + `walletPublicKey` in the transact options. Never emit `depositorKeypair` in browser send or withdraw code.
+- Never substitute the authenticated sender with an ephemeral or service key. That key is the one screened, so it must be the end user's own wallet key.
+- Never tell the user they must use a particular RPC provider. The RPC endpoint is the app owner's choice.
+- Rely on SDK stale-root retries by default; add extra app-level retry/backoff only when explicitly required.
+
+## Reference docs
+
+- `/llms.txt`
+- `/llms-full.txt`
+- `/sdk/llms.txt`
+- `/sdk/api-reference`
+- `/sdk/request-authentication`
+- `/sdk/utxo-transactions`
+- `/sdk/wallet-integration`
+
+</Accordion>
+
+## 2) Starter prompt
+
+<Accordion title="Copy starter prompt">
+
+Implement this feature with `@cloak.dev/sdk`.
+
+First, output a matrix for these capability groups:
+
+- Note API
+- UTXO API
+- Scanner/compliance
+- Viewing keys + metadata encryption
+- Relay/proof/Merkle helpers
+- Utility modules
+
+For each group: `used` or `not used` + reason.
+
+Then:
+
+- produce file-by-file patches
+- keep bigint-safe logic
+- include wallet-adapter and keypair-bytes examples where applicable, following `/sdk/request-authentication` for the wallet-adapter path
+- run checks and summarize verification output
+
+</Accordion>
+
+## 3) High-value prompts
+
+<AccordionGroup>
+<Accordion title="Generate complete SDK integration scaffold">
+Create hooks/services for deposit/send/withdraw/swap + compliance history + CSV export.
+</Accordion>
+
+<Accordion title="Fix contract mismatches">
+  Audit and patch all mismatches against current SDK API and runtime behavior.
+</Accordion>
+
+<Accordion title="Production hardening pass">
+Improve retries, error mapping, progress UX, and secret-safe logging for all transaction flows.
+</Accordion>
+</AccordionGroup>
+
+## Related docs
+
+- [AI Integration](/ai-tools/ai-integration)
+- [LLM Index](/llms.txt)
+- [LLM Full Export](/llms-full.txt)
+- [LLM Reference](/sdk/llms.txt)
+- [API Reference](/sdk/api-reference)
+- [Quickstart](/sdk/quickstart)
+- [Request Authentication](/sdk/request-authentication)

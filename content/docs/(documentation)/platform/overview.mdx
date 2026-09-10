@@ -1,0 +1,79 @@
+---
+title: "Platform Overview"
+description: "How Cloak fits together across SDK, programs, and circuits"
+icon: "Compass"
+---
+
+Cloak is a privacy stack on Solana built around a shielded UTXO model and zero-knowledge proofs.
+
+This page is the developer entry point. If you're here as a user rather than an integrator, start with [What is Cloak?](/guide/what-is-cloak) in the Guide tab.
+
+It has three public surfaces:
+
+- SDK (`@cloak.dev/sdk`) for proof generation, tx building, and scanning
+- Shield Pool program for on-chain verification and state transitions
+- Circuit package for Groth16 artifact generation and verifier-key export
+
+## Use cases
+
+### Private Treasury Flows
+
+Run deposits, transfers, withdrawals, and swaps with shielded state transitions while keeping verifiable protocol guarantees on-chain.
+
+**Designed for:** treasury teams, privacy-focused wallets, protocol operators
+
+### Compliance-Aware Privacy Apps
+
+Build products that keep user transaction details private by default, while still supporting controlled compliance export paths via registered viewing keys.
+
+**Designed for:** regulated apps, custody workflows, institutional operators
+
+## What Cloak optimizes for
+
+- Privacy-preserving transfers and withdrawals with deterministic verification
+- Cross-surface consistency across SDK, program, and circuit layers
+- Operational reliability through retries, queueing, and root/index recovery
+- Compliance-friendly history scanning via viewing keys and chain-note envelopes
+
+## Capabilities
+
+- **Shielded UTXO Runtime**: 2-in/2-out proof-constrained transactions with nullifier-based spend protection.
+- **Chain-Native Compliance**: encrypted chain notes, viewing-key registration, and controlled compliance workflows.
+- **Operational Tooling**: circuits build/publish pipeline for verifier artifact consistency.
+
+## Integration starting points
+
+<CardGroup cols={2}>
+  <Card title="Build with SDK" icon="Code" href="/sdk/introduction">
+    Use TypeScript APIs for deposit, transfer, withdraw, swap, and scanning.
+  </Card>
+  <Card
+    title="Authenticate Requests"
+    icon="Signature"
+    href="/sdk/request-authentication"
+  >
+    Read this before your first private send: every flow except deposit carries a
+    signed sender, from a browser wallet or a server keypair.
+  </Card>
+  <Card title="Read Code Examples" icon="GitBranch" href="/sdk/examples">
+    Use concise snippets for send, swap, payroll, and history. They sign with a
+    server keypair; browser wallets take the Authenticate Requests path above.
+  </Card>
+  <Card
+    title="Understand Runtime Flows"
+    icon="Workflow"
+    href="/platform/transaction-flows"
+  >
+    Follow end-to-end behavior from client request to on-chain finalization.
+  </Card>
+  <Card
+    title="Review Program Rules"
+    icon="Cpu"
+    href="/protocol/shield-pool"
+  >
+    See instruction-level constraints, account model, and fee enforcement.
+  </Card>
+  <Card title="Security Model" icon="ShieldCheck" href="/operations/security">
+    Review trust boundaries, key handling, and failure containment.
+  </Card>
+</CardGroup>

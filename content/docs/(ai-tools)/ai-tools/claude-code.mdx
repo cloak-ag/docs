@@ -1,0 +1,142 @@
+---
+title: "Claude Code setup"
+description: "High-signal prompts to ship Cloak SDK apps quickly"
+icon: "Bot"
+---
+
+Use this page as your copy/paste playbook for Claude Code. The prompts and the
+`CLAUDE.md` template below use the Cloak SDK (`@cloak.dev/sdk`).
+
+## Quick launch
+
+<CardGroup cols={3}>
+<Card title="Use in Cursor" icon="MousePointerClick" href="/ai-tools/cursor#2-starter-prompt">
+Open the Cursor starter prompt.
+</Card>
+
+<Card
+  title="Use in Claude Code"
+  icon="Bot"
+  href="/ai-tools/claude-code#2-starter-prompt"
+>
+  Open the Claude starter prompt.
+</Card>
+
+<Card title="Use in Windsurf" icon="Wind" href="/ai-tools/windsurf#2-starter-prompt">
+Open the Windsurf starter prompt.
+</Card>
+</CardGroup>
+
+## 1) Project context file
+
+Create `CLAUDE.md` at your project root.
+
+<Accordion title="View CLAUDE.md template">
+
+# SDK Project Context
+
+We use `@cloak.dev/sdk`.
+
+## Required runtime assumptions
+
+- Program ID: `zh1eLd6rSphLejbFfJEneUwzHRfMKxgzrgkfwA6qRkW`
+- Circuit base URL: `https://storage.googleapis.com/cloak-circuits/circuits/0.2.0` (ceremony bundle, and the SDK default; use the exported `DEFAULT_CIRCUITS_URL` constant or `resolveCircuitsBase()` instead of hardcoding the string, and never use `0.1.0`: the program no longer accepts those artifacts)
+- UTXO API is primary (`transact`, `partialWithdraw`, `fullWithdraw`, `swapWithChange`)
+- Amounts are `bigint` in transaction logic
+
+## Full SDK capability groups
+
+1. Note API free functions (`generateNoteFromWallet`, `parseNote`, `serializeNote`, `exportNote`)
+2. UTXO primitives + UTXO transaction API
+3. chain-note scanner/compliance APIs
+4. viewing key + metadata encryption APIs
+5. relay/proof/Merkle helpers
+6. fees/errors/network/wallet/storage utilities
+
+## Guardrails
+
+- Never log secrets (private keys, viewing keys (`nk`), raw note payloads, seed material).
+- Transaction signatures are public and can be logged for support/debugging.
+- Use SDK defaults for program and circuits. Do not expose those as user-facing config. The relay has no SDK default: pass `relayUrl` explicitly on every call. The SDK reads no environment variable for it; if the value should be configurable, read `CLOAK_RELAY_URL` in your own code and pass it as `relayUrl`. Omitting `relayUrl` throws `Viewing key registration is mandatory: relayUrl is required.` before any network call, deposits included.
+- Never pass `relayUrl: ""` to "skip the relay". Under the default `enforceViewingKeyRegistration` it throws the same error as omitting it, and it only signals caller-signed direct submission when `enforceViewingKeyRegistration: false` is set as well, which submits a send or withdrawal under the user's own key and publicly links it.
+- In browser code, authenticate the sender with `signMessage` + `walletPublicKey` in the transact options. Never emit `depositorKeypair` in browser send or withdraw code.
+- Never substitute the authenticated sender with an ephemeral or service key. That key is the one screened, so it must be the end user's own wallet key.
+- Never tell the user they must use a particular RPC provider. The RPC endpoint is the app owner's choice.
+- Viewing-key registration is enforced inside the SDK transaction flows (`transact`, `transfer`, `partialWithdraw`, `fullWithdraw`, `swapWithChange`); do not add an app-level registration step and do not disable it. Call the exported `registerViewingKey` only for standalone compliance or history scanning.
+- Keep privacy history cache-first, then explicit rescan.
+- Rely on SDK stale-root retries by default; add extra app-level retry/backoff only when explicitly required.
+
+## Required references
+
+- `/llms.txt`
+- `/llms-full.txt`
+- `/sdk/llms.txt`
+- `/sdk/api-reference`
+- `/sdk/request-authentication`
+- `/sdk/utxo-transactions`
+- `/sdk/wallet-integration`
+
+</Accordion>
+
+## 2) Starter prompt
+
+Use this as your first message in Claude Code:
+
+<Accordion title="Copy starter prompt">
+
+Implement this feature using the full `@cloak.dev/sdk` model.
+
+Before coding:
+
+1. output a capability matrix with these rows:
+   - Note API
+   - UTXO API
+   - Scanner/compliance
+   - Viewing keys + metadata encryption
+   - Relay/proof/Merkle helpers
+   - Utility modules (fees/errors/network/wallet/storage)
+2. mark each row as `used` or `not used` and explain why.
+
+During implementation:
+
+- keep bigint-safe amount handling
+- include both keypair-bytes and wallet-adapter usage where relevant, following `/sdk/request-authentication` for the wallet-adapter path
+- add user-facing progress and error states
+- avoid secret leakage in logs
+
+After implementation:
+
+- run type checks and lint
+- provide changed files + rationale + verification summary
+
+</Accordion>
+
+## 3) Task prompts
+
+<AccordionGroup>
+<Accordion title="Build full integration layer">
+Build a production-ready integration module covering deposit, send, withdraw, swap, compliance history, and CSV export.
+
+Return complete file patches and commands to run.
+
+</Accordion>
+
+<Accordion title="Patch my existing app">
+  Audit current code for SDK contract mismatches, patch all issues, and keep UI
+  behavior stable unless broken.
+</Accordion>
+
+<Accordion title="History UX and scanner quality">
+Implement cache-first history, clear-cache+rescan controls, fee/net rendering, and robust scanner error handling.
+</Accordion>
+</AccordionGroup>
+
+## Related docs
+
+- [AI Integration](/ai-tools/ai-integration)
+- [LLM Index](/llms.txt)
+- [LLM Full Export](/llms-full.txt)
+- [LLM Reference](/sdk/llms.txt)
+- [API Reference](/sdk/api-reference)
+- [Request Authentication](/sdk/request-authentication)
+- [UTXO Transactions](/sdk/utxo-transactions)

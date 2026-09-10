@@ -1,0 +1,490 @@
+---
+title: "Code Examples"
+description: "Mainnet examples for send, swap, payroll and compliance history, on both the server keypair path and the browser wallet-adapter path"
+icon: "GitBranch"
+---
+
+All examples use the current default program ID:
+
+- `zh1eLd6rSphLejbFfJEneUwzHRfMKxgzrgkfwA6qRkW`
+
+## Pick your path before you copy anything
+
+<Warning>
+**Everything under [Shared setup](#shared-setup) is the server keypair path.** It passes
+`depositorKeypair`, which a browser wallet adapter cannot supply: an adapter holds no secret key.
+Deposits work on either path, but every other flow here is submitted for you and carries an
+**authenticated sender**, so from a browser you pass `signMessage` plus `walletPublicKey` instead.
+Copying `depositorKeypair` into a frontend is what produces a `401` on the first send after a deposit
+that looked fine. Read [Request authentication](/sdk/request-authentication) first, or start from
+[the wallet-adapter version of the send flow](#the-same-send-from-a-browser-wallet-adapter) below.
+</Warning>
+
+| You are writing | Pass in `TransactOptions` | Prompts the user |
+|---|---|---|
+| A Node service, a CLI, a script | `depositorKeypair` and `walletPublicKey` | no |
+| A browser app on wallet-adapter | `signMessage` and `walletPublicKey`, plus `signTransaction` for the deposit | yes, once per submitted request |
+
+Nothing else differs. The parameters, the amounts, the helpers and the results are identical on both
+paths; only the holder of the pen changes.
+
+<Card title="Request authentication" icon="Signature" href="/sdk/request-authentication">
+  Which flows need a signed sender, the 300-second approval window, how many wallet prompts to
+  expect, and what to do when a request is rejected.
+</Card>
+
+## Shared setup
+
+```typescript
+import {
+  CLOAK_PRODUCTION_RELAY_URL,
+  CLOAK_PROGRAM_ID,
+  NATIVE_SOL_MINT,
+  createUtxo,
+  createZeroUtxo,
+  fullWithdraw,
+  generateUtxoKeypair,
+  getNkFromUtxoPrivateKey,
+  partialWithdraw,
+  serializeUtxo,
+  swapWithChange,
+  transact,
+  scanTransactions,
+  toComplianceReport,
+  type Utxo,
+  type UtxoSwapResult,
+} from "@cloak.dev/sdk";
+import { getAssociatedTokenAddressSync } from "@solana/spl-token";
+import { Connection, Keypair, PublicKey } from "@solana/web3.js";
+import { appendFileSync, readFileSync } from "node:fs";
+
+const USDC_MINT = new PublicKey("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
+const USDT_MINT = new PublicKey("Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB");
+
+// Your own RPC. Cloak never inspects, replaces or proxies it.
+const connection = new Connection(
+  "https://api.mainnet-beta.solana.com",
+  "confirmed",
+);
+const signer = Keypair.fromSecretKey(
+  Uint8Array.from(JSON.parse(readFileSync(process.env.KEYPAIR_PATH!, "utf8"))),
+);
+const scanKeypair = await generateUtxoKeypair();
+const viewingKeyNk = getNkFromUtxoPrivateKey(scanKeypair.privateKey);
+
+// Server keypair path: `depositorKeypair` signs both the deposit transaction and
+// every submitted request, without prompting.
+const baseOptions = {
+  connection,
+  programId: CLOAK_PROGRAM_ID,
+  relayUrl: CLOAK_PRODUCTION_RELAY_URL,
+  depositorKeypair: signer,
+  walletPublicKey: signer.publicKey,
+  chainNoteViewingKeyNk: viewingKeyNk,
+};
+
+// The SDK stores nothing for you. `serializeUtxo` is the 128-byte encoding that
+// carries everything a note needs to stay spendable: amount, private key,
+// blinding, mint and leaf index. Two append-only files stand in here for whatever
+// durable store your service already has.
+const NOTES_FILE = "./cloak-notes.jsonl";
+const SWAP_REFUNDS_FILE = "./cloak-swap-refunds.jsonl";
+
+function saveNotes(utxos: Utxo[]): void {
+  for (const utxo of utxos) {
+    if (utxo.amount === 0n) continue; // padding output, nothing to lose
+    const line = JSON.stringify({
+      mint: utxo.mintAddress.toBase58(),
+      amount: utxo.amount.toString(),
+      note: Buffer.from(serializeUtxo(utxo)).toString("base64"),
+    });
+    appendFileSync(NOTES_FILE, `${line}\n`);
+  }
+}
+
+// Swaps only. `refund` reclaims the swap input if the swap times out before it
+// settles, so it is stored next to the notes rather than inside them.
+function saveSwapRefund(
+  swapStatePda: string,
+  refund: UtxoSwapResult["refund"],
+): void {
+  appendFileSync(
+    SWAP_REFUNDS_FILE,
+    `${JSON.stringify({ swapStatePda, ...refund })}\n`,
+  );
+}
+```
+
+<Note>
+**`relayUrl` is a value you pass on every call, and it is not read from the environment.** The SDK
+reads no environment variable for it, so exporting `CLOAK_RELAY_URL` does nothing on its own. If you
+like that convention, read the variable in your own code and pass the value as `relayUrl`; the value
+still has to be an origin on this build's allowlist, which is exactly what the exported
+`CLOAK_PRODUCTION_RELAY_URL` is. Omitting `relayUrl`, or passing `""`, throws
+`Viewing key registration is mandatory: relayUrl is required.` before any network call, on every
+flow including deposits. `""` only means "I will submit this myself" when
+`enforceViewingKeyRegistration` is **also** set to `false`, because the viewing-key gate runs first
+and fires either way. See the warning in [Cloak SDK](/sdk/introduction) before you reach for that
+pair: it is a privacy hazard on a transfer or a withdrawal, not a configuration shortcut.
+</Note>
+
+<Warning>
+**Write `result.outputUtxos` down before you report success.** Every call on this page returns the
+notes it just created and then forgets them. A change note is your own money coming back, and its
+`blinding` is fresh randomness that `createUtxo` generates in memory and publishes nowhere, on chain
+or off. A note you did not store is unspendable by anyone, permanently: no rescan, no seed phrase and
+no support path brings it back. That is why every example below captures its result and calls
+`saveNotes` at the point where your service would commit to its own database. The browser version of
+`saveNotes` is in [the wallet-adapter example](#the-same-send-from-a-browser-wallet-adapter) below;
+for the two storage exports the SDK ships, read
+[where your notes live between sessions](/sdk/wallet-integration#where-your-notes-live-between-sessions).
+</Warning>
+
+## Send flow (SOL->SOL, USDC->USDC, USDT->USDT)
+
+```typescript
+async function sendSameMint(args: {
+  mint: PublicKey;
+  amount: bigint;
+  recipientWallet: PublicKey;
+  partialWithdrawAmount?: bigint; // use for partial withdrawal example
+}) {
+  const owner = await generateUtxoKeypair();
+  const output = await createUtxo(args.amount, owner, args.mint);
+
+  const deposited = await transact(
+    {
+      inputUtxos: [await createZeroUtxo(args.mint)],
+      outputUtxos: [output],
+      externalAmount: args.amount,
+      depositor: signer.publicKey,
+    },
+    baseOptions,
+  );
+
+  // Store the deposit note first. If the withdrawal below throws, this file is the
+  // only claim anyone has on the funds that just entered the pool.
+  saveNotes(deposited.outputUtxos);
+
+  if (args.partialWithdrawAmount !== undefined) {
+    const withdrawn = await partialWithdraw(
+      deposited.outputUtxos,
+      args.recipientWallet,
+      args.partialWithdrawAmount,
+      {
+        ...baseOptions,
+        cachedMerkleTree: deposited.merkleTree,
+      },
+    );
+
+    // The recipient got their part; the remainder came back as a private change
+    // note. Store it before you tell anyone the payment succeeded.
+    saveNotes(withdrawn.outputUtxos);
+    return withdrawn;
+  }
+
+  const withdrawn = await fullWithdraw(
+    deposited.outputUtxos,
+    args.recipientWallet,
+    {
+      ...baseOptions,
+      cachedMerkleTree: deposited.merkleTree,
+    },
+  );
+
+  // This call is given one note, so it withdraws directly and leaves no change.
+  // That is a property of the input count, not of `fullWithdraw`: hand it three or
+  // more notes and it consolidates on chain first. Call `saveNotes` regardless, so
+  // the call site never has to know which flow produced change.
+  saveNotes(withdrawn.outputUtxos);
+  return withdrawn;
+}
+
+// SOL -> SOL (full withdrawal send)
+await sendSameMint({
+  mint: NATIVE_SOL_MINT,
+  amount: 1_000_000_000n,
+  recipientWallet: Keypair.generate().publicKey,
+});
+
+// USDC -> USDC (recipient wallet must have a USDC ATA)
+await sendSameMint({
+  mint: USDC_MINT,
+  amount: 8_000_000n,
+  recipientWallet: Keypair.generate().publicKey,
+});
+
+// USDT -> USDT (recipient wallet must have a USDT ATA)
+await sendSameMint({
+  mint: USDT_MINT,
+  amount: 8_000_000n,
+  recipientWallet: Keypair.generate().publicKey,
+});
+
+// Partial withdrawal example (withdraw part, keep private change)
+await sendSameMint({
+  mint: NATIVE_SOL_MINT,
+  amount: 1_000_000_000n,
+  recipientWallet: Keypair.generate().publicKey,
+  partialWithdrawAmount: 250_000_000n,
+});
+```
+
+## The same send from a browser wallet adapter
+
+Same functions, same arguments, same results. The only change is the two signing options: the deposit
+is signed by `signTransaction` and submitted directly by the wallet, and the withdrawal is
+authenticated by `signMessage` over the request, with `walletPublicKey` as the sender.
+
+```tsx
+import {
+  CLOAK_PRODUCTION_RELAY_URL,
+  CLOAK_PROGRAM_ID,
+  createUtxo,
+  createZeroUtxo,
+  explainRelayAuthRejection,
+  fullWithdraw,
+  generateUtxoKeypair,
+  serializeUtxo,
+  transact,
+  type Utxo,
+} from "@cloak.dev/sdk";
+import { useWallet } from "@solana/wallet-adapter-react";
+import { Connection, PublicKey } from "@solana/web3.js";
+
+// The browser stand-in for the server path's append-only file, and the same
+// `serializeUtxo` encoding: amount, private key, blinding, mint and leaf index.
+// `localStorage` is the smallest thing that survives a reload; move to IndexedDB
+// or your own backend when you outgrow it. See /sdk/wallet-integration for the
+// two storage exports the SDK ships.
+const NOTES_KEY = "myapp.cloak.notes";
+
+function saveNotes(utxos: Utxo[]): void {
+  const stored: string[] = JSON.parse(
+    window.localStorage.getItem(NOTES_KEY) ?? "[]",
+  );
+  for (const utxo of utxos) {
+    if (utxo.amount === 0n) continue; // padding output, nothing to lose
+    stored.push(btoa(String.fromCharCode(...serializeUtxo(utxo))));
+  }
+  window.localStorage.setItem(NOTES_KEY, JSON.stringify(stored));
+}
+
+export function useSendSameMint(connection: Connection, viewingKeyNk: Uint8Array) {
+  const { publicKey, signTransaction, signMessage } = useWallet();
+
+  return async function sendSameMint(args: {
+    mint: PublicKey;
+    amount: bigint;
+    recipientWallet: PublicKey;
+  }) {
+    // Not every adapter implements signMessage. Check before you offer the action, so
+    // the user is never asked to approve and then told their wallet cannot sign.
+    if (!publicKey || !signTransaction || !signMessage) {
+      throw new Error("Connect a wallet that supports message signing.");
+    }
+
+    const walletOptions = {
+      connection,
+      programId: CLOAK_PROGRAM_ID,
+      relayUrl: CLOAK_PRODUCTION_RELAY_URL,
+
+      // ── the wallet-adapter replacement for `depositorKeypair` ──
+      signTransaction, // signs the deposit transaction
+      signMessage, // signs the request preimage on submitted flows
+      depositorPublicKey: publicKey,
+      walletPublicKey: publicKey, // becomes the request's authenticated `sender`
+      // ──────────────────────────────────────────────────────────
+
+      chainNoteViewingKeyNk: viewingKeyNk,
+      onProgress: (status: string) => console.log(status),
+      onProofProgress: (percent: number) => console.log(`proof ${percent}%`),
+    };
+
+    const owner = await generateUtxoKeypair();
+    const output = await createUtxo(args.amount, owner, args.mint);
+
+    // Deposit: signed by the wallet, submitted directly. No authenticated sender.
+    const deposited = await transact(
+      {
+        inputUtxos: [await createZeroUtxo(args.mint)],
+        outputUtxos: [output],
+        externalAmount: args.amount,
+        depositor: publicKey,
+      },
+      walletOptions,
+    );
+
+    // Store the deposit note before going any further. If the send below fails, or
+    // the user closes the tab while the wallet dialog is open, this is the only
+    // claim on the funds that just entered the pool.
+    saveNotes(deposited.outputUtxos);
+
+    // Send: submitted for you, so this is the call that needs the signed sender.
+    try {
+      const withdrawn = await fullWithdraw(
+        deposited.outputUtxos,
+        args.recipientWallet,
+        {
+          ...walletOptions,
+          cachedMerkleTree: deposited.merkleTree,
+        },
+      );
+
+      // One input note here, so there is no change and nothing to write. With three
+      // or more, `fullWithdraw` consolidates on chain first and the exemption stops
+      // holding. Keep the call so any flow swapped in stays safe.
+      saveNotes(withdrawn.outputUtxos);
+      return withdrawn;
+    } catch (error) {
+      const hint = explainRelayAuthRejection(String(error));
+      throw hint ? new Error(hint, { cause: error }) : error;
+    }
+  };
+}
+```
+
+`partialWithdraw` and `swapWithChange` take the same `walletOptions` object; swap it in wherever the
+server examples spread `baseOptions`. Both of them do return a change note, so the `saveNotes` call
+above stops being a no-op the moment you substitute one, and `swapWithChange` needs its `refund`
+stored under a second key as well, for the reason given in the swap section below.
+
+<Note>
+`walletPublicKey` and `depositorPublicKey` are the same end user here, which is why both are set to
+`publicKey`. Passing two different keys throws: the SDK uses one key for the request's sender, for
+screening and for viewing-key registration, so splitting it would authenticate one person and screen
+another.
+</Note>
+
+## SOL swap flow (SOL -> token)
+
+```typescript
+const swapOwner = await generateUtxoKeypair();
+const swapInput = await createUtxo(600_000_000n, swapOwner, NATIVE_SOL_MINT);
+
+const swapDeposit = await transact(
+  {
+    inputUtxos: [await createZeroUtxo(NATIVE_SOL_MINT)],
+    outputUtxos: [swapInput],
+    externalAmount: 600_000_000n,
+    depositor: signer.publicKey,
+  },
+  baseOptions,
+);
+
+const recipientWallet = Keypair.generate().publicKey;
+const recipientUsdcAta = getAssociatedTokenAddressSync(
+  USDC_MINT,
+  recipientWallet,
+);
+
+saveNotes(swapDeposit.outputUtxos);
+
+const swapped = await swapWithChange(
+  [swapDeposit.outputUtxos[0]],
+  300_000_000n, // amount to swap
+  USDC_MINT,
+  recipientUsdcAta,
+  1n, // replace with quote-based min output
+  {
+    ...baseOptions,
+    cachedMerkleTree: swapDeposit.merkleTree,
+  },
+  recipientWallet,
+);
+
+// A swap hands back two things worth keeping, and they are not the same thing.
+saveNotes(swapped.outputUtxos); // the 300_000_000n of SOL you did not swap
+saveSwapRefund(swapped.swapStatePda, swapped.refund); // reclaims the input on a timeout
+```
+
+<Warning>
+**`result.refund` is the other secret a swap produces, and dropping it is how a timed-out swap
+becomes unrecoverable.** If the swap does not settle, the program locks the principal behind an
+amount-bound refund note, and the values in `refund` are what spend it. Because `baseOptions` passes
+`chainNoteViewingKeyNk`, the secret here is derived from your `nk` and comes back with
+`derivedFromNk: true`, so `matchSwapRefundLeaf` can rebuild it from that key plus the swap's first
+input nullifier. Storing it is still the fast path, and when no `nk` was supplied the returned object
+is the only copy that will ever exist.
+Field-by-field detail is in the [API reference](/sdk/api-reference).
+</Warning>
+
+<Note>
+**Swaps are the one flow that can prompt more than once.** A swap re-proves on every stale-root
+retry, and each new proof is a new request that needs a fresh approval, so on the wallet-adapter path
+add `maxWalletApprovals` (default `5`, floored at `1`) to cap how many dialogs one swap may raise. A
+`depositorKeypair` never prompts. Sends and withdrawals sign exactly once on either path, whatever
+happens on the network.
+</Note>
+
+## Payroll flow (multi-recipient private payouts)
+
+```typescript
+const payroll = [
+  { wallet: Keypair.generate().publicKey, amount: 250_000_000n },
+  { wallet: Keypair.generate().publicKey, amount: 400_000_000n },
+  { wallet: Keypair.generate().publicKey, amount: 350_000_000n },
+];
+
+const receipts: { wallet: string; signature: string }[] = [];
+
+for (const payment of payroll) {
+  // `sendSameMint` stores the notes each iteration produces before it returns, which
+  // is what makes a failure halfway through survivable: the paid runs are settled and
+  // the failed run's deposit note is already on disk. A loop is the last place to
+  // await a flow and drop the result.
+  const paid = await sendSameMint({
+    mint: NATIVE_SOL_MINT,
+    amount: payment.amount,
+    recipientWallet: payment.wallet,
+  });
+
+  receipts.push({
+    wallet: payment.wallet.toBase58(),
+    signature: paid.signature,
+  });
+}
+```
+
+<Warning>
+**A loop like this belongs on the server path.** Each iteration is a deposit plus a submitted send,
+so on a wallet adapter it is two approval dialogs per recipient, in sequence, and each request has to
+be approved inside its window: the user has 285 seconds from the moment they are asked, not from the
+moment the run started. A payroll of any size run from a browser tab will strand itself on an
+unattended prompt.
+</Warning>
+
+## History + compliance scan
+
+```typescript
+// Reuse the same `viewingKeyNk` configured in your transaction options.
+// This is a read-only scan: it signs nothing and prompts nobody, on either path.
+
+const scan = await scanTransactions({
+  connection,
+  programId: CLOAK_PROGRAM_ID,
+  viewingKeyNk,
+  limit: 250,
+});
+
+const report = toComplianceReport(scan);
+console.log(report.summary);
+```
+
+## Related pages
+
+<CardGroup cols={2}>
+  <Card title="Request authentication" icon="Signature" href="/sdk/request-authentication">
+    The signed-sender contract for every submitted flow, on both paths.
+  </Card>
+  <Card title="Wallet integration" icon="Wallet" href="/sdk/wallet-integration#where-your-notes-live-between-sessions">
+    Where your notes live between sessions, plus the full wallet-adapter wiring, progress callbacks
+    and stale-root retries.
+  </Card>
+  <Card title="Error handling" icon="TriangleAlert" href="/sdk/error-handling">
+    `CloakError` categories, `parseError`, and the stale-root retry template.
+  </Card>
+  <Card title="API reference" icon="Code" href="/sdk/api-reference">
+    The full exported surface, including every symbol on this page.
+  </Card>
+</CardGroup>

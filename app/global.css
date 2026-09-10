@@ -1,0 +1,32 @@
+@import 'tailwindcss';
+@import 'fumadocs-ui/css/neutral.css';
+@import 'fumadocs-ui/css/preset.css';
+
+/* Cloak brand colour (matches the previous Mintlify theme). */
+:root {
+  --color-fd-primary: #4f46e5;
+}
+
+.dark {
+  --color-fd-primary: #818cf8;
+}
+
+/* Logo variants: Mintlify used light.svg on light backgrounds and dark.svg on dark ones. */
+.logo-dark {
+  display: none;
+}
+.dark .logo-light {
+  display: none;
+}
+.dark .logo-dark {
+  display: inline;
+}
+
+html {
+  scrollbar-gutter: stable;
+}
+
+html > body[data-scroll-locked] {
+  margin-right: 0px !important;
+  --removed-body-scroll-bar-size: 0px !important;
+}
