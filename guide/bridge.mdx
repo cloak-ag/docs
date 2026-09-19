@@ -1,0 +1,163 @@
+---
+title: "Bridging in from another chain"
+description: "Send USDC from Polygon, Ethereum, Base, Arbitrum, or Sui and have it arrive as a private balance on Solana — with no public Solana wallet of yours in the middle"
+icon: "bridge"
+---
+
+Shielding starts with tokens you already hold on Solana. Bridging starts one chain earlier: you send USDC from Polygon, Ethereum, Base, Arbitrum, or Sui, and it arrives as a **private balance** on Solana — without ever sitting in a Solana wallet that anyone can tie to you.
+
+That last part is the whole point. The ordinary way to do this is bridge into your own Solana wallet and then shield, which publishes the one link you were trying to avoid: *this wallet received a cross-chain transfer, and then this wallet deposited into the pool.* Bridging into Cloak removes the middle step entirely.
+
+## What actually happens
+
+<Steps>
+<Step title="You pick a chain and an amount">
+  Cloak derives a **one-time receiving address** from your own Cloak keys — a fresh address for this deposit, used once. It is derived rather than stored, so there is nothing extra to save or back up: Cloak can find it again later from your keys alone.
+</Step>
+
+<Step title="You send USDC on the origin chain">
+  The route gives you a deposit address on the chain you picked. You send from your own wallet there, as you would to any address.
+</Step>
+
+<Step title="The route delivers USDC on Solana">
+  It lands at your one-time address. The funds are already yours and nothing else can spend them — but for those moments they are sitting in the open, where the amount and the address are visible like any other Solana balance.
+</Step>
+
+<Step title="Cloak shields it">
+  The tokens move from that one-time address into your private balance. Solana network costs are covered out of the bridged amount, so your wallet signs nothing and pays nothing.
+
+  <Check>
+  What you end up with is USDC in your private balance — the same thing you would have had by shielding USDC you already held, and it sends and withdraws the same way.
+  </Check>
+</Step>
+</Steps>
+
+At no point does a Solana wallet of yours hold the money. The only Solana address that touches it is single-use and derived from keys only you hold.
+
+<Note>
+Your wallet still connects — that is how Cloak derives your keys — but it does not sign the deposit, does not pay gas, and never appears on-chain in this flow.
+</Note>
+
+<Warning>
+**The shield is a step you finish in the app.** It runs in your browser and needs the tab open and unlocked. If you close the tab between arrival and shielding, the funds wait safely at your one-time address until you come back — see [If your funds don't appear](#if-your-funds-dont-appear).
+</Warning>
+
+## Where you can bridge from
+
+| Origin chain | You send | Routes available |
+| --- | --- | --- |
+| Polygon | USDC | NEAR Intents (1Click) |
+| Ethereum | USDC | NEAR Intents (1Click), Jupiter Universal Deposit |
+| Base | USDC | NEAR Intents (1Click), Jupiter Universal Deposit |
+| Arbitrum | USDC | NEAR Intents (1Click), Jupiter Universal Deposit |
+| Sui | USDC | Jupiter Universal Deposit |
+
+Everything arrives as **USDC on Solana**, into your USDC private balance. The two routes do not cover the same chains: Polygon runs on 1Click only, Sui on Jupiter only, and the three EVM chains in the middle have both. Where two routes exist you choose between them; where one does, that is the route.
+
+## The two routes are not the same thing
+
+They differ in a way that no "you receive" number can express, so the app shows each route as its own card and states what it does and does not promise:
+
+- **NEAR Intents (1Click)** signs the deposit address and the recipient. Your browser checks that signature against the route's own key before the address is ever shown, so a substituted address would be caught — even one substituted by Cloak. It also **refunds an order it cannot fill**, to an address you give on the origin chain.
+- **Jupiter Universal Deposit** signs nothing and has no refund concept anywhere in its interface. On this route you are **trusting Cloak** that the address shown is really yours, rather than verifying it.
+
+Both are labelled in the app. The full comparison, and what each one means for you when something goes wrong, is in [Bridge routes and what each one guarantees](/guide/bridge-routes).
+
+## How long it takes
+
+Two waits, back to back:
+
+1. **The cross-chain leg.** The 1Click route quotes its own estimate and the app shows the number that came back with your quote; on a live Ethereum USDC route that estimate came back at 42 seconds. The Jupiter route returns no estimate at all, so the app shows none.
+2. **The shield.** Seconds, in your browser — the zero-knowledge proof takes under three. It does not start on its own: it starts when the app sees the arrival while your tab is open.
+
+On the 1Click route the deposit address belongs to your order and carries an expiry, shown next to it. Send before it expires. On the Jupiter route the address is permanent for your destination, so it does not expire — and, being permanent, it is not fresh per deposit either.
+
+## What it costs
+
+**Arriving costs no Cloak protocol fee.** A bridged deposit is a deposit, and deposits never carry one. What comes off the amount is this:
+
+| What | Roughly | Who sets it |
+| --- | --- | --- |
+| The route's own cut | 1Click quotes a target and a guaranteed floor, and the floor can sit up to 1% below the target — that gap is the slippage tolerance the order is placed with, not a fee. Jupiter charges a flat fee, about $0.30 into Solana, which its own interface describes as a live value that can change. | The route |
+| Solana network costs | About 0.15 USDC, taken out of the bridged amount. You arrive on Solana holding no SOL, and getting the tokens into the pool costs SOL — that cost is covered for you and comes off the amount, quoted before you send. It is not a protocol fee. | A fixed amount, quoted before you confirm |
+| Cloak protocol fee to arrive | **None.** | — |
+| Cloak protocol fee to leave, later | 0.45 USDC fixed + 0.3%, the standard USDC exit fee, collected on-chain by the program. See [Fees](/guide/fees). | The program's on-chain config |
+
+The app quotes every one of these before you send, and it leads with the number that matters: **at least X lands shielded**, computed from the route's guaranteed floor, never its target. A quote that only works at the target is a quote that fails on a bad day.
+
+<Tip>
+Below roughly 15 USDC the fixed costs start to dominate — a round trip in and back out costs about the same in absolute terms whatever the size. The app computes the exact figure at quote time and warns you before you can reveal an address. It is your money and your call; it just refuses to let you make it blind.
+</Tip>
+
+If the amount is so small that shielding it would be *impossible* — less than the program's 1.00 USDC deposit minimum once network costs are covered — the app refuses before showing you an address at all. Nothing is reserved and nothing is sent. That is deliberate: the alternative is money stranded, unshielded, at an address you have never heard of.
+
+## If too little or too much arrives
+
+**More than you quoted is fine.** The shield reads what is actually sitting at your one-time address, not the number you typed, so the extra is shielded too. The route priced your quote for the amount you entered, though, so a much larger transfer may be delivered on different terms than the quote showed.
+
+**Less is where the routes stop being interchangeable.**
+
+- **On the 1Click route**, an order it cannot fill is refunded to the origin-chain address you gave — that is what that address is for. It is used for nothing else.
+- **On the Jupiter route** there is no refund path at all. Its interface has no refund concept, so an undershoot has no automated recovery and unwinding it means asking the provider out of band. This is the single biggest practical difference between the two routes.
+- **Under 1.00 USDC on Solana**, whichever route delivered it, the program cannot accept the deposit — that is the on-chain minimum for the USDC pool. The tokens are still yours, at your one-time address; they just cannot enter the pool until there is at least 1.00 USDC there.
+
+<Note>
+Anyone can send a tiny amount to any address on Solana, including yours. A stray amount that arrives **before** your deposit is simply shielded along with everything else. One that arrives **after** is left where it is on purpose: sweeping it out would publish a link between your one-time address and wherever it was swept to, which is exactly the link this whole flow exists to break.
+</Note>
+
+## If your funds don't appear
+
+Work down this list in order.
+
+<AccordionGroup>
+
+<Accordion title="1. Give the route its quoted time, then reopen Cloak">
+Reconnect the same wallet. Cloak finds bridge deposits **from your keys alone** — it derives your receiving addresses and reads them on-chain — so anything that arrived while your tab was closed shows up with a **Finish shielding** button. There is no link to keep, no code to save, and it works on a device that has never seen the deposit.
+</Accordion>
+
+<Accordion title="2. Check the route's own delivery status">
+On the 1Click route the app can ask the route where your transfer is: waiting, delivered, refunded, or expired. On the Jupiter route there is nothing to ask — its addresses are permanent and it publishes no per-transfer status — so the answer there is to look at the address on-chain.
+</Accordion>
+
+<Accordion title="3. If the order expired before your transfer confirmed">
+On the 1Click route, the funds go back to the origin-chain refund address you gave when you started. That is the case that address exists for.
+</Accordion>
+
+<Accordion title="4. If it is under the minimum, or on a route with no refund path">
+Sub-minimum amounts sit at your one-time address until there is enough there to deposit. On the Jupiter route nothing is automatic. In both cases, bring your deposit address and the origin-chain transaction hash to [Discord](https://discord.gg/hdkrhrgfER) — both are public, and neither reveals anything about your private balance.
+</Accordion>
+
+</AccordionGroup>
+
+<Warning>
+Cloak cannot reverse a transfer sent to the wrong address, and cannot recover funds a route never delivered. Check the address you paste against the one the app shows before you send — on the 1Click route, that check has a signature behind it.
+</Warning>
+
+## What this hides, and what it doesn't
+
+**Hidden:** the link between your one-time receiving address and everything you do afterwards. Once the funds are shielded, a chain-watcher sees a deposit into the pool from an address that has no history, and nothing that connects it to your wallet, your other deposits, or any payment you later make.
+
+**Not hidden:** the origin leg. Your transfer on Polygon or Ethereum is a public transaction on that chain, and the route itself sees which origin wallet paid which deposit address, and which Solana address it delivered to. That is true of every bridge that is not burn-and-mint, it is not something Cloak adds, and no Cloak-side change removes it. It is bounded, though: the route's knowledge stops at the one-time address. What happens after the shield is outside it.
+
+**Visible briefly:** the window between arrival and shielding, where the amount sits in the open at your one-time address. Finishing promptly keeps that window short.
+
+<Tip>
+The habits from [How Cloak works](/guide/how-it-works#getting-the-most-privacy) apply here too. Letting time pass between arriving and spending, and avoiding distinctive amounts, do more for your privacy than anything in the bridge itself.
+</Tip>
+
+## Where next
+
+<CardGroup cols={2}>
+  <Card title="Bridge routes and guarantees" icon="scale-balanced" href="/guide/bridge-routes">
+    What each route signs, what it refunds, and which one you are trusting.
+  </Card>
+  <Card title="Your private balance" icon="file-shield" href="/guide/private-balance">
+    Where bridged funds land — UTXOs, the backup file, and why the backup file is the money.
+  </Card>
+  <Card title="Fees" icon="coins" href="/guide/fees">
+    The who-pays table, including what it costs to take bridged funds back out.
+  </Card>
+  <Card title="Moving value out" icon="paper-plane" href="/guide/private-send">
+    Private send, withdraw, and payment links — the three ways value leaves.
+  </Card>
+</CardGroup>

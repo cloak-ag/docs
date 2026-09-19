@@ -1,0 +1,61 @@
+---
+title: "Privacy is not anonymity"
+description: "The difference between hiding who you are and protecting what you do — and why Cloak builds for accountable privacy"
+icon: "eye-slash"
+---
+
+Two words get used interchangeably in crypto, and the confusion costs people real money and real credibility. **Anonymity hides who you are. Privacy hides what you do.** Cloak provides the second — deliberately — and the distinction is the whole product.
+
+## You are not anonymous to your bank
+
+Your bank knows your name, your address, your salary, and every coffee you bought last Tuesday. You are about as far from anonymous as a person can be. And yet your finances are private: your neighbors can't read your statement, your landlord can't see your savings, and a stranger can't look up what you earn.
+
+That is the normal arrangement almost everywhere in life — identified to the institutions that need to know, invisible to everyone who doesn't.
+
+Public blockchains flipped it. On Solana, your wallet may not carry your legal name, but every transaction it makes is published, permanent, and free for anyone to read. Weak anonymity, zero privacy — everyone can read your statement. And one link between a wallet and a person (an exchange withdrawal, a .sol domain, a single payment to a friend) de-anonymizes the entire history at once, backwards and forwards. If that sounds abstract, read [why your wallet is a public diary](/learn/wallet-public-diary).
+
+## Privacy is the normal thing
+
+You put curtains on your windows. You seal letters in envelopes. Your employer doesn't print salaries in the lobby. None of this is hiding, and nobody assumes you're up to something behind the curtains. It's the baseline discretion every functioning society runs on — so ordinary that we only notice it when it's missing.
+
+Privacy isn't hiding — it's choosing who gets the receipt.
+
+## Where Cloak stands
+
+Private by default. Auditable when required.
+
+When you move funds into your private balance and send from it, a chain-watcher sees deposits into the pool and withdrawals out of it — but cannot link them. Your wallet never appears as the sender of a private send, and what your private balance holds stays off the public record. Under the hood, a zero-knowledge proof convinces the chain that each transaction is valid without revealing which funds moved.
+
+Hidden from the public is not the same as hidden from everyone, and that's by design:
+
+- **You hold a viewing key.** It can decrypt your own transaction history — amounts, fees, recipients — and can never move funds. Read access and spend authority are cryptographically separate. When you choose to disclose, you reveal your transactions only, nothing about anyone else in the pool. See [prove your funds privately](/learn/prove-your-funds-privately).
+- **Every transaction is screened before broadcast** against sanctions and high-risk lists via Range. Flagged transactions are blocked, with a support path. On the happy path, you never notice it.
+
+<Tip>
+A viewing key is read-only by construction. Handing your history to an accountant or auditor gives them exactly that — history. It never gives them your money.
+</Tip>
+
+## Why the distinction matters in practice
+
+For anyone running a business, privacy that cannot answer an auditor is a liability, not a feature. Tax season arrives. A counterparty runs due diligence. A payment gets disputed. If your only options are "everything is public" or "nothing can be shown to anyone," both lose: the first leaks your payroll and margins to competitors, the second fails the audit.
+
+Accountable privacy resolves it: hide your activity from the public, prove it to the parties you choose. Export a report for your accountant without publishing your finances to the world.
+
+There's a harder-nosed version of the same argument. Tools built to make people untraceable end up sanctioned, delisted, and abandoned by everyone with something to lose. Privacy that comes with an audit path is the kind institutions can actually adopt — which is also what keeps the pool active, and an active pool is what makes the privacy strong.
+
+## What Cloak does not do
+
+Cloak does not make you anonymous, and doesn't try to. Your exchange still knows who you are. What Cloak protects is transaction privacy: the link between where your funds came from and where they went, and the contents of your private balance.
+
+The boundary is the pool. What you do after unshielding is public — withdraw to an exchange account with your name on it, and that withdrawal is public from that point on. And transactions you made before shielding stay on the public record forever; privacy starts when you shield, not retroactively.
+
+## Where next
+
+<CardGroup cols={2}>
+  <Card title="Privacy you can prove" icon="file-shield" href="/guide/compliance">
+    Viewing keys, exportable reports, and how screening works.
+  </Card>
+  <Card title="Prove your funds privately" icon="key" href="/learn/prove-your-funds-privately">
+    Show your history to the people you choose — and no one else.
+  </Card>
+</CardGroup>

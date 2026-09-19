@@ -1,0 +1,90 @@
+---
+title: "FAQ"
+description: "Straight answers about custody, recovery, fees, and what Cloak can and cannot do"
+icon: "circle-question"
+---
+
+Honest answers, worst cases first. If your question isn't here, start with [What is Cloak?](/guide/what-is-cloak).
+
+<AccordionGroup>
+
+<Accordion title="Has Cloak been audited?">
+Yes. Cloak's shield-pool program has been independently audited, and the program live on mainnet is built from the audited source — the [Security](/guide/security#verify-it-yourself) page lists the artifact hashes and how to check them yourself. The full report is being prepared for publication and will be linked here. {/* TODO(audit-url): link the published audit report */} Our full threat model — including what Cloak cannot do — is at [Security](/guide/security).
+</Accordion>
+
+<Accordion title="Can Cloak freeze, seize, or spend my funds?">
+No — no custodial path exists in the program. Cloak can't see your balance, can't spend it, and can't recover it. That's the design.
+</Accordion>
+
+<Accordion title="What happens if I lose my backup file?">
+If your browser data is still intact, nothing is lost yet — open Backup &amp; Restore and export a new file now. If you clear your browser data with no backup file, your private balance is gone — not seized, gone. Cloak cannot recover it, and neither can anyone else; that's the proof that we never had your funds.
+</Accordion>
+
+<Accordion title="What happens if I lose my wallet?">
+Your funds are safe as long as you still have your browser data or your backup file — any connected wallet can spend a restored private balance. The wallet is not a recovery root; its signature is used for sign-in and encryption only. What you do lose is the viewing key tied to the old wallet, which means compliance-history access for that older activity.
+</Accordion>
+
+<Accordion title="Can Cloak recover my balance for me?">
+No. Your private balance lives encrypted in your UTXOs, on your device; Cloak's servers never hold UTXO secrets, so there is nothing on our side to restore from. Your backup file is the money — it is the only recovery artifact, and it restores your balance on any device via Backup &amp; Restore.
+</Accordion>
+
+<Accordion title="What does a chain-watcher actually see?">
+Deposits into the pool and withdrawals out of it — never the link between them. Shielded pools are like sealed envelopes in a public mailbox: everyone sees mail, not what's inside. Other pool users see nothing about you, and each withdrawal is validated by a zero-knowledge proof without revealing which deposit funded it.
+</Accordion>
+
+<Accordion title="Is using Cloak legal? How does compliance work?">
+Cloak is built to be private by default, auditable when required. Every transaction is screened against sanctions and high-risk lists via Range, our screening partner, before it broadcasts; flagged transactions are blocked with a support path. When you need to disclose — audits, tax reporting, due diligence — your viewing key produces a CSV or PDF report of your own transactions and reveals nothing about other users; see [Compliance](/guide/compliance).
+</Accordion>
+
+<Accordion title="What does it cost?">
+Shielding is free; sending SOL to a public address costs 0.005 SOL fixed plus 0.3%, while USDC and USDT pay 0.45 tokens fixed plus 0.3%. A private swap costs 0.005 SOL plus 0.3% of the SOL swapped, and shielded-to-shielded transfers are free at the protocol level. Fees are collected on-chain by the program — nothing else charges you; the full table is at [Fees](/guide/fees).
+</Accordion>
+
+<Accordion title="Why is there no fee to shield or to receive?">
+The protocol charges only when value leaves the pool, so deposits carry no protocol fee — your wallet pays normal network gas to shield, nothing more. Recipients receive the exact amount entered because the fee is added on top and deducted from the sender's private balance.
+</Accordion>
+
+<Accordion title="Which tokens and wallets are supported?">
+You can shield and send SOL, USDC, and USDT, each in its own shielded pool; swaps take shielded SOL in and deliver any Jupiter-verified token out. Phantom, Solflare, Ledger, and Solana Mobile are supported, and any Wallet Standard wallet (such as Backpack) is auto-detected. Details at [Wallets &amp; tokens](/guide/wallets-and-tokens).
+</Accordion>
+
+<Accordion title="Can I bring in funds from another chain?">
+Yes. You can send USDC from Polygon, Ethereum, Base, Arbitrum, or Sui and have it arrive as a private balance on Solana, without a Solana wallet of yours in the middle: it lands at a single-use address derived from your own Cloak keys, and is shielded from there. Arriving carries no protocol fee; the route charges its own cut on the origin side, and the Solana network cost of entering the pool comes out of the bridged amount. Two routes exist and they are not equivalent — one signs its deposit address so your browser can verify it and refunds an order it cannot fill, the other does neither — so read [Bridging in](/guide/bridge) and [Bridge routes](/guide/bridge-routes) before you send.
+</Accordion>
+
+<Accordion title="I bridged, but the funds aren't in my private balance yet.">
+The shield is a step that runs in your browser, so an arrival that lands while your tab is closed waits at your one-time address instead of shielding itself. Reopen Cloak with the same wallet: it derives your receiving addresses from your own keys, finds anything unshielded, and offers to finish it — no link and no code to keep. If nothing has arrived at all, check the route's delivery status (available on the 1Click route; the Jupiter route publishes none), and remember that an order that expired before your transfer confirmed is refunded to the origin-chain address you gave. The full list is in [If your funds don't appear](/guide/bridge#if-your-funds-dont-appear).
+</Accordion>
+
+<Accordion title="Is there a minimum amount?">
+Yes. Shielding SOL takes at least 0.01 SOL, and a private swap takes at least 0.01 SOL in. Shielding USDC or USDT takes at least 1.00 token; the program rejects smaller deposits on-chain. Bridging in inherits that 1.00 USDC floor — the app refuses to show you a deposit address for an amount it could not shield once costs are covered, and warns you below roughly 15 USDC, where the fixed costs start to dominate.
+</Accordion>
+
+<Accordion title="Who pays the gas?">
+You do only when shielding — your wallet signs the deposit and pays normal network gas. For private sends, swaps, and withdrawals, the transaction is submitted for you: your wallet pays no gas and never appears as sender.
+</Accordion>
+
+<Accordion title="Can the Cloak program change?">
+The Cloak program is upgradeable. Its upgrade authority is a Squads multisig (3 of 4 signers, with a 1-hour time lock), so no single key can change the program. We say this plainly because an upgradeable program you know about is safer than an "immutable" one that quietly isn't — upgradeability is how fixes ship.
+</Accordion>
+
+<Accordion title="Is my transaction private immediately?">
+Your wallet never appears as sender from the first transaction, but privacy strength grows with pool activity and time. Funds already shielded are more private than shield-and-send in one step, for example. The three habits that strengthen it are in [How Cloak works](/guide/how-it-works).
+</Accordion>
+
+</AccordionGroup>
+
+<Tip>
+Before you rely on any of the above: export your backup file. Your backup file is the money.
+</Tip>
+
+## Where next
+
+<CardGroup cols={2}>
+  <Card title="Security" icon="shield-halved" href="/guide/security">
+    The threat model, on-chain protections, and the full "What Cloak cannot do" list.
+  </Card>
+  <Card title="Your private balance" icon="wallet" href="/guide/private-balance">
+    How UTXOs, the backup file, and restore actually work — read before you shield.
+  </Card>
+</CardGroup>
