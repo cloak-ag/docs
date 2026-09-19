@@ -105,14 +105,7 @@
           {
             "group": "Releases",
             "pages": [
-              "releases/2026-09-sdk-0.2.5",
-              "releases/2026-08-mainnet"
-            ]
-          },
-          {
-            "group": "Development",
-            "pages": [
-              "development/devnet"
+              "releases/latest"
             ]
           },
           {

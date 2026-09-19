@@ -25,9 +25,9 @@ Open the preview URL `mint dev` prints. Nothing else to build or install.
   and on-chain Shield Pool docs.
 - `architecture/` — viewing-key and compliance model.
 - `packages/` — circuit pipeline docs.
-- `development/` — devnet integration guide.
 - `operations/` — runtime trust boundaries for integrators.
-- `releases/` — dated release notes (e.g. `releases/2026-08-mainnet.mdx`).
+- `releases/` — one page, `releases/latest.mdx`, describing what is live now. Do not
+  add dated release pages; update that page instead.
 - `ai-tools/` — IDE/assistant setup pages.
 - `llms.txt`, `llms-full.txt`, `.well-known/llms.txt` — AI index and context
   pack, kept in sync with the real page set.
@@ -85,11 +85,6 @@ Open the preview URL `mint dev` prints. Nothing else to build or install.
   migrated; source new samples from the SDK's maintained examples, which CI
   dry-runs, and never hand a wallet-adapter `PublicKey` straight to a Cloak
   option — convert it with `addressFromPublicKey`.
-- **`development/devnet.mdx` is deliberately NOT Kit.** It documents
-  `@cloak.dev/sdk-devnet`, a separate release line that tracks an older SDK
-  and is not the published `@cloak.dev/sdk`. Its web3.js samples are correct
-  for that package; do not "fix" them. The same applies to the legacy
-  `WalletAdapter` block in `sdk/llms.txt`, which is annotated as removed.
 - The SDK repo's `docs/transact-split.md` (an internal refactor plan marked
   "PLAN ONLY") and `docs/DEPOSIT-SIZE-NOTES.md` (0.2.0-era internal
   measurements) stay unpublished: this site documents implemented,

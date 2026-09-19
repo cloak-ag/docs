@@ -46,9 +46,7 @@ on the TypeScript SDK `@cloak.dev/sdk`, in the browser, in Node, and in server-s
 - [Fee Model](/protocol/fee-model): Constants, formula, and per-flow breakdown for the on-chain fee.
 - [Circuits Package](/packages/circuits): Proof circuit build and hosting pipeline.
 - [Security](/operations/security): Trust boundaries and security controls.
-- [Devnet](/development/devnet): Devnet addresses and faucet for the separate `@cloak.dev/sdk-devnet` release line (the hosted devnet endpoint is not serving; build against `@cloak.dev/sdk`).
-- [Release notes 2026-09](/releases/2026-09-sdk-0.2.5): SDK 0.2.2–0.2.5 — the `@solana/kit` migration, batch signing, bridging in, one-signature SPL deposits. The program did not change.
-- [Release notes 2026-08](/releases/2026-08-mainnet): Mainnet release facts — artifact and verifying-key hashes, per-pool fees and minimums, SDK 0.2.0.
+- [Release notes](/releases/latest): What is live now — deployed program and artifact hash, ceremony verifying-key and circuits digests with a verify-it-yourself recipe, per-pool fees and minimums, and the current SDK release.
 
 ### AI Tooling
 

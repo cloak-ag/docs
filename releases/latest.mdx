@@ -1,0 +1,99 @@
+---
+title: "Release notes"
+description: "What is live today — deployed program, verifying key, circuits bundle, fees, and the current SDK"
+icon: "rocket"
+---
+
+What is live on Solana mainnet today, and the hashes you can check yourself.
+
+## Program
+
+| | |
+|---|---|
+| Program ID | `zh1eLd6rSphLejbFfJEneUwzHRfMKxgzrgkfwA6qRkW` |
+| Deployed artifact | SBF ELF, sha256 `d0f68613a08d7e0913aea67d95f04598bc070911a0e84fedd43cc6bfa18e6cf6`, 239,032 bytes |
+| Live since | 2026-08-24 |
+| Upgrade authority | Squads multisig vault `F6HWeX5i2KjYQag6wCtxzQXeGewv6vXZihZR3EWdRL7s` (3-of-4, 1-hour time lock) |
+
+The program has undergone an independent security audit, and the deployed bytecode is built from
+the audited release.
+
+## Verifying key and circuits
+
+The transaction circuit's verifying key comes from the multi-party trusted-setup ceremony
+`cloak-transaction-0.2.0` (6 named contributors plus a public final beacon). The circuit has 42,672
+constraints and 9 public inputs.
+
+| Artifact | sha256 |
+|---|---|
+| `transaction.vkey.bin` (the key the program verifies against) | `d65073d44064ed3be10d79e52d60a06d6be6d6c01afcd5ce52cdfcfc97c5585d` |
+| `transaction.vkey.json` (exported) | `deb40e7b94eae17db2975d23dcf26c26db2a36a4f02d14a25830dee3e88fb93c` |
+| `transaction_final.zkey` | `9da7db8cb1370fc497d36a0365f1f107ab0b0c13ca66fa9f0287e5f96ee68d25` |
+| `transaction_js/transaction.wasm` | `02ec02e954ae3932827ad9de51afa597ca95569aa97fec8410879c937a58aa2b` |
+
+Proving artifacts are published at `https://storage.googleapis.com/cloak-circuits/circuits/0.2.0/`.
+The older `circuits/0.1.0` artifacts are **no longer accepted**; proofs built from them fail on-chain.
+
+## Verify it yourself
+
+```bash
+# 1. Hash the deployed program (the ProgramData account is padded; hash the first 239,032 bytes)
+solana program dump -u m zh1eLd6rSphLejbFfJEneUwzHRfMKxgzrgkfwA6qRkW /tmp/cloak.so \
+  && head -c 239032 /tmp/cloak.so | shasum -a 256
+# expect d0f68613a08d7e0913aea67d95f04598bc070911a0e84fedd43cc6bfa18e6cf6
+
+# 2. Hash the proving artifacts
+B=https://storage.googleapis.com/cloak-circuits/circuits/0.2.0
+curl -sL $B/transaction_final.zkey          | shasum -a 256   # 9da7db8c…68d25
+curl -sL $B/transaction_js/transaction.wasm | shasum -a 256   # 02ec02e9…8aa2b
+
+# 3. Compare with the table above. The SDK runs the same digest check before every proof.
+```
+
+## Fees and minimums
+
+Fees are enforced on-chain by the program from a per-pool `PoolConfig`. Nothing else in the system
+charges a fee.
+
+| Pool | Fixed fee | Variable fee | Minimum deposit |
+|---|---|---|---|
+| SOL | 0.005 SOL | 0.3% | 0.01 SOL |
+| USDC | 0.45 USDC | 0.3% | 1.00 USDC |
+| USDT | 0.45 USDT | 0.3% | 1.00 USDT |
+
+Fees apply to withdrawals and swaps only. Deposits and private sends carry no protocol fee (network
+fees only). Full breakdown: [Fee model](/protocol/fee-model).
+
+## Compliance
+
+- Deposits are risk-screened on-chain: a signed risk quote is bound to the deposit and checked by the
+  program.
+- Withdrawals and swaps use a signed withdraw authorization issued after off-chain screening; the
+  withdraw authorizer is set per pool.
+- Viewing keys let a user disclose their own history to an auditor. See
+  [Compliance](/guide/compliance).
+
+## SDK — current release `0.2.5`
+
+Published 2026-09-17. The program, the verifying key and the `circuits/0.2.0` bundle did **not**
+change with it; 0.2.5 is a client-side release.
+
+- **Built on `@solana/kit`.** `connection` is a `CloakRpc` from `createCloakRpc(rpcUrl)`, addresses
+  are Kit `Address` strings, and `depositorKeypair` is a `KeyPairSigner`. `@solana/web3.js` is an
+  optional peer dependency used by the wallet-adapter bridge. Migration table:
+  [Solana Kit integration](/sdk/kit-integration).
+- **Batch signing.** `transactBatch` runs N private spends behind one wallet approval. See
+  [Batch signing](/sdk/batch-signing).
+- **Bridging in.** SDK surface for bringing USDC in from another chain. See
+  [Bridging in](/sdk/bridge).
+- **One-signature SPL deposits.** The opt-in `relaySupplementalAlt` option means an SPL deposit that
+  needs a supplemental lookup table asks the user to sign once instead of twice.
+- **Removed in 0.2.5:** `keypairToAdapter` and the `WalletAdapter` type. `RelayAuthSigner` is now a
+  Kit signer, built with `messageSignerFromCallback`.
+
+Supported mainnet flows: shield, private send, unshield and private swap on SOL, USDC and USDT, with
+swaps routed through Jupiter.
+
+```bash
+npm install @cloak.dev/sdk@0.2.5 @solana/kit
+```
