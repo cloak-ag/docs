@@ -209,17 +209,17 @@ Example of accordion groups:
 
 Example of cards and card groups:
 
-<Card title="Getting started guide" icon="rocket" href="/quickstart">
-Complete walkthrough from installation to your first API call in under 10 minutes.
+<Card title="Getting started guide" icon="rocket" href="/sdk/quickstart">
+Complete walkthrough from installation to your first private send.
 </Card>
 
 <CardGroup cols={2}>
-<Card title="Authentication" icon="key" href="/auth">
-  Learn how to authenticate requests using API keys or JWT tokens.
+<Card title="Request authentication" icon="key" href="/sdk/request-authentication">
+  Learn how a submitted flow authenticates its sender.
 </Card>
 
-<Card title="Rate limiting" icon="clock" href="/rate-limits">
-  Understand rate limits and best practices for high-volume usage.
+<Card title="Fee model" icon="clock" href="/protocol/fee-model">
+  Understand the on-chain fee constants and the per-flow breakdown.
 </Card>
 </CardGroup>
 
@@ -292,11 +292,11 @@ Complete user object with all associated data.
 Wrap all images in frames:
 
 <Frame>
-<img src="/images/dashboard.png" alt="Main dashboard showing analytics overview" />
+<img src="/images/private-send-flow.svg" alt="Private send flow from shielded balance to a public address" />
 </Frame>
 
-<Frame caption="The analytics dashboard provides real-time insights">
-<img src="/images/analytics.png" alt="Analytics dashboard with charts" />
+<Frame caption="A private send and a withdrawal differ only in who receives">
+<img src="/images/private-send-vs-withdraw.svg" alt="Private send compared with a withdrawal" />
 </Frame>
 
 #### Videos

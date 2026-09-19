@@ -162,7 +162,7 @@ try {
     programId,
     relayUrl,
     depositorKeypair,
-    walletPublicKey: depositorKeypair.publicKey,
+    walletPublicKey: depositorKeypair.address,
   });
   // With one or two inputs this leaves nothing shielded, so there is no change note to
   // persist here. With three or more, consolidation runs first and the exemption is off:
@@ -177,6 +177,7 @@ try {
 
 ```typescript Wallet adapter
 import {
+  addressFromPublicKey,
   isRootNotFoundError,
   partialWithdraw,
   RootNotFoundError,
@@ -188,7 +189,7 @@ try {
     connection,
     programId,
     relayUrl,
-    walletPublicKey: publicKey!,
+    walletPublicKey: addressFromPublicKey(publicKey!),
     signMessage: signMessage!,
   });
   // Success path: the remaining balance is here and nowhere else. Write it first.
@@ -222,6 +223,7 @@ console.log(ShieldPoolErrors[0x1076]); // Proof verification failed
 <CodeGroup>
 ```typescript Keypair bytes
 import {
+  addressFromPublicKey,
   parseError,
   serializeUtxo,
   swapWithChange,
@@ -240,7 +242,7 @@ try {
       programId,
       relayUrl,
       depositorKeypair,
-      walletPublicKey: depositorKeypair.publicKey,
+      walletPublicKey: depositorKeypair.address,
     },
   );
   // Success path, two writes. The change note is the remaining shielded balance.
@@ -261,6 +263,7 @@ try {
 
 ```typescript Wallet adapter
 import {
+  addressFromPublicKey,
   parseError,
   serializeUtxo,
   swapWithChange,
@@ -278,7 +281,7 @@ try {
       connection,
       programId,
       relayUrl,
-      walletPublicKey: publicKey!,
+      walletPublicKey: addressFromPublicKey(publicKey!),
       signMessage: signMessage!,
     },
   );

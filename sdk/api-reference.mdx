@@ -229,6 +229,42 @@ These values cover the native SOL pool. SPL pools (USDC and USDT) charge a fixed
 450,000 raw units at 6 decimals, plus the same 0.3 percent variable fee. The program reads the
 effective values from the `pool_config` PDA; the SDK does not compute SPL fees.
 
+## Advanced `TransactOptions`
+
+Five options a standard integration never sets, listed because nothing else documents them.
+
+```typescript
+expectedMint?: Address;            // the mint the CALLER believes it is spending
+relaySupplementalAlt?: boolean;    // one-signature SPL deposits (default false)
+transactionVersion?: 0 | 1;        // message version for SDK-built transactions (default 0)
+externalFeePayer?: ExternalFeePayerAdapter; // a payer that covers network fees
+relayAuthBatch?: RelayBatchAuthItemHandle;  // set by transactBatch, not by hand
+```
+
+**`expectedMint`** — every flow takes the pool from the notes it is handed, so the SDK cannot
+otherwise tell a deliberate USDC withdrawal from a SOL withdrawal that was handed a USDC note by
+mistake. Both are well-formed and both settle. Set `expectedMint` and the SDK refuses the
+transaction when the input notes disagree. Optional for backward compatibility — **pass it on every
+flow you can.**
+
+**`relaySupplementalAlt`** — when `true` and `relayUrl` is set, an SPL deposit that needs a
+supplemental address lookup table asks for a shared table to be extended instead of creating a
+depositor-signed throwaway one, so **the user signs exactly once instead of twice**. Any failure
+falls back to the depositor-signed ephemeral-ALT path automatically. Off by default, which preserves
+the old behaviour exactly.
+
+**`transactionVersion`** — `0` (default) builds a v0 message with ComputeBudget instructions. `1`
+builds a Transaction V1 message (SIMD-0385): 4,096-byte packet, every account static with no lookup
+tables, compute budget in the message header. It needs the cluster's v1 gate active *and* a signer
+that signs v1 messages — a local key pair does; a browser wallet may not yet.
+
+**`externalFeePayer`** — lets a deposit come from a wallet holding no SOL: the adapter's payer covers
+the network fee and on-chain rent and is reimbursed in an SPL token inside the same transaction.
+
+**`relayAuthBatch`** — the handle `transactBatch` passes to each item so the row is authenticated by
+the batch's single signature. It takes precedence over `depositorKeypair` and `relayAuthSigner`.
+Set it yourself only if you drive the coordinator directly.
+
 ## Request authentication and endpoint pinning
 
 Private sends, withdrawals and swaps carry a signed sender. Standard integrations only pass
@@ -242,7 +278,8 @@ explainRelayAuthRejection(responseText: string): string | null
 submitTransactToRelay(args: SubmitTransactToRelayArgs)
 
 RelayAuthPreimage; // { sender, auth_issued_at, auth_nonce, message }
-RelayAuthSigner; // { walletPublicKey, signMessage }, the end user's own wallet
+RelayAuthSigner; // MessageSigner | TransactionSigner (Kit). Build one from a wallet
+                 // adapter with messageSignerFromCallback(address, signMessage).
 
 TRANSACT_AUTH_FIELDS; // 9 fields, sorted; order is part of the agreement
 TRANSACT_SWAP_AUTH_FIELDS; // 19 fields, sorted; `slippage_bps` must always be present

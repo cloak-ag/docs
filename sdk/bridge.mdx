@@ -1,0 +1,131 @@
+---
+title: "Bridging in"
+description: "SDK surface for bringing USDC from another chain into a private balance"
+icon: "bridge"
+---
+
+The user-facing behaviour is [Bridging in](/guide/bridge), and the guarantees each route does and
+does not give are in [Bridge routes](/guide/bridge-routes). This page is the SDK surface behind it.
+
+The shape is always the same: derive a one-time receiving address from the user's own keys, get a
+quote, let the user send on the origin chain, then shield what arrives. Nothing here is stored for
+you — every address is re-derivable from `nk`, which is why a closed tab loses nothing.
+
+<Warning>
+**Shielding runs on the client.** Funds that arrive while nothing is running wait at the receiving
+address until a later call picks them up. That is what `listBridgeDeposits` is for, and it is why an
+integration needs a resume path rather than a single happy-path call.
+</Warning>
+
+## Deriving the receiving address
+
+```typescript
+deriveBridgeReceiver(nk: Uint8Array | Buffer, index: number): Promise<KeyPairSigner>
+
+MAX_RECEIVER_INDEX; // upper bound on index
+BRIDGE_ESCROW_LABEL;
+```
+
+`index` is a **small sequential counter**, not a timestamp. Discovery derives `0…N` and reads each
+one on chain, so a sparse index space makes the user's own deposits undiscoverable. `deriveBridgeReceiver`
+throws on a non-integer, a negative value, or anything above `MAX_RECEIVER_INDEX`.
+
+## Quoting, and refusing a bad one
+
+```typescript
+assessBridgeQuote(q: BridgeQuoteInput): BridgeQuoteAssessment
+renderAssessment(a: BridgeQuoteAssessment): string
+
+MIN_DEPOSIT_SPL_BASE_UNITS; // 1_000_000 — the program's USDC/USDT deposit minimum
+ECONOMIC_MINIMUM;           // below this, fixed costs dominate the amount
+withdrawFeeFor(amount: bigint): bigint;
+WITHDRAW_FIXED_FEE;         // 450_000 base units
+WITHDRAW_FEE_BPS;           // 30 (0.3%)
+```
+
+`assessBridgeQuote` returns what the user actually ends up with, and whether the quote is worth
+taking at all: `viable` is false when what would arrive cannot clear the program's deposit minimum
+once costs are covered. It throws rather than compute on a nonsensical quote (a negative amount, or
+a route claiming to deliver more than it was given). `renderAssessment` formats the same numbers for
+a CLI.
+
+<Note>
+`WITHDRAW_FIXED_FEE` and `WITHDRAW_FEE_BPS` are compile-time **fallbacks for quote arithmetic**, used
+when live values are not supplied. The authority is the program's per-mint `pool_config` PDA, and the
+fee is collected on-chain by the program — see [Fee model](/protocol/fee-model). Never present these
+constants as the fee the user will be charged.
+</Note>
+
+## Verifying the deposit address yourself
+
+```typescript
+verifyQuoteSignature(response): { valid: boolean; reason?: string }
+canonicalPayloadString(value): string
+ONECLICK_PUBKEY_B58;
+```
+
+One route signs its quote, including the deposit address; the other signs nothing. Running
+`verifyQuoteSignature` client-side is what lets a caller detect a substituted deposit address
+independently, rather than trusting whatever forwarded the quote. A route that returns no signature
+comes back `{ valid: false }` with a reason — treat that as "this route cannot be verified", not as
+an error to swallow.
+
+## Finding what already arrived
+
+```typescript
+listBridgeDeposits(rpc: CloakRpc, nk, opts: DiscoverOptions): Promise<BridgeDeposit[]>
+
+DiscoverOptions; // { scanDepth?, stopAfterUnused?, ... }
+BridgeDeposit;
+BridgeDepositState;
+```
+
+Discovery derives receiving addresses from `nk` and reads each on chain, stopping after
+`stopAfterUnused` consecutive empty ones (default 5) or at `scanDepth` (default 20, capped at
+`MAX_RECEIVER_INDEX + 1`). This is the resume path: the user reopens the app with the same wallet and
+anything unshielded is found again from their keys alone.
+
+## Completing and cleaning up
+
+```typescript
+depositFromDerivedKey(...): Promise<DepositOutcome>
+DepositError;
+
+cleanupReceivingAddress(
+  rpc: CloakRpc,
+  R: KeyPairSigner,
+  dustDestination?: Address,
+  mint?: Address,
+): Promise<CleanupResult>
+
+fundReceiverViaPaymaster(...): Promise<PaymasterTopUpResult>
+validatePaymasterTopUpTransaction(...): PaymasterTopUpExpectation
+
+deriveFundingTargets(...); readRent(...);
+FEE_BUDGET; CLEANUP_FEE_BUDGET; MAINNET_RENT_0; MAINNET_RENT_1;
+```
+
+A receiving address arrives holding no SOL, so it cannot pay for its own shield. The paymaster
+helpers cover that, and `cleanupReceivingAddress` closes the token account afterwards and sweeps the
+remainder. `validatePaymasterTopUpTransaction` checks a top-up is what it claims before it is signed.
+
+## Retrying without double-spending
+
+```typescript
+withShieldRetries(fn, hooks?: RetryHooks)
+isTerminalFailure(error): boolean
+classifyPostFailure(error): PostFailureVerdict
+mayRetry(error): boolean
+retryDelayMs(attempt: number): number
+TERMINAL_FAILURE; DoNotRetry;
+```
+
+The distinction that matters: a request that failed **before** submission can be retried freely, and
+one that failed after it may already have landed. `classifyPostFailure` is what separates them;
+`withShieldRetries` wraps the whole shield with that policy already applied.
+
+## Related
+
+- [Bridging in](/guide/bridge) — the user-facing flow, costs and recovery
+- [Bridge routes](/guide/bridge-routes) — what each route does and does not guarantee
+- [Fee model](/protocol/fee-model) — where the fee actually comes from

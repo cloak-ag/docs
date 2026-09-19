@@ -80,13 +80,20 @@ Open the preview URL `mint dev` prints. Nothing else to build or install.
   `createCloakRpc()`, addresses are Kit `Address` strings, `depositorKeypair`
   is a `KeyPairSigner`, and `@solana/web3.js` is only a peer dependency used
   by `signerFromWalletAdapter`. `keypairToAdapter` and the `WalletAdapter`
-  type were removed. Code samples still written against web3.js
-  (`new Connection`, `new PublicKey`, `Keypair.fromSecretKey`) are stale:
-  `sdk/quickstart.mdx`, `sdk/examples.mdx`, `sdk/utxo-transactions.mdx`,
-  `sdk/shielded-transfers.mdx`, `sdk/wallet-integration.mdx`,
-  `sdk/error-handling.mdx`, `sdk/request-authentication.mdx`,
-  `development/devnet.mdx` and most of `sdk/llms.txt` still need the pass.
-  Source new samples from the SDK repo's `examples/`, which CI dry-runs.
+  type were removed, and `RelayAuthSigner` is now a Kit signer built with
+  `messageSignerFromCallback`. Every `sdk/` page and `sdk/llms.txt` is
+  migrated; source new samples from the SDK repo's `examples/`, which CI
+  dry-runs, and never hand a wallet-adapter `PublicKey` straight to a Cloak
+  option — convert it with `addressFromPublicKey`.
+- **`development/devnet.mdx` is deliberately NOT Kit.** It documents
+  `@cloak.dev/sdk-devnet`, a separate release line that tracks an older SDK
+  and is not the published `@cloak.dev/sdk`. Its web3.js samples are correct
+  for that package; do not "fix" them. The same applies to the legacy
+  `WalletAdapter` block in `sdk/llms.txt`, which is annotated as removed.
+- The SDK repo's `docs/transact-split.md` (an internal refactor plan marked
+  "PLAN ONLY") and `docs/DEPOSIT-SIZE-NOTES.md` (0.2.0-era internal
+  measurements) stay unpublished: this site documents implemented,
+  integrator-facing behaviour.
 - Prefer documenting implemented behavior over planned behavior (see
   `README.md`).
 - Never state a figure you did not read from source or observe. Where a number

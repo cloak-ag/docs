@@ -7,14 +7,12 @@ icon: "wallet"
 ## Install
 
 ```bash
-npm install @cloak.dev/sdk @solana/web3.js @solana/wallet-adapter-react
+npm install @cloak.dev/sdk @solana/kit @solana/wallet-adapter-react @solana/web3.js
 ```
 
-If your app standardizes on `@solana/kit`, add it as well and use the bridge pattern in [Solana Kit Integration](/sdk/kit-integration).
-
-```bash
-npm install @solana/kit
-```
+The SDK is built on `@solana/kit`. `@solana/web3.js` is still needed here because the wallet-adapter
+bridge hands the wallet a `VersionedTransaction` to sign — see [Solana Kit
+integration](/sdk/kit-integration).
 
 Add wallet UI packages as needed:
 
@@ -81,14 +79,16 @@ import {
   generateUtxoKeypair,
   isRootNotFoundError,
   serializeUtxo,
+  address,
+  createCloakRpc,
   transact,
+  type Address,
 } from "@cloak.dev/sdk";
-import { Connection, PublicKey } from "@solana/web3.js";
 
 // Your own durable store. The SDK ships nothing that plays this role.
 declare function saveNoteBytes(bytes: Uint8Array): Promise<void>;
 
-const connection = new Connection(process.env.SOLANA_RPC_URL!, "confirmed");
+const connection = createCloakRpc(process.env.SOLANA_RPC_URL!);
 const relayUrl = CLOAK_PRODUCTION_RELAY_URL;
 const programId = CLOAK_PROGRAM_ID;
 
@@ -99,7 +99,8 @@ async function sendWithWalletAdapter({
   recipientAddress,
   amountLamports,
 }: {
-  walletPublicKey: PublicKey;
+  // A Kit Address. From a wallet adapter: addressFromPublicKey(wallet.publicKey).
+  walletPublicKey: Address;
   signTransaction: (tx: any) => Promise<any>;
   signMessage: (msg: Uint8Array) => Promise<Uint8Array>;
   recipientAddress: string;
@@ -133,7 +134,7 @@ async function sendWithWalletAdapter({
   // deposited funds. `saveNoteBytes` is your own storage, not an SDK export.
   await saveNoteBytes(serializeUtxo(deposited.outputUtxos[0]));
 
-  const recipient = new PublicKey(recipientAddress);
+  const recipient = address(recipientAddress);
   let withdrawResult: Awaited<ReturnType<typeof fullWithdraw>> | undefined;
 
   for (let attempt = 1; attempt <= 3; attempt += 1) {

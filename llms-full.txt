@@ -65,6 +65,12 @@ The primary integration path is the SDK UTXO API.
   - Purpose: UTXO primitives, fee model, root freshness, operational defaults.
 - `/sdk/utxo-transactions`
   - Purpose: production transaction APIs and runtime semantics.
+- `/sdk/batch-signing`
+  - Purpose: `transactBatch` — N private spends behind one wallet approval; proof/submit concurrency, why a retry wave costs one extra approval, the coordinator for callers that already drive per-row flows, and the 64-item limit.
+- `/sdk/bridge`
+  - Purpose: SDK surface for bridging USDC in — `deriveBridgeReceiver` (sequential index), `assessBridgeQuote`/`renderAssessment`, client-side `verifyQuoteSignature`, `listBridgeDeposits` resume path, paymaster and cleanup helpers, and the shield retry classifiers.
+- `/sdk/shielded-transfers`
+  - Purpose: shielded-to-shielded sends — the two hand-offs a recipient needs (Cloak pubkey and viewing public key), opt-in on-chain recipient discovery via `recipientViewingPublicKey`, and claiming with `scanRecipientDeliveryNotes`.
 - `/sdk/wallet-integration`
   - Purpose: wallet-adapter patterns, the two signing callbacks, signing behavior, and where a user's notes live between sessions: persisting `result.outputUtxos`, the `UtxoWallet` vs `StorageAdapter` split, making deposits recoverable, and what is and is not recoverable once that storage is gone. This is the canonical answer to note storage; anchor is `#where-your-notes-live-between-sessions`.
 - `/sdk/error-handling`
@@ -86,6 +92,10 @@ The primary integration path is the SDK UTXO API.
   - Purpose: circuit build and consumption pipeline.
 - `/operations/security`
   - Purpose: trust boundaries and security controls.
+- `/development/devnet`
+  - Purpose: devnet addresses and faucet for the separate `@cloak.dev/sdk-devnet` release line. The hosted devnet endpoint is not serving and that package tracks an older SDK line; build against `@cloak.dev/sdk` instead.
+- `/releases/2026-09-sdk-0.2.5`
+  - Purpose: SDK 0.2.2–0.2.5 release facts — the `@solana/kit` migration and its breaking type changes, removed `keypairToAdapter`/`WalletAdapter`, batch signing, bridging in, `relaySupplementalAlt` one-signature SPL deposits. The on-chain program, verifying key and circuits `0.2.0` bundle are unchanged.
 - `/releases/2026-08-mainnet`
   - Purpose: 2026-08-24 mainnet release facts — program artifact hash, ceremony verifying-key hashes, circuits `0.2.0` bundle hashes, per-pool fees/minimums, SDK 0.2.0 recovery features.
 
@@ -109,6 +119,8 @@ integration questions. They are authoritative for user-facing wording.
   - Purpose: plain-language positioning and live capability list.
 - `/guide/how-it-works`
   - Purpose: the four user flows (shield, private send, private swap, unshield) without protocol internals; bridging in is covered on its own page, `/guide/bridge`.
+- `/guide/private-send`
+  - Purpose: paying any Solana address or .sol domain from the private balance, what the recipient sees on chain, and why the sending wallet never appears.
 - `/guide/private-balance`
   - Purpose: canonical custody model — private balance, UTXOs, backup file, loss/recovery semantics.
 - `/guide/bridge`
