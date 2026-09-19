@@ -1,0 +1,117 @@
+---
+title: "Batch signing"
+description: "Run N private spends behind one wallet approval with transactBatch"
+icon: "layer-group"
+---
+
+A payout to N recipients is N private spends, and that does not change: the recipient is bound into
+each proof, so forty recipients is forty transactions. What *can* change is how many times the user's
+wallet is asked to approve them.
+
+On a submitted flow the client never signs a transaction. What the wallet signs, once per request, is
+the request authentication described in [Request authentication](/sdk/request-authentication) — one
+request, one digest, one dialog. Batch signing replaces that with **one signature over an ordered
+list of the items' request digests**, so the user approves once for the whole payout.
+
+## `transactBatch`
+
+```typescript
+import { transactBatch } from "@cloak.dev/sdk";
+
+const { results, approvals } = await transactBatch(
+  rows.map((row) => ({
+    params: {
+      inputUtxos: [row.note],
+      outputUtxos: [row.change],
+      recipient: row.to,
+      externalAmount: -row.amount,
+    },
+    options: { chainNoteSalt: row.changeSalt }, // per-item overrides
+  })),
+  { connection, programId, relayUrl, walletPublicKey, signMessage, chainNoteViewingKeyNk: nk },
+);
+```
+
+`results[i]` is `{ status: "fulfilled", value: TransactResult }` or `{ status: "rejected", reason }`,
+in input order — a failed row leaves the others untouched. `approvals` is how many times the wallet
+was actually asked.
+
+Every item runs the same `transact` flow it would have run alone, up to the point where it would sign,
+then waits. Proofs are computed concurrently (`proofConcurrency`, default 2) so they all exist before
+the user is prompted; items are then released to submit `submitConcurrency` at a time (default 3).
+
+<Warning>
+**`transactBatch` does not plan the rows.** Two items that spend the same note collide on their
+nullifier, and an item that spends another item's change cannot be proved until that change has
+landed. Give each item its own already-landed input notes — selecting them is the caller's job.
+</Warning>
+
+## Why a second prompt can appear
+
+A stale-root retry re-proves, which changes that item's digest, so it cannot be covered by the
+signature already given. Every item that had to re-prove is signed together in a **new wave**: one
+extra approval for the retries, never one per row.
+
+That is exactly what `approvals` counts — `1`, plus one per wave. Surface it, so a second prompt
+reads as what it is rather than as a bug.
+
+Viewing-key registration, the other prompt on this path, is shared between flows that start together,
+so a batch for a wallet that has not registered yet raises it once rather than N times.
+
+## Batching calls you already drive
+
+If your code already calls `transact`, `partialWithdraw` or `transfer` per row, you can batch those
+approvals without restructuring the rows. Give each call one item of a coordinator:
+
+```typescript
+import {
+  addressFromPublicKey,
+  createRelayBatchAuthCoordinator,
+  messageSignerFromCallback,
+  partialWithdraw,
+} from "@cloak.dev/sdk";
+
+const coordinator = createRelayBatchAuthCoordinator({
+  signer: messageSignerFromCallback(addressFromPublicKey(publicKey), signMessage),
+  items: rows.length,
+});
+
+await Promise.all(
+  rows.map(async (row) => {
+    const handle = coordinator.item();
+    try {
+      return await partialWithdraw([row.note], row.to, row.amount, {
+        ...options,
+        relayAuthBatch: handle,
+      });
+    } finally {
+      handle.finish(); // required, success or failure
+    }
+  }),
+);
+```
+
+<Warning>
+**`finish()` is not optional.** The coordinator signs only once every registered item is either
+waiting for the signature or finished, so a row that never calls `finish()` holds the entire batch
+open. Put it in a `finally`.
+</Warning>
+
+## Limits
+
+| | |
+|---|---|
+| Items per batch signature | `RELAY_BATCH_AUTH_MAX_ITEMS` = 64 |
+| Approval freshness, batch item | `REQUEST_AUTH_BATCH_MAX_AGE_SECONDS` = 600 s |
+| Approval freshness, single request | `REQUEST_AUTH_MAX_AGE_SECONDS` = 300 s |
+
+The practical batch size is lower than 64. The chain keeps a ring of the 100 most recent roots, and
+items proved against one root push that root out of the ring as they land. Size a batch as
+`(100 − expected foreign inserts while it submits) / 2` and chunk above that; `transactBatch` throws
+rather than truncate if you pass more than the maximum.
+
+## Related
+
+- [Request authentication](/sdk/request-authentication) — the single-request contract this builds on
+- [API reference](/sdk/api-reference#batch-signing) — types and signatures
+- [UTXO transactions](/sdk/utxo-transactions) — the per-row flows being batched

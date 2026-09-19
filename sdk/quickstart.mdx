@@ -26,20 +26,19 @@ import {
   CLOAK_PRODUCTION_RELAY_URL,
   CLOAK_PROGRAM_ID,
   NATIVE_SOL_MINT,
+  createCloakRpc,
   createUtxo,
   createZeroUtxo,
   fullWithdraw,
+  generateKeyPairSigner,
   generateUtxoKeypair,
   partialWithdraw,
   serializeUtxo,
+  signerFromSecretKey,
   transact,
 } from "@cloak.dev/sdk";
-import { Connection, Keypair } from "@solana/web3.js";
 
-const connection = new Connection(
-  "https://api.mainnet-beta.solana.com",
-  "confirmed",
-);
+const connection = createCloakRpc("https://api.mainnet-beta.solana.com");
 
 // `relayUrl` has no default and the SDK reads no environment variable for it.
 // Pass the endpoint explicitly on every call. This build accepts exactly one
@@ -56,7 +55,7 @@ if (!keypairPath) {
 const secretKeyBytes = Uint8Array.from(
   JSON.parse(readFileSync(keypairPath, "utf8")) as number[],
 );
-const signer = Keypair.fromSecretKey(secretKeyBytes);
+const signer = await signerFromSecretKey(secretKeyBytes);
 
 const amount = 1_000_000_000n; // 1 SOL
 const owner = await generateUtxoKeypair();
@@ -67,14 +66,14 @@ const deposited = await transact(
     inputUtxos: [await createZeroUtxo(NATIVE_SOL_MINT)],
     outputUtxos: [depositOutput],
     externalAmount: amount,
-    depositor: signer.publicKey,
+    depositor: signer.address,
   },
   {
     connection,
     programId: CLOAK_PROGRAM_ID,
     relayUrl,
     depositorKeypair: signer,
-    walletPublicKey: signer.publicKey,
+    walletPublicKey: signer.address,
   },
 );
 
@@ -88,14 +87,14 @@ for (const [i, note] of depositNotes.entries()) {
   writeFileSync(`deposit-${deposited.signature}-${i}.note`, serializeUtxo(note));
 }
 
-const recipient = Keypair.generate().publicKey;
+const recipient = (await generateKeyPairSigner()).address;
 
 const withdrawOptions = {
   connection,
   programId: CLOAK_PROGRAM_ID,
   relayUrl,
   depositorKeypair: signer,
-  walletPublicKey: signer.publicKey,
+  walletPublicKey: signer.address,
   cachedMerkleTree: deposited.merkleTree,
 };
 

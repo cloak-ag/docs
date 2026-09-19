@@ -159,12 +159,13 @@ import {
   transact,
   transfer,
   fullWithdraw,
+  createCloakRpc,
+  signerFromSecretKey,
   type Utxo,
 } from "@cloak.dev/sdk";
-import { Connection, Keypair } from "@solana/web3.js";
 import { writeFileSync } from "node:fs";
 
-const connection = new Connection(process.env.SOLANA_RPC_URL!, "confirmed");
+const connection = createCloakRpc(process.env.SOLANA_RPC_URL!);
 const programId = CLOAK_PROGRAM_ID;
 const relayUrl = CLOAK_PRODUCTION_RELAY_URL;
 
@@ -176,10 +177,10 @@ const keepNote = (name: string, utxo: Utxo) =>
   writeFileSync(`${name}.note`, serializeUtxo(utxo));
 
 // Solana wallets. Each side's own wallet authenticates that side's request.
-const aliceWallet = Keypair.fromSecretKey(
+const aliceWallet = await signerFromSecretKey(
   Uint8Array.from(JSON.parse(process.env.ALICE_SECRET_KEY!)),
 );
-const bobWallet = Keypair.fromSecretKey(
+const bobWallet = await signerFromSecretKey(
   Uint8Array.from(JSON.parse(process.env.BOB_SECRET_KEY!)),
 );
 
@@ -202,12 +203,12 @@ const deposit = await transact(
     inputUtxos: [await createZeroUtxo(NATIVE_SOL_MINT)],   // 2-in circuit: pad with a zero note
     outputUtxos: [await createUtxo(100_000_000n, alice, NATIVE_SOL_MINT)],
     externalAmount: 100_000_000n,           // 0.10 SOL flowing INTO the pool
-    depositor: aliceWallet.publicKey,
+    depositor: aliceWallet.address,
   },
   {
     connection, programId, relayUrl,
     depositorKeypair: aliceWallet,
-    walletPublicKey: aliceWallet.publicKey,
+    walletPublicKey: aliceWallet.address,
     chainNoteViewingKeyNk: aliceNk,
   },
 );
@@ -225,7 +226,7 @@ const sent = await transfer(
   {
     connection, programId, relayUrl,
     depositorKeypair: aliceWallet,          // server signer; a browser passes signMessage instead
-    walletPublicKey: aliceWallet.publicKey, // the authenticated sender, either way
+    walletPublicKey: aliceWallet.address, // the authenticated sender, either way
     chainNoteViewingKeyNk: aliceNk,         // Alice's OWN nk
     recipientViewingPublicKey: bobViewingPublicKey,  // opt in to recipient discovery
     cachedMerkleTree: deposit.merkleTree,   // the deposit already built the tree; reuse it
@@ -259,10 +260,10 @@ const claimable = {
   keypair: bob,
   mintAddress: NATIVE_SOL_MINT,
 };
-await fullWithdraw([claimable], bobWallet.publicKey, {   // ← funds land at bobWallet (any address)
+await fullWithdraw([claimable], bobWallet.address, {   // ← funds land at bobWallet (any address)
   connection, programId, relayUrl,
   depositorKeypair: bobWallet,            // Bob's OWN wallet authenticates his withdrawal
-  walletPublicKey: bobWallet.publicKey,   // never a service key: this is the screened sender
+  walletPublicKey: bobWallet.address,   // never a service key: this is the screened sender
   chainNoteViewingKeyNk: bobNk,           // Bob's OWN nk
 });
 ```
@@ -289,14 +290,15 @@ import {
   UtxoWallet,
   explainRelayAuthRejection,
   getNkFromUtxoPrivateKey,
+  addressFromPublicKey,
+  createCloakRpc,
   selectUtxos,
   transfer,
   type UtxoKeypair,
 } from "@cloak.dev/sdk";
 import { useWallet } from "@solana/wallet-adapter-react";
-import { Connection } from "@solana/web3.js";
 
-const connection = new Connection(process.env.NEXT_PUBLIC_SOLANA_RPC_URL!, "confirmed");
+const connection = createCloakRpc(process.env.NEXT_PUBLIC_SOLANA_RPC_URL!);
 const programId = CLOAK_PROGRAM_ID;
 const relayUrl = CLOAK_PRODUCTION_RELAY_URL;
 const NOTES_KEY = "myapp.cloak.notes";
@@ -325,7 +327,8 @@ async function sendToBob(
       connection, programId, relayUrl,
 
       // ── replaces depositorKeypair: the user's own wallet signs the request ──
-      walletPublicKey: publicKey,   // becomes the request's authenticated sender
+      // The adapter gives a web3.js PublicKey; Cloak options take a Kit Address.
+      walletPublicKey: addressFromPublicKey(publicKey), // the request's authenticated sender
       signMessage,                  // returns the 64-byte ed25519 detached signature
       // ───────────────────────────────────────────────────────────────────────
 

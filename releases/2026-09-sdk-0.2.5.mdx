@@ -1,0 +1,90 @@
+---
+title: "Release notes 2026-09"
+description: "SDK 0.2.2 through 0.2.5 — the @solana/kit migration, batch signing, bridging in, one-signature SPL deposits"
+icon: "rocket"
+---
+
+Four SDK releases shipped in September 2026. **The on-chain program did not change**: the program ID,
+the deployed artifact, the ceremony verifying key and the `0.2.0` circuits bundle are all exactly as
+described in [Release notes 2026-08](/releases/2026-08-mainnet). Everything below is client-side.
+
+| Version | Published |
+|---|---|
+| `0.2.2` | 2026-09-06 |
+| `0.2.3` | 2026-09-09 |
+| `0.2.4` | 2026-09-15 |
+| `0.2.5` | 2026-09-17 (current) |
+
+## 0.2.5 — the `@solana/kit` migration
+
+The SDK is now built on `@solana/kit` instead of `@solana/web3.js`. This changes the shape of every
+call, so it is a breaking change for existing integrations:
+
+| Option | Before | Now |
+|---|---|---|
+| `connection` | web3.js `Connection` | `CloakRpc` from `createCloakRpc(rpcUrl)` |
+| `programId`, mints, recipients | `PublicKey` | Kit `Address` string |
+| `depositorKeypair` | `Keypair` | Kit `KeyPairSigner` |
+| `signer` | — | Kit transaction signer |
+
+Also in this release:
+
+- `@solana/web3.js` moved from a dependency to an optional **peer** dependency. The only thing that
+  still needs it is `signerFromWalletAdapter`, which hands a browser wallet a `VersionedTransaction`
+  to sign.
+- `@solana/spl-token` was replaced by `@solana-program/token`.
+- **Removed:** `keypairToAdapter` and the `WalletAdapter` type. Use a `KeyPairSigner` directly, or
+  `LegacyWalletAdapter` with `signerFromWalletAdapter`.
+- `RelayAuthSigner` is now a Kit signer (`MessageSigner | TransactionSigner`) rather than a
+  `{ walletPublicKey, signMessage }` pair. Build one with `messageSignerFromCallback`.
+- The exported `VERSION` constant matches the published package version again. It had lagged at
+  `"0.2.1"` through 0.2.2.
+
+Wiring for both browser and server is in [Solana Kit integration](/sdk/kit-integration), which also
+carries a coming-from-web3.js migration table.
+
+## Batch signing
+
+`transactBatch` runs N private spends behind **one wallet approval** instead of one per spend. Items
+are proved concurrently so every proof exists before the user is prompted, and a stale-root retry
+costs one extra approval for the whole retry wave rather than one per row. Callers that already drive
+`transact`, `partialWithdraw` or `transfer` per row can batch those approvals through
+`createRelayBatchAuthCoordinator` without restructuring anything.
+
+Up to 64 items per signature, though the practical bound is lower. Full contract:
+[Batch signing](/sdk/batch-signing).
+
+## Bridging in
+
+The SDK surface for bringing USDC in from another chain: derive a one-time receiving address from the
+user's own keys, assess a quote before showing it, verify a signed deposit address client-side, and
+find anything that arrived while nothing was running. See [Bridging in](/sdk/bridge) for the SDK
+surface and [Bridging in](/guide/bridge) for the user-facing flow.
+
+## One-signature SPL deposits
+
+`relaySupplementalAlt` is an opt-in `TransactOptions` flag. When set, an SPL deposit that needs a
+supplemental address lookup table uses a shared table instead of creating a depositor-signed
+throwaway one, so **the user signs once instead of twice**. Any failure falls back to the previous
+depositor-signed path automatically. It is off by default, which preserves the old behaviour exactly.
+
+## Other additions worth knowing
+
+- `expectedMint` — state the mint you believe you are spending and the SDK refuses the transaction if
+  the input notes disagree. Optional for backward compatibility; pass it on every flow you can.
+- `transactionVersion` — `1` selects a Transaction V1 message (SIMD-0385). Needs the cluster gate
+  active and a signer that signs v1 messages.
+- `externalFeePayer` — lets a deposit come from a wallet holding no SOL; the payer is reimbursed in an
+  SPL token within the same transaction.
+
+All four are documented under [Advanced `TransactOptions`](/sdk/api-reference#advanced-transactoptions).
+
+## Upgrading
+
+```bash
+npm install @cloak.dev/sdk@0.2.5 @solana/kit
+```
+
+Browser apps keep `@solana/web3.js` for the wallet-adapter bridge. Nothing about the program, the
+circuits bundle or the fee model changed, so no redeploy or re-proving setup is required — only the
+call-site types.

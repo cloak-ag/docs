@@ -70,15 +70,16 @@ import {
   explainRelayAuthRejection,
   serializeUtxo,
   transfer,
+  addressFromPublicKey,
+  type CloakRpc,
   type Utxo,
 } from "@cloak.dev/sdk";
 import { useWallet } from "@solana/wallet-adapter-react";
-import { Connection } from "@solana/web3.js";
 
 // `persistNotes` is your own storage, not the SDK's: it has none. It must have
 // committed the bytes before it resolves.
 export function usePrivateSend(
-  connection: Connection,
+  connection: CloakRpc, // from createCloakRpc(rpcUrl)
   persistNotes: (noteBytes: Uint8Array[]) => Promise<void>,
 ) {
   const { publicKey, signMessage } = useWallet();
@@ -98,7 +99,7 @@ export function usePrivateSend(
         relayUrl: CLOAK_PRODUCTION_RELAY_URL,
 
         // ── the two options that authenticate the request ──
-        walletPublicKey: publicKey, // becomes the request's `sender`
+        walletPublicKey: addressFromPublicKey(publicKey), // the request's `sender`
         signMessage,               // signs the request preimage
         // ──────────────────────────────────────────────────
 
@@ -145,7 +146,7 @@ await fullWithdraw(notes, recipient, {
   programId: CLOAK_PROGRAM_ID,
   relayUrl: CLOAK_PRODUCTION_RELAY_URL,
   depositorKeypair: signer,
-  walletPublicKey: signer.publicKey,
+  walletPublicKey: signer.address,
 });
 ```
 
@@ -252,7 +253,7 @@ const swap = await swapWithChange(inputUtxos, amount, outputMint, recipientAta, 
   connection,
   programId,
   relayUrl,
-  walletPublicKey: publicKey,
+  walletPublicKey: addressFromPublicKey(publicKey),
   signMessage,
   chainNoteViewingKeyNk: nk,  // the user's own nk; see the refund note below
   maxWalletApprovals: 3,      // default 5, floored at 1
@@ -291,12 +292,19 @@ layer around submission.
 settlement check for you:
 
 ```typescript
-import { submitTransactToRelay, type RelayAuthSigner } from "@cloak.dev/sdk";
+import {
+  addressFromPublicKey,
+  messageSignerFromCallback,
+  submitTransactToRelay,
+  type RelayAuthSigner,
+} from "@cloak.dev/sdk";
 
-const relayAuthSigner: RelayAuthSigner = {
-  walletPublicKey: publicKey, // the end user's real wallet, never an ephemeral key
+// Since 0.2.5 `RelayAuthSigner` is a Kit signer (`MessageSigner | TransactionSigner`),
+// not a `{ walletPublicKey, signMessage }` pair. Build one from the adapter:
+const relayAuthSigner: RelayAuthSigner = messageSignerFromCallback(
+  addressFromPublicKey(publicKey), // the end user's real wallet, never an ephemeral key
   signMessage,
-};
+);
 
 const result = await submitTransactToRelay({
   relayUrl,
@@ -419,7 +427,7 @@ turned away. Only that second case belongs on this page.
 
 <Note>
 **Your RPC is entirely your own choice.** The pin covers the submission endpoint only. You build the
-`Connection` and Cloak never inspects, replaces or proxies it. Any public RPC, any private provider,
+`CloakRpc` with `createCloakRpc(rpcUrl)` and Cloak never inspects, replaces or proxies it. Any public RPC, any private provider,
 any paid endpoint works. The one exception is a **loopback** RPC (`localhost`, `127.0.0.1`), which a
 production build refuses because a production artifact talking to a local validator is always a
 mistake. "You have to use Cloak's RPC" is a misreading of this. You do not.

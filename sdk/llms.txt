@@ -20,7 +20,8 @@ Use this file as your primary SDK briefing and only fall back to the friendlier 
 ## 1. Package
 
 - Name: `@cloak.dev/sdk`
-- Version: `0.2.2` (the exported `VERSION` constant currently lags at `"0.2.1"` due to a known bug; it is informational only and shouldn't be used to detect the installed package version — check `package.json` instead)
+- Version: `0.2.5`. The exported `VERSION` constant now matches the published package version (it lagged before 0.2.5); it is still informational only — check `package.json` to detect the installed version.
+- **0.2.5 moved the SDK onto `@solana/kit`.** `connection` is a `CloakRpc` from `createCloakRpc(rpcUrl)`; `programId`, mints and recipients are Kit `Address` strings; `depositorKeypair` is a Kit `KeyPairSigner`; `signer` is a Kit transaction signer. `@solana/web3.js` is an optional peer dependency, needed only by `signerFromWalletAdapter` (the browser wallet bridge). `@solana/spl-token` was replaced by `@solana-program/token`. Removed in 0.2.5: `keypairToAdapter` and the `WalletAdapter` type.
 - Runtime: Node `>=18` and modern browsers. ESM and CJS both shipped (`dist/index.js`, `dist/index.cjs`).
 - Types: `dist/index.d.ts`
 - Program ID (default, mainnet): `zh1eLd6rSphLejbFfJEneUwzHRfMKxgzrgkfwA6qRkW`
@@ -32,12 +33,12 @@ Use this file as your primary SDK briefing and only fall back to the friendlier 
 - Authenticated sender: every relay-submitted flow (private send, withdraw, swap) signs its request body with the END USER'S OWN wallet. Deposits do not, being wallet-signed straight to chain. See invariant 13, §5.8 and `/sdk/request-authentication`.
 - Hashing: BN254 Poseidon (via `@lightprotocol/hasher.rs`) + BLAKE3.
 - Proof system: Groth16 via `snarkjs`.
-- Native companion types: `@solana/web3.js` for `Connection`, `Keypair`, `Transaction`, `PublicKey`. `@solana/kit` is supported for reads (see §4d).
+- Native companion types come from `@solana/kit`: `Address`, `KeyPairSigner`, `TransactionSigner`. Build the RPC with `createCloakRpc(rpcUrl)`. `@solana/web3.js` is an optional peer dependency, needed only by `signerFromWalletAdapter`.
 
 Install:
 
 ```bash
-npm install @cloak.dev/sdk @solana/web3.js
+npm install @cloak.dev/sdk @solana/kit
 # Optional:
 npm install @solana/spl-token @solana/kit
 ```
@@ -102,6 +103,8 @@ Core note/transaction types (from `core/types`):
 ```ts
 type Network = "localnet" | "devnet" | "mainnet" | "testnet";
 
+// The `WalletAdapter` type was REMOVED in 0.2.5. The equivalent is `LegacyWalletAdapter`, wrapped
+// with `signerFromWalletAdapter(adapter, { web3: { VersionedTransaction } })` to get a Kit signer.
 interface WalletAdapter {
   publicKey: PublicKey | null;
   signTransaction?<T extends Transaction>(tx: T): Promise<T>;
@@ -124,14 +127,14 @@ class CloakError extends Error {
 
 ```ts
 import { CLOAK_PROGRAM_ID, CLOAK_PRODUCTION_RELAY_URL, setDebugMode } from "@cloak.dev/sdk";
-import { Connection, Keypair } from "@solana/web3.js";
+import { createCloakRpc, signerFromSecretKey } from "@cloak.dev/sdk";
 import { readFileSync } from "fs";
 
-const signer = Keypair.fromSecretKey(
+const signer = await signerFromSecretKey(
   Uint8Array.from(JSON.parse(readFileSync(process.env.KEYPAIR_PATH!, "utf8"))),
 );
 
-const connection = new Connection(process.env.SOLANA_RPC_URL!, "confirmed");
+const connection = createCloakRpc(process.env.SOLANA_RPC_URL!);
 setDebugMode(true);
 
 // There is no client object. The signer travels per call, in TransactOptions.
@@ -183,9 +186,9 @@ import {
   swapWithChange,
   CLOAK_PROGRAM_ID,
 } from "@cloak.dev/sdk";
-import { Connection } from "@solana/web3.js";
+import { createCloakRpc } from "@cloak.dev/sdk";
 
-const connection = new Connection(process.env.SOLANA_RPC_URL!, "confirmed");
+const connection = createCloakRpc(process.env.SOLANA_RPC_URL!);
 const programId = CLOAK_PROGRAM_ID;
 ```
 
@@ -193,10 +196,10 @@ const programId = CLOAK_PROGRAM_ID;
 
 ```ts
 import { createSolanaRpc, address } from "@solana/kit";
-import { Connection } from "@solana/web3.js";
+import { createCloakRpc } from "@cloak.dev/sdk";
 
 const kitRpc = createSolanaRpc(process.env.SOLANA_RPC_URL!);
-const connection = new Connection(process.env.SOLANA_RPC_URL!, "confirmed");
+const connection = createCloakRpc(process.env.SOLANA_RPC_URL!);
 
 // Reads via Kit:
 const balance = await kitRpc.getBalance(address(signer.publicKey.toBase58())).send();
@@ -217,7 +220,7 @@ There is no client class. The transaction entry points are free functions, liste
 
 - `CLOAK_PROGRAM_ID`: `PublicKey`, mainnet program
 - `NATIVE_SOL_MINT`: `PublicKey`, SOL pool mint identity
-- `VERSION`: string, currently `"0.2.1"` -- lags the published package version (`0.2.2`) due to a known bug; informational only, don't use it to detect the installed package version (check `package.json` instead)
+- `VERSION`: string, currently `"0.2.5"` -- matches the published package version (it lagged before 0.2.5); informational only, don't use it to detect the installed package version (check `package.json` instead)
 - `setDebugMode(enabled: boolean)`: global SDK logging switch
 - `LocalStorageAdapter` / `MemoryStorageAdapter`: `StorageAdapter` implementations (see §5.13)
 
@@ -233,7 +236,7 @@ interface Utxo {
   amount: bigint;
   keypair: UtxoKeypair;
   blinding: bigint;
-  mintAddress: PublicKey;       // NATIVE_SOL_MINT for SOL
+  mintAddress: Address;       // NATIVE_SOL_MINT for SOL
   index?: number;               // leaf index after insertion
   commitment?: bigint;          // Poseidon(amount, pubkey, blinding, mintField)
   nullifier?: bigint;           // computed at spend time
@@ -241,17 +244,17 @@ interface Utxo {
 }
 
 // Exports:
-const NATIVE_SOL_MINT: PublicKey;
+const NATIVE_SOL_MINT: Address;
 
 function randomFieldElement(): bigint;
 function generateUtxoKeypair(): Promise<UtxoKeypair>;
 function deriveUtxoKeypairFromSpendKey(skSpend: Uint8Array): Promise<UtxoKeypair>;
 function derivePublicKey(privateKey: bigint): Promise<bigint>;
 
-function createUtxo(amount: bigint, keypair: UtxoKeypair, mint?: PublicKey): Promise<Utxo>;
-function createZeroUtxo(mint?: PublicKey, salt?: bigint): Promise<Utxo>;
+function createUtxo(amount: bigint, keypair: UtxoKeypair, mint?: Address): Promise<Utxo>;
+function createZeroUtxo(mint?: Address, salt?: bigint): Promise<Utxo>;
 
-function pubkeyToFieldElement(pubkey: PublicKey): bigint;
+function pubkeyToFieldElement(pubkey: Address): bigint;
 function computeUtxoCommitment(utxo: Utxo): Promise<bigint>;
 function computeSignature(privateKey: bigint, commitment: bigint, pathIndex: bigint): Promise<bigint>;
 function computeUtxoNullifier(utxo: Utxo): Promise<bigint>;
@@ -272,11 +275,11 @@ function utxoEquals(a: Utxo, b: Utxo): Promise<boolean>;
 // lands in `skipped`, which means UNVERIFIED, not absent.
 interface VerifyUtxosResult { spent: Utxo[]; unspent: Utxo[]; skipped: Utxo[]; }
 function verifyUtxos(
-  utxos: Utxo[], connection: Connection, programId: PublicKey,
+  utxos: Utxo[], connection: CloakRpc, programId: Address,
   commitment?: "processed" | "confirmed" | "finalized",
 ): Promise<VerifyUtxosResult>;
 function preflightNullifiers(                      // throws UtxoAlreadySpentError on a spent input
-  utxos: Utxo[], connection: Connection, programId: PublicKey,
+  utxos: Utxo[], connection: CloakRpc, programId: Address,
   commitment?: "processed" | "confirmed" | "finalized",
 ): Promise<void>;
 ```
@@ -307,17 +310,17 @@ gets that consolidation is running. `partialWithdraw` shares the same loop and t
 ```ts
 function transact(params: TransactParams, options: TransactOptions): Promise<TransactResult>;
 function transfer(inputUtxos: Utxo[], recipientPubkey: bigint, amount: bigint, options: TransactOptions): Promise<TransactResult>;
-function partialWithdraw(inputUtxos: Utxo[], recipient: PublicKey, withdrawAmount: bigint, options: TransactOptions): Promise<TransactResult>;
-function fullWithdraw(inputUtxos: Utxo[], recipient: PublicKey, options: TransactOptions): Promise<TransactResult>;
+function partialWithdraw(inputUtxos: Utxo[], recipient: Address, withdrawAmount: bigint, options: TransactOptions): Promise<TransactResult>;
+function fullWithdraw(inputUtxos: Utxo[], recipient: Address, options: TransactOptions): Promise<TransactResult>;
 function swapUtxo(params: UtxoSwapParams, options: TransactOptions): Promise<UtxoSwapResult>;
 function swapWithChange(
   inputUtxos: Utxo[],
   swapAmount: bigint,
-  outputMint: PublicKey,
-  recipientAta: PublicKey,
+  outputMint: Address,
+  recipientAta: Address,
   minOutputAmount: bigint,
   options: TransactOptions,
-  recipientWallet?: PublicKey,
+  recipientWallet?: Address,
 ): Promise<UtxoSwapResult>;
 
 // The swap result. It extends TransactResult, so it also carries `signature`, `outputUtxos`,
@@ -334,7 +337,7 @@ interface UtxoSwapResult extends TransactResult {
   };
 }
 
-function computeExtDataHash(recipient: PublicKey | null, relayerFee: bigint, relayer: PublicKey | null, maxFee?: bigint): Promise<bigint>;
+function computeExtDataHash(recipient: Address | null, relayerFee: bigint, relayer: Address | null, maxFee?: bigint): Promise<bigint>;
 
 // Chain note v4. The tail binds noteSemantics = Poseidon(outAmount0, outPubkey0, isSendToSelfKey0)
 // to match the ceremony circuit, so this is an EIGHT-argument hash, not four. `transact` computes
@@ -350,18 +353,18 @@ function resolveCircuitsBase(explicit?: string): string; // explicit → CLOAK_C
 
 function fetchRiskQuoteInstruction(
   riskQuoteUrl: string,
-  wallet: PublicKey,
+  wallet: Address,
   options: {                       // REQUIRED, and `poolMint` inside it is required too
-    poolMint: PublicKey;
-    recipient?: PublicKey;
+    poolMint: Address;
+    recipient?: Address;
     amount?: bigint;
-    token?: PublicKey;
+    token?: Address;
     commitment?: string | Uint8Array;
     context?: "deposit" | "send" | "withdraw";
     nullifier0?: string;
     nullifier1?: string;
   },
-): Promise<TransactionInstruction>;
+): Promise<Instruction>;
 
 const DEFAULT_TRANSACTION_CIRCUITS_URL: string | null; // ".../cloak-circuits/circuits/0.2.0" in 0.2.0
 const TRANSACTION_CIRCUITS_VERSION: "0.2.0";
@@ -393,8 +396,8 @@ Key `TransactOptions` fields (most used):
 
 ```ts
 interface TransactOptions {
-  connection: Connection;
-  programId: PublicKey;
+  connection: CloakRpc;
+  programId: Address;
   relayUrl?: string;                      // NO default, see §1; required on every flow.
                                           // Pass an allowlisted origin. "" is the caller-signed
                                           // direct-submission signal ONLY with
@@ -413,10 +416,10 @@ interface TransactOptions {
   signMessage?: (msg: Uint8Array) => Promise<Uint8Array>; // browser: authenticates relay-submitted
                                           // flows AND the viewing-key challenge, so it is required
                                           // in the browser on every flow, deposits included.
-  walletPublicKey?: PublicKey;            // the END USER'S real wallet, never an ephemeral or
+  walletPublicKey?: Address;            // the END USER'S real wallet, never an ephemeral or
                                           // service key. Passing depositorKeypair together with a
                                           // DIFFERENT walletPublicKey throws.
-  depositorPublicKey?: PublicKey;
+  depositorPublicKey?: Address;
 
   // UX / observability:
   onProgress?: (status: string) => void;
@@ -466,9 +469,9 @@ interface TransactOptions {
   swapStatusDelayMs?: number;
 
   // Risk oracle:
-  riskOracleQueue?: PublicKey;
+  riskOracleQueue?: Address;
   riskQuoteUrl?: string;
-  getRiskQuoteInstruction?: (wallet: PublicKey) => Promise<TransactionInstruction>; // one arg
+  getRiskQuoteInstruction?: (wallet: Address) => Promise<Instruction>; // one arg
   rangeApiKey?: string;
 }
 ```
@@ -522,8 +525,8 @@ the envelopes, supplies the candidate commitments and decrypts them for you.
 
 ```ts
 interface ScanOptions {
-  connection: Connection;
-  programId: PublicKey;
+  connection: CloakRpc;
+  programId: Address;
   viewingKeyNk: Uint8Array;
   limit?: number;
   afterTimestamp?: number;
@@ -536,7 +539,7 @@ interface ScanOptions {
   walletPublicKey?: string;
   includeRecipientDeliveries?: boolean; // sweep the CLKD1 delivery registry (default: true)
   ownerUtxoPublicKey?: bigint;          // this wallet's UTXO pubkey; without it deliveries arrive UNVERIFIED
-  deliveryMints?: PublicKey[];          // candidate pool mints for that verification (default: native SOL)
+  deliveryMints?: Address[];          // candidate pool mints for that verification (default: native SOL)
 }
 
 interface ScannedTransaction {
@@ -593,7 +596,7 @@ interface RecoveredDepositNoteRecord {  // extends RecoveredDepositNote extends 
   keypair: UtxoKeypair;
   blinding: bigint;
   amount: bigint;
-  mintAddress: PublicKey;
+  mintAddress: Address;
   commitment: bigint;   // the published commitment, reproduced from the derived secrets
   noteSalt: bigint;     // the salt the chain note carried, which anchored the derivation
   signature: string;    // the deposit transaction
@@ -607,7 +610,7 @@ function formatComplianceCsv(report: ComplianceReport): string;
 
 // Deposit-note recovery helpers (the builder side of `recoveredDepositNotes`).
 function createRecoverableDepositUtxo(
-  amount: bigint, viewingKeyNk: Uint8Array, mintAddress?: PublicKey, noteSalt?: bigint,
+  amount: bigint, viewingKeyNk: Uint8Array, mintAddress?: Address, noteSalt?: bigint,
 ): Promise<{ utxo: Utxo; noteSalt: bigint }>;
 function deriveDepositNoteSecrets(viewingKeyNk: Uint8Array, noteSalt: bigint): Promise<DepositNoteSecrets>;
 function randomDepositNoteSalt(): bigint;
@@ -666,15 +669,15 @@ interface DiscoveredSwapRefund extends RecoveredSwapRefund {
 }
 
 function discoverSwapRefunds(
-  connection: Connection,
-  programId: PublicKey,
+  connection: CloakRpc,
+  programId: Address,
   viewingKeyNk: Uint8Array,             // the SAME nk the swap was built with (§5.3)
   options?: {
     limit?: number;                     // program signatures to walk; omit or 0 for all history
     untilSignature?: string;            // resume cursor from a previous run (exclusive)
     batchSize?: number;                 // getTransaction concurrency, default 50
     onStatus?: (status: string) => void;
-    poolMint?: PublicKey;               // swap input is wSOL-locked; the SOL default is correct
+    poolMint?: Address;               // swap input is wSOL-locked; the SOL default is correct
   },
 ): Promise<DiscoveredSwapRefund[]>;
 
@@ -717,7 +720,7 @@ function deriveDiversifiedViewingKey(nk: Uint8Array, diversifier: Uint8Array): V
 function generateViewingKeyPair(): ViewingKeyPair;
 function registerViewingKey(
   relayUrl: string,
-  userPubkey: PublicKey,
+  userPubkey: Address,
   nk: Uint8Array,
   signMessage: (msg: Uint8Array) => Promise<Uint8Array>,
 ): Promise<void>;
@@ -732,13 +735,13 @@ function encryptTransactionMetadata(
   metadata: TransactionMetadata,
   userViewKeyPublic: Uint8Array,
   complianceKeyPublic: Uint8Array,
-  context?: { userPubkey?: PublicKey | string },
+  context?: { userPubkey?: Address | string },
 ): Promise<EncryptedMetadataBundle>;
 
 function encryptTransactionMetadataBundle(
   metadata: TransactionMetadata,
   viewingKeyPrivate: Uint8Array,
-  userPubkey: PublicKey,
+  userPubkey: Address,
 ): Promise<{
   encrypted_user: string;
   encrypted_compliance: string;
@@ -756,7 +759,7 @@ function decryptComplianceMetadataWithMasterKey(
   encrypted: string,
   masterCompliancePrivateKey: Uint8Array,
   masterCompliancePublicKey: Uint8Array,
-  userPublicKey: PublicKey,
+  userPublicKey: Address,
 ): Promise<TransactionMetadata>;
 ```
 
@@ -802,7 +805,7 @@ class RelayService {
 }
 
 function fetchCommitments(relayUrl: string, options?: {
-  mint?: PublicKey;
+  mint?: Address;
   timeoutMs?: number;
   maxRetries?: number;
   sync?: boolean;
@@ -815,7 +818,7 @@ function fetchCommitments(relayUrl: string, options?: {
 }): Promise<CommitmentEntry[]>;
 
 function buildMerkleTreeFromRelay(relayUrl: string, options?: {
-  mint?: PublicKey;
+  mint?: Address;
   sync?: boolean;
   repair?: boolean;
   requireTarget?: boolean;
@@ -826,11 +829,11 @@ function buildMerkleTreeFromRelay(relayUrl: string, options?: {
 }): Promise<MerkleTree>;
 
 function buildMerkleTreeFromChain(
-  connection: Connection,
-  programId: PublicKey,
-  merkleTree: PublicKey,
+  connection: CloakRpc,
+  programId: Address,
+  merkleTree: Address,
   onProgress?: (m: string) => void,
-  mint?: PublicKey,        // required in practice: without it a CloseSwapState refund leaf
+  mint?: Address,        // required in practice: without it a CloseSwapState refund leaf
                            // cannot be attributed to a tree and reconstruction fails closed
 ): Promise<MerkleTree>;
 
@@ -844,16 +847,16 @@ function preflightCheck(relayUrl: string, rootHex: string): Promise<{
 }>;
 
 function readMerkleTreeState(
-  connection: Connection,
-  merkleTreePDA: PublicKey,
+  connection: CloakRpc,
+  merkleTreePDA: Address,
   forceConfirmed?: boolean,
   relayUrl?: string,
   skipRelayRoot?: boolean,
-  mint?: PublicKey,
+  mint?: Address,
 ): Promise<{ nextIndex: number; root: string; subtrees: string[] }>;
 
-function computeProofFromChain(connection: Connection, merkleTreePDA: PublicKey, leafIndex: number, forceConfirmed?: boolean): Promise<OnchainMerkleProof>;
-function computeProofForLatestDeposit(connection: Connection, merkleTreePDA: PublicKey): Promise<OnchainMerkleProof & { leafIndex: number }>;
+function computeProofFromChain(connection: CloakRpc, merkleTreePDA: Address, leafIndex: number, forceConfirmed?: boolean): Promise<OnchainMerkleProof>;
+function computeProofForLatestDeposit(connection: CloakRpc, merkleTreePDA: Address): Promise<OnchainMerkleProof & { leafIndex: number }>;
 ```
 
 **Request authentication (all exported).** Standard integrations never call these: pass `signMessage` + `walletPublicKey` (browser) or `depositorKeypair` (server) in `TransactOptions` and the SDK signs for you. These exist for callers driving submission themselves.
@@ -873,13 +876,13 @@ const TRANSACT_AUTH_FIELDS: readonly ["encrypted_notes","max_fee","mint","proof_
 const TRANSACT_SWAP_AUTH_FIELDS: readonly ["close_timed_out","dexes","encrypted_notes","exclude_dexes","max_fee","min_output_amount","output_mint","proof_bytes","public_inputs","recipient","recipient_ata","refund_blinding","refund_pubkey","retry_request_id","risk_quote","route_retry_attempts","sender","slippage_bps","swap_max_retries"];
 
 interface RelayAuthPreimage { sender: string; auth_issued_at: string; auth_nonce: string; message: Uint8Array; }
-interface RelayAuthSigner  { walletPublicKey: PublicKey; signMessage: (m: Uint8Array) => Promise<Uint8Array>; }
+interface RelayAuthSigner  { walletPublicKey: Address; signMessage: (m: Uint8Array) => Promise<Uint8Array>; }
 
 function buildRelayAuthPreimage(
   endpoint: string,            // the exact path POSTed to, e.g. "/transact"
-  programId: PublicKey,
+  programId: Address,
   body: Record<string, unknown>,
-  sender: PublicKey,           // the END USER'S wallet; becomes `sender`
+  sender: Address,           // the END USER'S wallet; becomes `sender`
   nowSeconds?: number,
   fields?: readonly string[],  // TRANSACT_AUTH_FIELDS (default) | TRANSACT_SWAP_AUTH_FIELDS
 ): RelayAuthPreimage;
@@ -985,15 +988,15 @@ The `transaction` circuit (used by `transact`, `transfer`, `partialWithdraw`, `f
 
 ```ts
 function validateWalletConnected(wallet: WalletAdapter | Keypair): void;
-function getPublicKey(wallet: WalletAdapter | Keypair): PublicKey;
+function getPublicKey(wallet: WalletAdapter | Keypair): Address;
 function sendTransaction(
   tx: Transaction,
   wallet: WalletAdapter | Keypair,
-  connection: Connection,
+  connection: CloakRpc,
   options?: SendOptions,
 ): Promise<string>;
 function signTransaction<T extends Transaction>(tx: T, wallet: WalletAdapter | Keypair): Promise<T>;
-function keypairToAdapter(keypair: Keypair): WalletAdapter;
+// keypairToAdapter was REMOVED in 0.2.5 -- pass a Kit `KeyPairSigner` (signerFromSecretKey) directly.
 ```
 
 `UtxoWallet` and `SimpleWallet` are also exported and are NOT send paths. `UtxoWallet.prepareSend`
@@ -1079,11 +1082,11 @@ class LocalStorageAdapter implements StorageAdapter {
   constructor(notesKey?: string, keysKey?: string); // defaults: "cloak_notes", "cloak_wallet_keys"
 }
 
-function getShieldPoolPDAs(programId?: PublicKey, mint?: PublicKey): {
-  pool: PublicKey; merkleTree: PublicKey; vaultAuthority: PublicKey; treasury: PublicKey;
+function getShieldPoolPDAs(programId?: Address, mint?: Address): {
+  pool: Address; merkleTree: Address; vaultAuthority: Address; treasury: Address;
 };
-function getNullifierPDA(poolPubkey: PublicKey, nullifier: Uint8Array | Buffer, programId?: PublicKey): [PublicKey, number];
-function getSwapStatePDA(poolPubkey: PublicKey, nullifier: Uint8Array | Buffer, programId?: PublicKey): [PublicKey, number];
+function getNullifierPDA(poolPubkey: Address, nullifier: Uint8Array | Buffer, programId?: Address): [PublicKey, number];
+function getSwapStatePDA(poolPubkey: Address, nullifier: Uint8Array | Buffer, programId?: Address): [PublicKey, number];
 ```
 
 ### 5.14 Pending operations persistence (browser-only)
@@ -1143,9 +1146,9 @@ All recipes assume you created:
 
 ```ts
 import { CLOAK_PROGRAM_ID, CLOAK_PRODUCTION_RELAY_URL, getPublicKey } from "@cloak.dev/sdk";
-import { Connection } from "@solana/web3.js";
+import { createCloakRpc } from "@cloak.dev/sdk";
 
-const connection = new Connection(process.env.SOLANA_RPC_URL!, "confirmed");
+const connection = createCloakRpc(process.env.SOLANA_RPC_URL!);
 const programId  = CLOAK_PROGRAM_ID;
 const relayUrl   = CLOAK_PRODUCTION_RELAY_URL;
 
@@ -1500,12 +1503,12 @@ const wd = await fullWithdraw([dep.outputUtxos[0]], recipientPublicKey, {
 
 ```ts
 import { NATIVE_SOL_MINT, serializeUtxo, swapWithChange } from "@cloak.dev/sdk";
-import { PublicKey } from "@solana/web3.js";
+import { address } from "@cloak.dev/sdk";
 import { getAssociatedTokenAddress } from "@solana/spl-token";
 import { createJupiterApiClient } from "@jup-ag/api";
 
 const swapAmount = 250_000_000n;                       // 0.25 SOL
-const outputMint = new PublicKey("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"); // USDC
+const outputMint = address("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"); // USDC
 const recipientAta = await getAssociatedTokenAddress(outputMint, sender.publicKey);
 
 // Quote (Jupiter) -> pick minOut:
@@ -1765,7 +1768,7 @@ do not adapt the Node one by hand.
 12. Do not generate `SENDER_PRIVATE_KEY` or `AMOUNT_SOL` + `parseFloat(...)` patterns.
 13. Do not generate `RECIPIENT_ADDRESS` / `SEND_LAMPORTS` env contracts for one-file CLI scripts.
 14. For standalone script entrypoints, terminate explicitly with `process.exit(0)` on success and `process.exit(1)` on failure.
-15. In BROWSER code, never generate `depositorKeypair`, `Keypair.fromSecretKey`, or a `keypair.json` path for a send/withdraw/swap. A wallet adapter cannot supply one. Generate `signMessage` + `walletPublicKey` from `useWallet()` instead, and guard on `signMessage` being present before offering the action.
+15. In BROWSER code, never generate `depositorKeypair`, `signerFromSecretKey`, or a `keypair.json` path for a send/withdraw/swap. A wallet adapter cannot supply one. Take `signMessage` and `publicKey` from `useWallet()` instead, pass `walletPublicKey: addressFromPublicKey(publicKey)` (the adapter yields a web3.js `PublicKey`; Cloak options take a Kit `Address`), and guard on `signMessage` being present before offering the action.
 16. Never substitute an ephemeral, session or service-held key for the authenticated `sender`. It is the key screened for sanctions; substituting it moves screening off the actual user.
 17. Do not hand-roll the request-auth scheme when `submitTransactToRelay` will do. If you do hand-roll it, use `buildRelayAuthPreimage` + `canonicalJson` and read `TRANSACT_AUTH_FIELDS` / `TRANSACT_SWAP_AUTH_FIELDS` from the package rather than retyping them.
 18. Never claim an integrator must use a Cloak-operated RPC. Only the submission endpoint is pinned; the `Connection` is entirely the caller's, and any non-loopback RPC works.

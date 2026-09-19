@@ -80,7 +80,9 @@
               "sdk/kit-integration",
               "sdk/core-concepts",
               "sdk/utxo-transactions",
+              "sdk/batch-signing",
               "sdk/shielded-transfers",
+              "sdk/bridge",
               "sdk/wallet-integration",
               "sdk/error-handling",
               "sdk/api-reference"
@@ -103,6 +105,7 @@
           {
             "group": "Releases",
             "pages": [
+              "releases/2026-09-sdk-0.2.5",
               "releases/2026-08-mainnet"
             ]
           },
