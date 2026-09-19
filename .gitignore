@@ -1,19 +1,6 @@
-# deps
-/node_modules
-
-# generated content (fumadocs-mdx)
-.source
-
-# build
-/.next/
-/out/
-/build
-*.tsbuildinfo
-next-env.d.ts
-
-# misc
+node_modules/
 .DS_Store
-.env*.local
-.vercel
-npm-debug.log*
 yarn.lock
+
+# `mint export` static air-gapped build output
+export.zip

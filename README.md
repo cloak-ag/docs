@@ -1,65 +1,85 @@
 # Documentation
 
-This folder contains the Cloak docs site, built with [Fumadocs](https://fumadocs.dev) on Next.js and deployed on Vercel: the user guide and explainers, the SDK, the platform and on-chain program docs, circuits, and the AI tooling setup pages.
+This folder contains the Mintlify docs site for Cloak: the user guide and explainers, the SDK, the platform and on-chain program docs, circuits, and the AI tooling setup pages.
 
 ## Local development
 
+1. Install Mintlify CLI:
+
 ```bash
-npm install
-npm run dev
+npm i -g mint
 ```
 
-Open http://localhost:3000. The root URL redirects to `/guide/what-is-cloak`.
+2. Start docs preview from this folder:
 
-`npm run build` produces the production build (this is what Vercel runs).
+```bash
+mint dev
+```
+
+3. Open the preview URL printed by `mint dev`.
+
+## Checks before you open a PR
+
+This repo has no CI: no workflows, no build step, no test gate. These are the checks, and they run locally:
+
+```bash
+mint dev             # local preview at the URL it prints
+mint validate        # strict build validation; exits on warnings or errors
+mint broken-links    # link check across the site
+```
+
+Two things `mint` does not check, so check them by hand when you add a page:
+
+- Every page must be listed in `docs.json` under the right tab and group, or it renders nowhere.
+- `llms.txt`, `llms-full.txt` and `.well-known/llms.txt` are written by hand, not generated. A new page that belongs in the AI index has to be added to them too.
+
+## Deploys, and the staging path
+
+Mintlify deploys this site; nothing in this repo builds or publishes it. There is no CI, workflow, or deploy config in this repo to confirm it, but as far as can be told, the Mintlify GitHub App is connected to `cloak-ag/docs` and publishes the site from the project's deployment branch.
+
+The branch chain is the same one every Cloak repo uses:
+
+| Branch | What it is |
+| --- | --- |
+| a topic branch (`docs/...`, `feat/...`) | where you write |
+| `staging` | long-lived pre-production. Changes land here first and the team reads them here |
+| `main` | production, presumably: `docs.cloak.ag` is assumed to be built from this branch, but the actual deployment branch is a dashboard setting this repo can't confirm (see below) |
+
+How a writer checks a change before it reaches production:
+
+1. Branch off `staging`, write, and run the three commands above locally.
+2. Open the PR against `staging`. Mintlify builds a preview deployment for the pull request and links it from the PR — that preview, not the local `mint dev`, is what a reviewer should read.
+3. Merge to `staging`. If a staging docs site is configured (see below), this publishes it.
+4. When the release ships, open `staging` → `main`. Merging to `main` publishes production.
+
+### Dashboard settings only an admin can make
+
+A Mintlify project deploys one branch, and both the deployment branch and preview behaviour are dashboard settings — no file in this repo can make `staging` a deployed environment. Confirm the current options on the plan in use, then pick one:
+
+- **A second Mintlify project** connected to this same repo with its deployment branch set to `staging` and its own subdomain (for example `docs-staging.cloak.ag`). This is the only way to get a persistent staging site with a stable URL. It should be excluded from search indexing so it never competes with production.
+- **Pull-request previews only.** Keep the single project on `main` and treat the per-PR preview link as the review artifact. Cheaper, but there is no stable staging URL and the preview goes away when the PR closes.
+
+Record which one was chosen here once it is set up.
+
+<!-- Branch protection is not available on this GitHub plan, so nothing mechanically stops a
+     push straight to `main` from publishing. The `staging` step is a team convention, not an
+     enforced gate; treat a direct push to `main` as a production deploy. -->
 
 ## Structure
 
-Pages live under `content/docs/`, grouped into one folder per sidebar tab. The tab folders are wrapped in parentheses so they do not affect URLs: `content/docs/(guide)/guide/fees.mdx` is served at `/guide/fees`.
-
-- `content/docs/(guide)/`
-  - `guide/` user-facing guide (what-is-cloak, how-it-works, private balance, private send, fees, payment links, security, compliance, verified addresses, FAQ, glossary, wallets and tokens)
-  - `learn/` plain-language explainers (privacy, zero-knowledge, proof of funds)
-- `content/docs/(documentation)/`
-  - `sdk/` SDK guides and API references
-  - `platform/` architecture components and transaction flows
-  - `protocol/` on-chain architecture and Shield Pool docs
-  - `architecture/` viewing-key and compliance model docs
-  - `packages/` circuit pipeline docs
-  - `releases/` dated release notes
-  - `development/` devnet integration guide
-  - `operations/` runtime trust boundaries and security controls for integrators
-- `content/docs/(ai-tools)/ai-tools/` IDE/assistant setup pages
-- `public/` static files served as-is: `llms.txt` (top-level AI index and route map), `llms-full.txt` (single-file AI context pack), `sdk/llms.txt`, `.well-known/llms.txt`, images, diagrams, logos, favicon
-
-Site code:
-
-- `lib/source.ts` content source (`fumadocs-mdx` collection + `loader()`)
-- `lib/layout.shared.tsx` navbar: logo, links, GitHub
-- `lib/shared.ts` site name, canonical URL, route prefixes
-- `app/(docs)/` docs layout and the catch-all page route
-- `app/api/search/route.ts` built-in search (Orama)
-- `app/llms.mdx/` per-page Markdown (used by the "copy page" button); `app/og/` Open Graph images
-- `components/mdx.tsx` MDX components, including the Mintlify-compatible shims
-
-## Navigation
-
-Sidebar order and grouping is declared in the `meta.json` of each tab folder (`content/docs/(guide)/meta.json`, `content/docs/(documentation)/meta.json`, `content/docs/(ai-tools)/meta.json`). Each has `"root": true`, which is what makes it a tab. Group headings are `"---Label---"` entries and pages are listed as `"./folder/page"`.
-
-Adding a page means creating the `.mdx` file (frontmatter: `title`, `description`, optional `icon`) and adding it to the right `meta.json`, or it will not appear in the sidebar. Tab order is set in `content/docs/meta.json`.
-
-## Writing pages
-
-- `icon` values (frontmatter and `<Card icon="...">`) are [Lucide](https://lucide.dev/icons) icon names in PascalCase, e.g. `Wallet`, `ShieldCheck`.
-- `<Note>`, `<Tip>`, `<Warning>`, `<Card>`, `<CardGroup cols={n}>`, `<Accordion title="...">` and `<AccordionGroup>` keep working (see `components/mdx.tsx`). Fumadocs' own components (`Callout`, `Cards`, `Tabs`, `Steps`, ...) are available too.
-- Tabbed code samples use the Fumadocs syntax: give consecutive fences a `tab="Label"` meta string. A single titled block uses `title="file.ts"`.
-- Use absolute links (`/sdk/quickstart`) between pages.
-
-## Deployment
-
-The site is a standard Next.js app on Vercel (`vercel.json` pins the framework). Pushing to `main` deploys production; every branch gets a preview URL.
-
-The custom domain (`docs.cloak.ag`) is configured on the Vercel project, not in this repo: Project Settings → Domains → add the domain, then create the `docs` CNAME at the DNS provider pointing at the target Vercel shows. The only place the domain appears in code is `siteUrl` in `lib/shared.ts`, used for canonical and Open Graph URLs.
+- `guide/` user-facing guide (what-is-cloak, how-it-works, private balance, bridge, private send, fees, payment links, security, bridge routes, compliance, verified addresses, FAQ, glossary, wallets and tokens)
+- `learn/` plain-language explainers (privacy, zero-knowledge, proof of funds)
+- `sdk/` SDK guides and API references
+- `platform/` architecture components and transaction flows
+- `protocol/` on-chain architecture and Shield Pool docs
+- `architecture/` viewing-key and compliance model docs
+- `packages/` circuit pipeline docs
+- `development/` devnet integration guide
+- `operations/` runtime trust boundaries and security controls for integrators
+- `ai-tools/` IDE/assistant setup pages
+- `llms.txt` top-level AI index and route map
+- `llms-full.txt` single-file AI context pack
+- `.well-known/llms.txt` compatibility alias for AI tooling
 
 ## Source of truth
 
