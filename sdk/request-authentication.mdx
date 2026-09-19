@@ -487,25 +487,23 @@ void verifyAllCircuits(getCircuitsPath());
 headers of yours and none of your user's data; it is a static download of the public ceremony bundle,
 and the digest pin is why fetching it from a Cloak-controlled host is safe rather than trusting.
 It differs from the RPC in one way worth knowing before you plan around it: like the submission
-endpoint, the base is fixed when the SDK is built, so re-serving the artifacts from your own CDN is a
-source edit and a rebuild, not a call option. `setCircuitsPath()` does accept a local directory
+endpoint, the base is fixed when the SDK is built, so re-serving the artifacts from your own CDN is
+not a call option. `setCircuitsPath()` does accept a local directory
 holding the same two files, which covers an offline or air-gapped Node process, but a browser has no
 filesystem to read and refuses that shape.
 </Note>
 
-### Developing against a local stack
+### Pointing at a non-production endpoint
 
-Edit `RELAY_ORIGIN_ALLOWLIST` in `src/config/relay.ts` and rebuild the SDK:
+You cannot. The allowed origins are decided when the SDK is built, so a published build reaches
+exactly one submission endpoint and nothing a consumer supplies changes that — not a call option,
+not an environment variable, not a bundler define. `CLOAK_PRODUCTION_RELAY_URL` is the value to
+pass; anything else throws before a request is made, naming what you passed and what this build is
+pinned to. The loopback-RPC guard (`BUILD_ALLOWS_LOCAL_ENDPOINTS`) is derived from the same pin, so
+a production build also refuses a `localhost` RPC.
 
-```typescript
-export const RELAY_ORIGIN_ALLOWLIST: readonly string[] = ["http://127.0.0.1:5500"];
-```
-
-**Replace the entry, do not append.** Appending leaves production reachable from a local build,
-which is the pairing that lets a local rehearsal POST real proof data to production. Replacing makes
-production unreachable from a local build at every egress point, rather than merely not the default.
-The same single edit disarms the loopback-RPC guard, because that guard is derived from the
-allowlist rather than tracked separately (`BUILD_ALLOWS_LOCAL_ENDPOINTS`).
+If you need a non-production target for an integration rehearsal, talk to us rather than working
+around the pin.
 
 <Note>
 **Why this is not an environment variable.** An env var, a `NODE_ENV` check or a bundler define all
@@ -514,7 +512,7 @@ moment the pin exists to constrain, so a value read there pins nothing. The only
 artifact carries that a consumer cannot supply is one decided when the artifact was built. It is an
 integrity and product-control mechanism, not a security boundary: anyone who can run code in the
 consumer's process can patch it. What it buys is that the correct endpoint is the only one reachable
-**by accident**, and any deviation is a deliberate, visible, auditable edit.
+**by accident**.
 </Note>
 
 ## Related pages

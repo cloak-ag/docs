@@ -25,9 +25,9 @@ Open the preview URL `mint dev` prints. Nothing else to build or install.
   and on-chain Shield Pool docs.
 - `architecture/` — viewing-key and compliance model.
 - `packages/` — circuit pipeline docs.
-- `development/` — devnet integration guide.
 - `operations/` — runtime trust boundaries for integrators.
-- `releases/` — dated release notes (e.g. `releases/2026-08-mainnet.mdx`).
+- `releases/` — one page, `releases/latest.mdx`, describing what is live now. Do not
+  add dated release pages; update that page instead.
 - `ai-tools/` — IDE/assistant setup pages.
 - `llms.txt`, `llms-full.txt`, `.well-known/llms.txt` — AI index and context
   pack, kept in sync with the real page set.
@@ -63,7 +63,7 @@ Open the preview URL `mint dev` prints. Nothing else to build or install.
 - Fees are on-chain program policy: read from the per-mint `pool_config` PDA
   and collected by the program into the treasury. Never attribute fees to
   the SDK or any other component. Source fee constants from
-  `programs/shield-pool/src/constants.rs` and the deployed `PoolConfig`.
+  the program's own constants and the deployed `PoolConfig`.
 - Swaps are Jupiter-only. Never name another DEX or aggregator.
 - The wallet adapter is the signer. Never instruct a reader to provide a
   keypair file/path as if it were an app-facing flow.
@@ -82,14 +82,9 @@ Open the preview URL `mint dev` prints. Nothing else to build or install.
   by `signerFromWalletAdapter`. `keypairToAdapter` and the `WalletAdapter`
   type were removed, and `RelayAuthSigner` is now a Kit signer built with
   `messageSignerFromCallback`. Every `sdk/` page and `sdk/llms.txt` is
-  migrated; source new samples from the SDK repo's `examples/`, which CI
+  migrated; source new samples from the SDK's maintained examples, which CI
   dry-runs, and never hand a wallet-adapter `PublicKey` straight to a Cloak
   option — convert it with `addressFromPublicKey`.
-- **`development/devnet.mdx` is deliberately NOT Kit.** It documents
-  `@cloak.dev/sdk-devnet`, a separate release line that tracks an older SDK
-  and is not the published `@cloak.dev/sdk`. Its web3.js samples are correct
-  for that package; do not "fix" them. The same applies to the legacy
-  `WalletAdapter` block in `sdk/llms.txt`, which is annotated as removed.
 - The SDK repo's `docs/transact-split.md` (an internal refactor plan marked
   "PLAN ONLY") and `docs/DEPOSIT-SIZE-NOTES.md` (0.2.0-era internal
   measurements) stay unpublished: this site documents implemented,

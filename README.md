@@ -77,15 +77,18 @@ not a gate and nothing deploys from it; ignore it.
 
 ## Source of truth
 
-When updating docs, prioritize these sources:
+When updating docs, verify against what ships rather than against memory:
 
-- SDK exports: `sdk/src/index.ts`
-- SDK runtime behavior: `sdk/src/flows/*` (`transact`, `transfer`, `partialWithdraw`/`fullWithdraw`, `swapUtxo`/`swapWithChange` all live in `flows/transact.ts`), `sdk/src/proving/*`, `sdk/src/notes/*`, `sdk/src/scanning/*`, `sdk/src/program/*` (PDAs, instructions, error map), `sdk/src/wallet/*`, `sdk/src/shared/*`
-- Program behavior: `programs/shield-pool/src/*`
-- Submission and retry semantics: `sdk/src/relay/*` (client side only; the submission service itself is not a documented surface)
-- Circuits/build flow: `packages/circuits/*`, `packages/scripts/*`
+- Exported SDK signatures: the published package's own type declarations.
+- Runtime behaviour: the published package, and the maintained examples that CI dry-runs.
+- On-chain behaviour, fees and minimums: the deployed program and its per-mint `PoolConfig`.
+- Circuits: the published bundle and its digests.
+
+Do not cite internal module layout or file locations in any page. The rendered site is read by
+integrators who have the package and the chain, not the implementation, so a path is never a usable
+reference for them — describe the behaviour or name the exported symbol instead.
 
 ## Notes
 
-- Fees are on-chain program fees, read from the per-mint `pool_config` PDA and collected by the program into the treasury. Only the program collects them; never describe a fee as belonging to any other component. Take fee constants and minimums from `programs/shield-pool/src/constants.rs` and the deployed `PoolConfig`, never from SDK code, and keep program IDs and fee constants matching the deployed program, which is the source of truth.
+- Fees are on-chain program fees, read from the per-mint `pool_config` PDA and collected by the program into the treasury. Only the program collects them; never describe a fee as belonging to any other component. Take fee constants and minimums from the program's own constants and the deployed `PoolConfig`, never from SDK code, and keep program IDs and fee constants matching the deployed program, which is the source of truth.
 - Prefer documenting implemented behavior over planned behavior.

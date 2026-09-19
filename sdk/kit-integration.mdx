@@ -36,7 +36,7 @@ how many prompts to expect, is [Request authentication](/sdk/request-authenticat
 ## Install
 
 ```bash
-npm install @cloak.dev/sdk @solana/kit
+npm install @cloak.dev/sdk@0.2.5 @solana/kit
 ```
 
 Browser apps add the wallet adapter and `@solana/web3.js`, which the adapter bridge needs:
@@ -71,8 +71,9 @@ That pair is not a frontend recipe: with a signer present it submits a transfer 
 the user's own key, publicly linking it.
 </Warning>
 
-To point a Kit app at a local stack, edit the allowlist and rebuild the SDK. See
-[Developing against a local stack](/sdk/request-authentication#developing-against-a-local-stack).
+A published build reaches exactly one submission endpoint and cannot be repointed by a Kit app, or
+any other consumer. See [Pointing at a non-production
+endpoint](/sdk/request-authentication#pointing-at-a-non-production-endpoint).
 
 ## Wiring a browser Kit app
 
@@ -143,9 +144,10 @@ const options = {
 `generateKeyPairSigner()` gives a throwaway signer for tests, and `signerFromKeypair({ secretKey })`
 accepts an object that already carries raw secret-key bytes.
 
-## Coming from web3.js
+## Migration history: coming from web3.js
 
-If you are upgrading an integration written against 0.2.2 or earlier:
+This section is historical, for upgrading an integration written against 0.2.4 or earlier. Every
+example above already uses the current 0.2.5 Kit API; nothing here is a current instruction.
 
 | Before (≤ 0.2.4) | Now (0.2.5) |
 |---|---|

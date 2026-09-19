@@ -92,12 +92,8 @@ The primary integration path is the SDK UTXO API.
   - Purpose: circuit build and consumption pipeline.
 - `/operations/security`
   - Purpose: trust boundaries and security controls.
-- `/development/devnet`
-  - Purpose: devnet addresses and faucet for the separate `@cloak.dev/sdk-devnet` release line. The hosted devnet endpoint is not serving and that package tracks an older SDK line; build against `@cloak.dev/sdk` instead.
-- `/releases/2026-09-sdk-0.2.5`
-  - Purpose: SDK 0.2.2–0.2.5 release facts — the `@solana/kit` migration and its breaking type changes, removed `keypairToAdapter`/`WalletAdapter`, batch signing, bridging in, `relaySupplementalAlt` one-signature SPL deposits. The on-chain program, verifying key and circuits `0.2.0` bundle are unchanged.
-- `/releases/2026-08-mainnet`
-  - Purpose: 2026-08-24 mainnet release facts — program artifact hash, ceremony verifying-key hashes, circuits `0.2.0` bundle hashes, per-pool fees/minimums, SDK 0.2.0 recovery features.
+- `/releases/latest`
+  - Purpose: what is live now — deployed program ID and artifact sha256, ceremony verifying-key and circuits `0.2.0` digests plus a verify-it-yourself recipe, per-pool fees and minimums, compliance model, and the current SDK release (0.2.5, `@solana/kit`-based).
 
 ### AI tools
 
@@ -163,7 +159,7 @@ These are intentionally repeated here because agents often miss them.
 6. Transaction signatures are public and can be logged for support/debugging.
 7. Viewing-key registration affects scanner/compliance readability.
 8. Fees are enforced on-chain by the program from each pool's `PoolConfig` (SOL: 0.005 SOL fixed + 0.3%; USDC/USDT: 0.45 fixed + 0.3%; withdrawals and swaps only). Minimum deposit: 0.01 SOL, 1.00 USDC, 1.00 USDT. Do not describe fees as relay or SDK fees.
-9. Proving artifacts: only the `circuits/0.2.0` ceremony bundle is accepted by the program (zkey `9da7db8c…68d25`, wasm `02ec02e9…8aa2b`); the SDK verifies digests before proving. Never hand-write a `0.1.0` URL. See `/releases/2026-08-mainnet`.
+9. Proving artifacts: only the `circuits/0.2.0` ceremony bundle is accepted by the program (zkey `9da7db8c…68d25`, wasm `02ec02e9…8aa2b`); the SDK verifies digests before proving. Never hand-write a `0.1.0` URL. See `/releases/latest`.
 10. Private sends, withdrawals and swaps are submitted on the caller's behalf and each request carries an authenticated sender; deposits are wallet-signed straight to chain and carry none. Browser: pass `signMessage` + `walletPublicKey`. Server: pass `depositorKeypair`. With neither, the call throws before proof generation. Never generate `depositorKeypair` in browser send/withdraw code (a wallet adapter cannot supply one), and never substitute an ephemeral or service key for the sender: it is the key screened for sanctions. A send or withdrawal prompts once; only swaps re-prompt, capped by `maxWalletApprovals` (default 5). See `/sdk/request-authentication`.
 11. Only the submission endpoint is pinned, at SDK build time. The RPC is the caller's own `Connection` and any non-loopback RPC is fine; a production build refuses only a loopback RPC. Never tell an integrator they must use a Cloak-operated RPC.
 12. The single most misread pair of facts in these docs. `@cloak.dev/sdk` accepts exactly two values for `relayUrl`: an origin on the build-time allowlist (name it with `CLOAK_PRODUCTION_RELAY_URL` instead of typing a host), or `""` for caller-signed direct submission. Both of the following are true, and the second sentence is the condition that reconciles them: (a) omitting `relayUrl`, or passing `""`, throws `Viewing key registration is mandatory: relayUrl is required.` before any network call, on every flow including deposits; (b) `""` only behaves as the direct-submission signal when `enforceViewingKeyRegistration: false` is set in the same `TransactOptions`, because the viewing-key gate defaults ON and runs first. Standard integrations pass the allowlisted origin and nothing else. Never generate the `""` plus `enforceViewingKeyRegistration: false` pairing for a private send, withdrawal or swap: it submits under the end user's own key and publicly links the transaction to them, which is the opposite of what the flow exists for. See `/sdk/llms.txt` §1 and invariant 7.
@@ -202,17 +198,19 @@ import {
   createZeroUtxo,
   fullWithdraw,
   generateUtxoKeypair,
+  createCloakRpc,
+  generateKeyPairSigner,
   serializeUtxo,
+  signerFromSecretKey,
   transact,
 } from "@cloak.dev/sdk";
-import { Connection, Keypair } from "@solana/web3.js";
 import { readFileSync } from "node:fs";
 
 // Your own durable store. The SDK ships nothing that plays this role.
 declare function saveNoteBytes(bytes: Uint8Array): Promise<void>;
 
-const connection = new Connection("https://api.mainnet-beta.solana.com", "confirmed");
-const signer = Keypair.fromSecretKey(
+const connection = createCloakRpc("https://api.mainnet-beta.solana.com");
+const signer = await signerFromSecretKey(
   Uint8Array.from(JSON.parse(readFileSync(process.env.KEYPAIR_PATH!, "utf8"))),
 );
 
@@ -225,14 +223,14 @@ const deposited = await transact(
     inputUtxos: [await createZeroUtxo(NATIVE_SOL_MINT)],
     outputUtxos: [output],
     externalAmount: amount,
-    depositor: signer.publicKey,
+    depositor: signer.address,
   },
   {
     connection,
     programId: CLOAK_PROGRAM_ID,
     relayUrl: CLOAK_PRODUCTION_RELAY_URL,   // no default; omitting it throws (contract 12)
     depositorKeypair: signer,
-    walletPublicKey: signer.publicKey,
+    walletPublicKey: signer.address,
   },
 );
 
@@ -241,7 +239,7 @@ const deposited = await transact(
 // this note is the only claim on it. `saveNoteBytes` is your own store.
 await saveNoteBytes(serializeUtxo(deposited.outputUtxos[0]));
 
-const recipient = Keypair.generate().publicKey;
+const recipient = (await generateKeyPairSigner()).address;
 
 await fullWithdraw(deposited.outputUtxos, recipient, {
   connection,
@@ -300,14 +298,18 @@ Return a capability matrix, file patches, commands run, and verification summary
 
 ---
 
-## 7) Sources of truth in this repository
+## 7) Sources of truth
 
-When docs and code differ, validate against implementation:
-- TypeScript SDK exports: `sdk/src/index.ts`
-- TypeScript SDK runtime: `sdk/src/flows/*`, `sdk/src/proving/*`, `sdk/src/notes/*`, `sdk/src/scanning/*`, `sdk/src/program/*`, `sdk/src/wallet/*`, `sdk/src/shared/*`
-- Program behavior: `programs/shield-pool/src/*`
-- Submission and retry semantics: `sdk/src/relay/*` (client side only; the submission service itself is not a documented surface)
-- Circuits/build flow: `packages/circuits/*`, `packages/scripts/*`
+Validate against what ships, in this order:
+
+- The installed package's own type declarations, which are authoritative for every exported
+  signature: `@cloak.dev/sdk` ships `.d.ts` alongside its ESM and CJS builds.
+- `/sdk/llms.txt`, the exhaustive contract map for that package.
+- Observed on-chain state: the deployed program, its PDAs and the published verifying key.
+- The published circuits bundle and its digests, which the SDK verifies before proving.
+
+Module layout and internal file organisation are not part of the published surface; do not infer
+behaviour from them or cite them.
 
 ---
 
