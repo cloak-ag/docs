@@ -33,37 +33,31 @@ Two things `mint` does not check, so check them by hand when you add a page:
 - Every page must be listed in `docs.json` under the right tab and group, or it renders nowhere.
 - `llms.txt`, `llms-full.txt` and `.well-known/llms.txt` are written by hand, not generated. A new page that belongs in the AI index has to be added to them too.
 
-## Deploys, and the staging path
+## Deploys
 
-Mintlify deploys this site; nothing in this repo builds or publishes it. There is no CI, workflow, or deploy config in this repo to confirm it, but as far as can be told, the Mintlify GitHub App is connected to `cloak-ag/docs` and publishes the site from the project's deployment branch.
+Mintlify deploys this site; nothing in this repo builds or publishes it, and there is no CI here.
+The Mintlify project `cloak/cloak` is connected to `cloak-ag/docs` and **deploys `main`** — that is
+the deployment branch shown in the Mintlify dashboard, not an inference.
 
-The branch chain is the same one every Cloak repo uses:
+`main` is the only branch that matters:
 
 | Branch | What it is |
 | --- | --- |
 | a topic branch (`docs/...`, `feat/...`) | where you write |
-| `staging` | long-lived pre-production. Changes land here first and the team reads them here |
-| `main` | production, presumably: `docs.cloak.ag` is assumed to be built from this branch, but the actual deployment branch is a dashboard setting this repo can't confirm (see below) |
+| `main` | production. A merge here publishes `docs.cloak.ag`. |
 
 How a writer checks a change before it reaches production:
 
-1. Branch off `staging`, write, and run the three commands above locally.
-2. Open the PR against `staging`. Mintlify builds a preview deployment for the pull request and links it from the PR — that preview, not the local `mint dev`, is what a reviewer should read.
-3. Merge to `staging`. If a staging docs site is configured (see below), this publishes it.
-4. When the release ships, open `staging` → `main`. Merging to `main` publishes production.
+1. Branch off `main`, write, and run the three commands above locally.
+2. Open the PR against `main`. Mintlify builds a preview deployment for the pull request and links
+   it from the PR — that preview, not the local `mint dev`, is what a reviewer should read.
+3. Merge to `main`. That publishes production.
 
-### Dashboard settings only an admin can make
+The repo also has a long-abandoned `staging` branch, diverged from `main` in both directions. It is
+not a gate and nothing deploys from it; ignore it.
 
-A Mintlify project deploys one branch, and both the deployment branch and preview behaviour are dashboard settings — no file in this repo can make `staging` a deployed environment. Confirm the current options on the plan in use, then pick one:
-
-- **A second Mintlify project** connected to this same repo with its deployment branch set to `staging` and its own subdomain (for example `docs-staging.cloak.ag`). This is the only way to get a persistent staging site with a stable URL. It should be excluded from search indexing so it never competes with production.
-- **Pull-request previews only.** Keep the single project on `main` and treat the per-PR preview link as the review artifact. Cheaper, but there is no stable staging URL and the preview goes away when the PR closes.
-
-Record which one was chosen here once it is set up.
-
-<!-- Branch protection is not available on this GitHub plan, so nothing mechanically stops a
-     push straight to `main` from publishing. The `staging` step is a team convention, not an
-     enforced gate; treat a direct push to `main` as a production deploy. -->
+<!-- Branch protection is not available on this GitHub plan, so nothing mechanically stops a push
+     straight to `main`. Treat any merge to `main` as a production deploy. -->
 
 ## Structure
 
