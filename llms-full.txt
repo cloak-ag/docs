@@ -198,17 +198,19 @@ import {
   createZeroUtxo,
   fullWithdraw,
   generateUtxoKeypair,
+  createCloakRpc,
+  generateKeyPairSigner,
   serializeUtxo,
+  signerFromSecretKey,
   transact,
 } from "@cloak.dev/sdk";
-import { Connection, Keypair } from "@solana/web3.js";
 import { readFileSync } from "node:fs";
 
 // Your own durable store. The SDK ships nothing that plays this role.
 declare function saveNoteBytes(bytes: Uint8Array): Promise<void>;
 
-const connection = new Connection("https://api.mainnet-beta.solana.com", "confirmed");
-const signer = Keypair.fromSecretKey(
+const connection = createCloakRpc("https://api.mainnet-beta.solana.com");
+const signer = await signerFromSecretKey(
   Uint8Array.from(JSON.parse(readFileSync(process.env.KEYPAIR_PATH!, "utf8"))),
 );
 
@@ -221,14 +223,14 @@ const deposited = await transact(
     inputUtxos: [await createZeroUtxo(NATIVE_SOL_MINT)],
     outputUtxos: [output],
     externalAmount: amount,
-    depositor: signer.publicKey,
+    depositor: signer.address,
   },
   {
     connection,
     programId: CLOAK_PROGRAM_ID,
     relayUrl: CLOAK_PRODUCTION_RELAY_URL,   // no default; omitting it throws (contract 12)
     depositorKeypair: signer,
-    walletPublicKey: signer.publicKey,
+    walletPublicKey: signer.address,
   },
 );
 
@@ -237,7 +239,7 @@ const deposited = await transact(
 // this note is the only claim on it. `saveNoteBytes` is your own store.
 await saveNoteBytes(serializeUtxo(deposited.outputUtxos[0]));
 
-const recipient = Keypair.generate().publicKey;
+const recipient = (await generateKeyPairSigner()).address;
 
 await fullWithdraw(deposited.outputUtxos, recipient, {
   connection,

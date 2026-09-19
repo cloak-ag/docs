@@ -20,7 +20,7 @@ Use this file as your primary SDK briefing and only fall back to the friendlier 
 ## 1. Package
 
 - Name: `@cloak.dev/sdk`
-- Version: `0.2.5`. The exported `VERSION` constant now matches the published package version (it lagged before 0.2.5); it is still informational only — check `package.json` to detect the installed version.
+- Version: `0.2.5`. The exported `VERSION` constant now matches the published package version (it lagged before 0.2.5); it is still informational only — confirm the installed version with `npm ls @cloak.dev/sdk`.
 - **0.2.5 moved the SDK onto `@solana/kit`.** `connection` is a `CloakRpc` from `createCloakRpc(rpcUrl)`; `programId`, mints and recipients are Kit `Address` strings; `depositorKeypair` is a Kit `KeyPairSigner`; `signer` is a Kit transaction signer. `@solana/web3.js` is an optional peer dependency, needed only by `signerFromWalletAdapter` (the browser wallet bridge). `@solana/spl-token` was replaced by `@solana-program/token`. Removed in 0.2.5: `keypairToAdapter` and the `WalletAdapter` type.
 - Runtime: Node `>=18` and modern browsers. ESM and CJS both shipped (`dist/index.js`, `dist/index.cjs`).
 - Types: `dist/index.d.ts`
@@ -37,9 +37,9 @@ Use this file as your primary SDK briefing and only fall back to the friendlier 
 Install:
 
 ```bash
-npm install @cloak.dev/sdk @solana/kit
-# Optional:
-npm install @solana/spl-token @solana/kit
+npm install @cloak.dev/sdk@0.2.5 @solana/kit
+# Browser apps using a wallet adapter also need:
+npm install @solana/wallet-adapter-react @solana/web3.js
 ```
 
 ---
@@ -100,6 +100,8 @@ import {
 Core note/transaction types (from `core/types`):
 
 ```ts
+// Exported union. Mainnet is the only target this package supports; the other members are
+// historical and nothing in the published surface is configured for them.
 type Network = "localnet" | "devnet" | "mainnet" | "testnet";
 
 // The `WalletAdapter` type was REMOVED in 0.2.5. The equivalent is `LegacyWalletAdapter`, wrapped
@@ -219,7 +221,7 @@ There is no client class. The transaction entry points are free functions, liste
 
 - `CLOAK_PROGRAM_ID`: `PublicKey`, mainnet program
 - `NATIVE_SOL_MINT`: `PublicKey`, SOL pool mint identity
-- `VERSION`: string, currently `"0.2.5"` -- matches the published package version (it lagged before 0.2.5); informational only, don't use it to detect the installed package version (check `package.json` instead)
+- `VERSION`: string, currently `"0.2.5"` -- matches the published package version (it lagged before 0.2.5); informational only, confirm the installed version with `npm ls @cloak.dev/sdk`
 - `setDebugMode(enabled: boolean)`: global SDK logging switch
 - `LocalStorageAdapter` / `MemoryStorageAdapter`: `StorageAdapter` implementations (see §5.13)
 
@@ -1503,12 +1505,16 @@ const wd = await fullWithdraw([dep.outputUtxos[0]], recipientPublicKey, {
 ```ts
 import { NATIVE_SOL_MINT, serializeUtxo, swapWithChange } from "@cloak.dev/sdk";
 import { address } from "@cloak.dev/sdk";
-import { getAssociatedTokenAddress } from "@solana/spl-token";
+import { findAssociatedTokenPda, TOKEN_PROGRAM_ADDRESS } from "@solana-program/token";
 import { createJupiterApiClient } from "@jup-ag/api";
 
 const swapAmount = 250_000_000n;                       // 0.25 SOL
 const outputMint = address("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"); // USDC
-const recipientAta = await getAssociatedTokenAddress(outputMint, sender.publicKey);
+const [recipientAta] = await findAssociatedTokenPda({
+  mint: outputMint,
+  owner: sender.address,
+  tokenProgram: TOKEN_PROGRAM_ADDRESS,
+});
 
 // Quote (Jupiter) -> pick minOut:
 const jup = createJupiterApiClient();

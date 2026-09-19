@@ -1,32 +1,55 @@
 ---
 title: "Platform Components"
-description: "Responsibilities and boundaries of each Cloak subsystem"
+description: "The pieces an integrator deals with, and what each one is responsible for"
 icon: "cubes-stacked"
 ---
 
-## SDK
+Four things sit between your app and a private balance. Only the first is something you write code
+against; the rest are things you rely on or verify.
 
-- Primary integration interface for apps and wallets
-- Exposes UTXO-first flows (`transact`, `partialWithdraw`, `swapWithChange`)
-- Handles proof generation inputs, Merkle proof sourcing, retry semantics, and error mapping
-- Includes chain-native scanner and compliance export helpers
+## The SDK
 
-## Programs
+`@cloak.dev/sdk` is the integration surface for apps and wallets.
 
-- `shield-pool` is the runtime verifier/state-machine program
-- Mint-scoped pools with PDAs such as `["pool", mint]`, `["treasury", mint]`, `["merkle_tree", mint]`
-- Enforces proof validity, root membership, nullifier uniqueness, and transfer invariants
-- Supports direct transact and two-phase swap state flow
+- Exposes the UTXO flows: `transact`, `transfer`, `partialWithdraw`, `fullWithdraw`,
+  `swapWithChange`, and `transactBatch`
+- Builds notes, generates the proof, and assembles the transaction
+- Sources Merkle proofs, handles stale-root retries, and maps errors
+- Includes the chain scanner and the compliance export helpers
 
-## Circuits
+Everything private happens here, on the client. See [Cloak SDK](/sdk/introduction).
 
-- The Groth16 proving system behind every Cloak transaction
-- Canonical transaction circuit is 2-in/2-out with 9 public signals
-- The verifying key the deployed program checks proofs against is published and digest-pinned
+## The on-chain program
+
+The shield pool is the verifier and state machine. It is the authority for everything that matters.
+
+- Mint-scoped pools, each with its own PDAs for the pool, treasury and Merkle tree
+- Enforces proof validity, root membership, nullifier uniqueness and transfer invariants
+- Collects the fee, from that pool's own on-chain config — nothing else in the system charges one
+- Supports the direct transact path and the two-phase swap flow
+
+See [Shield Pool Program](/protocol/shield-pool) and [Fee model](/protocol/fee-model).
+
+## The circuit artifacts
+
+Proving needs the ceremony bundle, which is published and digest-pinned.
+
+- One transaction circuit, 2 inputs and 2 outputs, 9 public signals
+- The SDK fetches the bundle and verifies its digests before it proves, so a substituted artifact
+  fails closed
+- The deployed program only accepts proofs from the verifying key it was built with
+
+See [Circuits](/packages/circuits), and [Release notes](/releases/latest) to verify the digests
+yourself.
+
+## Your RPC
+
+You bring your own Solana RPC and pass it as `connection`, built with `createCloakRpc(rpcUrl)`. Cloak
+hosts none and requires no particular provider, and never inspects, replaces or proxies it.
 
 ## Recommended read order
 
 1. [Platform Overview](/platform/overview)
 2. [Transaction Flows](/platform/transaction-flows)
 3. [Shield Pool Program](/protocol/shield-pool)
-4. [Circuits Package](/packages/circuits)
+4. [Circuits](/packages/circuits)
