@@ -300,14 +300,18 @@ Return a capability matrix, file patches, commands run, and verification summary
 
 ---
 
-## 7) Sources of truth in this repository
+## 7) Sources of truth
 
-When docs and code differ, validate against implementation:
-- TypeScript SDK exports: `sdk/src/index.ts`
-- TypeScript SDK runtime: `sdk/src/flows/*`, `sdk/src/proving/*`, `sdk/src/notes/*`, `sdk/src/scanning/*`, `sdk/src/program/*`, `sdk/src/wallet/*`, `sdk/src/shared/*`
-- Program behavior: `programs/shield-pool/src/*`
-- Submission and retry semantics: `sdk/src/relay/*` (client side only; the submission service itself is not a documented surface)
-- Circuits/build flow: `packages/circuits/*`, `packages/scripts/*`
+Validate against what ships, in this order:
+
+- The installed package's own type declarations, which are authoritative for every exported
+  signature: `@cloak.dev/sdk` ships `.d.ts` alongside its ESM and CJS builds.
+- `/sdk/llms.txt`, the exhaustive contract map for that package.
+- Observed on-chain state: the deployed program, its PDAs and the published verifying key.
+- The published circuits bundle and its digests, which the SDK verifies before proving.
+
+Module layout and internal file organisation are not part of the published surface; do not infer
+behaviour from them or cite them.
 
 ---
 

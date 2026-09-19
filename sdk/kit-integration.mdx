@@ -71,8 +71,9 @@ That pair is not a frontend recipe: with a signer present it submits a transfer 
 the user's own key, publicly linking it.
 </Warning>
 
-To point a Kit app at a local stack, edit the allowlist and rebuild the SDK. See
-[Developing against a local stack](/sdk/request-authentication#developing-against-a-local-stack).
+A published build reaches exactly one submission endpoint and cannot be repointed by a Kit app, or
+any other consumer. See [Pointing at a non-production
+endpoint](/sdk/request-authentication#pointing-at-a-non-production-endpoint).
 
 ## Wiring a browser Kit app
 

@@ -63,7 +63,7 @@ Open the preview URL `mint dev` prints. Nothing else to build or install.
 - Fees are on-chain program policy: read from the per-mint `pool_config` PDA
   and collected by the program into the treasury. Never attribute fees to
   the SDK or any other component. Source fee constants from
-  `programs/shield-pool/src/constants.rs` and the deployed `PoolConfig`.
+  the program's own constants and the deployed `PoolConfig`.
 - Swaps are Jupiter-only. Never name another DEX or aggregator.
 - The wallet adapter is the signer. Never instruct a reader to provide a
   keypair file/path as if it were an app-facing flow.
@@ -82,7 +82,7 @@ Open the preview URL `mint dev` prints. Nothing else to build or install.
   by `signerFromWalletAdapter`. `keypairToAdapter` and the `WalletAdapter`
   type were removed, and `RelayAuthSigner` is now a Kit signer built with
   `messageSignerFromCallback`. Every `sdk/` page and `sdk/llms.txt` is
-  migrated; source new samples from the SDK repo's `examples/`, which CI
+  migrated; source new samples from the SDK's maintained examples, which CI
   dry-runs, and never hand a wallet-adapter `PublicKey` straight to a Cloak
   option — convert it with `addressFromPublicKey`.
 - **`development/devnet.mdx` is deliberately NOT Kit.** It documents
