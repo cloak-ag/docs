@@ -102,8 +102,9 @@ Open the preview URL `mint dev` prints. Nothing else to build or install.
 
 ## Deploys
 
-Mintlify publishes this site from the project's deployment branch; there is no
-CI in this repo. Work lands on a topic branch, goes to `staging` first, and
-reaches production on merge to `main`. Local gates are `mint validate` and
-`mint broken-links`. The full staging path, and the dashboard settings only an
-admin can make, are in `README.md`.
+Mintlify publishes this site from `main` (the deployment branch set on the
+`cloak/cloak` Mintlify project); there is no CI in this repo. Work lands on a
+topic branch and reaches production on merge to `main` — there is no staging
+gate, and the repo's abandoned `staging` branch deploys nothing. Local gates
+are `mint validate` and `mint broken-links`; the PR's Mintlify preview is what
+a reviewer should read. See `README.md`.
