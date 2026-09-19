@@ -1,15 +1,18 @@
 ---
 title: "Solana Kit integration"
-description: "Use Cloak SDK from apps that standardize on @solana/kit"
+description: "Wire Cloak SDK into an app built on @solana/kit"
 icon: "plug"
 ---
 
-If your app stack is built around `@solana/kit`, you can still use Cloak SDK today.
+Since **0.2.5** the SDK is built on `@solana/kit`, so a Kit app needs no bridge at all. Cloak's own
+types are Kit types:
 
-Current state:
+- `connection` is a `CloakRpc` from `createCloakRpc(rpcUrl)`, not a web3.js `Connection`.
+- `programId`, mints and recipients are Kit `Address` strings, not `PublicKey` instances.
+- `depositorKeypair` is a Kit `KeyPairSigner`, and `signer` is a Kit transaction signer.
 
-- Use Kit for RPC reads, subscriptions, and signer architecture.
-- Use a thin `@solana/web3.js` bridge for Cloak transaction calls (`transact`, `partialWithdraw`, `swapWithChange`, etc.).
+`@solana/web3.js` is now an optional peer dependency. The only thing that still needs it is the
+browser wallet-adapter bridge, which hands the wallet a `VersionedTransaction` to sign.
 
 ## Which half of this page is yours
 
@@ -21,7 +24,7 @@ the end user's own wallet.
 | Your Kit app runs in | Signer you have | Cloak options you pass |
 |---|---|---|
 | A browser, with `@solana/wallet-adapter-react` | no secret key, only `signTransaction` and `signMessage` | `signTransaction` + `depositorPublicKey` for the deposit, `signMessage` + `walletPublicKey` for everything after |
-| A server, a script or a CLI | a local `Keypair` | `depositorKeypair` |
+| A server, a script or a CLI | a local secret key | `depositorKeypair` (a `KeyPairSigner`) |
 
 <Warning>
 **Most Kit stacks are frontends, and a frontend cannot use `depositorKeypair`.** It takes a secret
@@ -33,13 +36,13 @@ how many prompts to expect, is [Request authentication](/sdk/request-authenticat
 ## Install
 
 ```bash
-npm install @cloak.dev/sdk @solana/web3.js @solana/kit
+npm install @cloak.dev/sdk @solana/kit
 ```
 
-Browser apps add the wallet adapter:
+Browser apps add the wallet adapter and `@solana/web3.js`, which the adapter bridge needs:
 
 ```bash
-npm install @solana/wallet-adapter-react
+npm install @solana/wallet-adapter-react @solana/web3.js
 ```
 
 ## The endpoint value
@@ -71,251 +74,87 @@ the user's own key, publicly linking it.
 To point a Kit app at a local stack, edit the allowlist and rebuild the SDK. See
 [Developing against a local stack](/sdk/request-authentication#developing-against-a-local-stack).
 
-## Bridge pattern: browser Kit app
+## Wiring a browser Kit app
 
-Kit reads balances. The web3.js `Connection` is the bridge Cloak calls take. The wallet supplies
-both signatures and no secret key ever exists in your app.
+Wrap the connected wallet adapter with `signerFromWalletAdapter` and pass the result as `signer`.
+No secret key ever exists in your app.
 
 ```tsx
 import {
   CLOAK_PRODUCTION_RELAY_URL,
   CLOAK_PROGRAM_ID,
-  NATIVE_SOL_MINT,
-  UtxoWallet,
-  createUtxo,
-  createZeroUtxo,
-  explainRelayAuthRejection,
-  generateUtxoKeypair,
-  partialWithdraw,
-  transact,
-  type Utxo,
+  createCloakRpc,
+  signerFromWalletAdapter,
 } from "@cloak.dev/sdk";
-import { address, createSolanaRpc } from "@solana/kit";
 import { useWallet } from "@solana/wallet-adapter-react";
-import { Connection, PublicKey } from "@solana/web3.js";
+import { VersionedTransaction } from "@solana/web3.js";
 
-const rpcUrl = process.env.NEXT_PUBLIC_SOLANA_RPC_URL!;
-const relayUrl = CLOAK_PRODUCTION_RELAY_URL;
-const programId = CLOAK_PROGRAM_ID;
+const connection = createCloakRpc(process.env.NEXT_PUBLIC_SOLANA_RPC_URL!);
 
-// Kit client for read paths.
-const kitRpc = createSolanaRpc(rpcUrl);
+function useCloakOptions() {
+  const wallet = useWallet();
+  if (!wallet.publicKey) return null;
 
-// web3 bridge for Cloak transaction paths.
-const connection = new Connection(rpcUrl, "confirmed");
+  // Pass your own VersionedTransaction: a bundler cannot resolve the bridge's on-demand import.
+  const signer = signerFromWalletAdapter(wallet, { web3: { VersionedTransaction } });
 
-// Kit has no note store, and neither does the SDK. Every flow hands back new notes
-// on `result.outputUtxos` and forgets them, so this is the piece you own.
-const NOTES_KEY = "myapp.cloak.notes";
-
-function loadNotes(): UtxoWallet {
-  const saved = window.localStorage.getItem(NOTES_KEY);
-  return saved ? UtxoWallet.deserialize(saved) : new UtxoWallet();
-}
-
-function recordNotes(created: Utxo[], spent: Utxo[] = []): void {
-  const wallet = loadNotes();
-  for (const utxo of spent) wallet.markSpent(utxo, utxo.mintAddress);
-  for (const utxo of created) wallet.addUtxo(utxo, utxo.mintAddress);
-  window.localStorage.setItem(NOTES_KEY, wallet.serialize());
-}
-
-export function useCloakBridge() {
-  const { publicKey, signTransaction, signMessage } = useWallet();
-
-  return async function depositThenWithdraw(recipientAddress: string) {
-    // Not every adapter implements signMessage. Check before you offer the action, so the
-    // user is never asked to prove and then told their wallet cannot sign the request.
-    if (!publicKey || !signTransaction || !signMessage) {
-      throw new Error("Connect a wallet that supports message signing.");
-    }
-
-    const { value: before } = await kitRpc
-      .getBalance(address(publicKey.toBase58()))
-      .send();
-
-    const owner = await generateUtxoKeypair();
-    const output = await createUtxo(20_000_000n, owner, NATIVE_SOL_MINT);
-
-    const deposit = await transact(
-      {
-        inputUtxos: [await createZeroUtxo(NATIVE_SOL_MINT)],
-        outputUtxos: [output],
-        externalAmount: 20_000_000n,
-        depositor: publicKey,
-      },
-      {
-        connection,
-        programId,
-        relayUrl,
-        signTransaction, // wallet signs the deposit transaction
-        signMessage, // authenticates viewing-key registration and every later request
-        depositorPublicKey: publicKey,
-        walletPublicKey: publicKey, // same key; becomes the authenticated sender
-        onProofProgress: (percent) => console.log(`deposit proof ${percent}%`),
-      },
-    );
-
-    // Write the deposit note down before spending it. If the withdrawal below throws,
-    // this is the only record of the 0.02 SOL now sitting in the pool.
-    recordNotes(deposit.outputUtxos);
-
-    try {
-      const withdrawal = await partialWithdraw(
-        deposit.outputUtxos,
-        new PublicKey(recipientAddress),
-        10_000_000n,
-        {
-          connection,
-          programId,
-          relayUrl,
-          walletPublicKey: publicKey, // the request's authenticated sender
-          signMessage, // signs the request preimage
-          cachedMerkleTree: deposit.merkleTree,
-          onProofProgress: (percent) => console.log(`withdraw proof ${percent}%`),
-        },
-      );
-
-      // `withdrawal.outputUtxos` holds the change: the ~0.01 SOL that stayed shielded.
-      // Persist it in the same tick, before any "done" reaches the user.
-      recordNotes(withdrawal.outputUtxos, deposit.outputUtxos);
-    } catch (error) {
-      const hint = explainRelayAuthRejection(String(error));
-      throw hint ? new Error(hint, { cause: error }) : error;
-    }
-
-    const { value: after } = await kitRpc
-      .getBalance(address(publicKey.toBase58()))
-      .send();
-    console.log(before.toString(), after.toString());
+  return {
+    connection,
+    programId: CLOAK_PROGRAM_ID,
+    relayUrl: CLOAK_PRODUCTION_RELAY_URL,
+    signer,
   };
 }
 ```
 
-<Warning>
-**A change note that you do not persist is gone.** Every flow except a deposit returns
-`result.outputUtxos`, and one of those notes is the balance that stayed shielded, the user's own
-money. Its `blinding` is fresh randomness generated inside `createUtxo` and it is written nowhere on
-chain, so no rescan and no seed phrase brings it back. Awaiting `partialWithdraw`, `transfer` or
-`swapWithChange` without capturing the result destroys that value permanently. The full storage
-answer, including what `UtxoWallet.serialize()` does and does not carry, is
-[where your notes live between sessions](/sdk/wallet-integration#where-your-notes-live-between-sessions).
-</Warning>
+`signerFromWalletAdapter` throws if the adapter has no `publicKey` (not connected). It always
+provides transaction signing; it adds message signing only when the adapter exposes `signMessage`.
+That matters because a wallet without `signMessage` authenticates requests by signing a
+deterministic no-op transaction instead — the path a Ledger or Trezor takes. Either way the
+authenticated sender must be the end user's own wallet, never an ephemeral or service-held key.
 
-<Note>
-`walletPublicKey` must be the end user's own wallet, never an ephemeral or service-held key. It
-becomes the request's sender, the key that is screened, and the key a viewing key is registered
-against. A private send or a withdrawal prompts **exactly once**, including across stale-root
-retries.
-</Note>
+## Wiring a server or CLI Kit app
 
-## Bridge pattern: server or CLI Kit app
-
-Same bridge, with a local keypair in place of the two wallet callbacks. Use this only where the
-process legitimately holds the key.
+Load the secret key into a `KeyPairSigner` and pass it as `depositorKeypair`.
 
 ```typescript
+import { readFileSync } from "node:fs";
 import {
   CLOAK_PRODUCTION_RELAY_URL,
   CLOAK_PROGRAM_ID,
-  NATIVE_SOL_MINT,
-  createUtxo,
-  createZeroUtxo,
-  generateUtxoKeypair,
-  partialWithdraw,
-  serializeUtxo,
-  transact,
-  type Utxo,
+  createCloakRpc,
+  signerFromSecretKey,
 } from "@cloak.dev/sdk";
-import { address, createSolanaRpc } from "@solana/kit";
-import { Connection, Keypair, PublicKey } from "@solana/web3.js";
-import { appendFileSync, readFileSync } from "node:fs";
 
-const rpcUrl = process.env.SOLANA_RPC_URL!;
-const relayUrl = CLOAK_PRODUCTION_RELAY_URL;
-const programId = CLOAK_PROGRAM_ID;
+const connection = createCloakRpc(process.env.SOLANA_RPC_URL!);
 
-// `serializeUtxo` is the persistence primitive: 128 bytes carrying amount, private key,
-// blinding, mint and leaf index. `deserializeUtxo` reads it back. Nothing else can.
-const NOTES_PATH = process.env.CLOAK_NOTES_PATH ?? "./cloak-notes.txt";
-
-function recordNotes(utxos: Utxo[]): void {
-  appendFileSync(
-    NOTES_PATH,
-    utxos
-      .map((utxo) => `${Buffer.from(serializeUtxo(utxo)).toString("base64")}\n`)
-      .join(""),
-  );
-}
-
-const kitRpc = createSolanaRpc(rpcUrl);
-const connection = new Connection(rpcUrl, "confirmed");
-const signer = Keypair.fromSecretKey(
-  Uint8Array.from(JSON.parse(readFileSync(process.env.KEYPAIR_PATH!, "utf8"))),
+const depositorKeypair = await signerFromSecretKey(
+  Uint8Array.from(JSON.parse(readFileSync(process.env.KEY_FILE!, "utf8"))),
 );
 
-const { value: before } = await kitRpc
-  .getBalance(address(signer.publicKey.toBase58()))
-  .send();
-
-const owner = await generateUtxoKeypair();
-const output = await createUtxo(20_000_000n, owner, NATIVE_SOL_MINT);
-
-const deposit = await transact(
-  {
-    inputUtxos: [await createZeroUtxo(NATIVE_SOL_MINT)],
-    outputUtxos: [output],
-    externalAmount: 20_000_000n,
-    depositor: signer.publicKey,
-  },
-  {
-    connection,
-    programId,
-    relayUrl,
-    depositorKeypair: signer,
-  },
-);
-
-recordNotes(deposit.outputUtxos);
-
-// A real address you control. A freshly generated one has no private key anywhere,
-// so withdrawing to it burns the amount that leaves the pool.
-const recipient = new PublicKey(process.env.WITHDRAW_RECIPIENT!);
-
-const withdrawal = await partialWithdraw(
-  deposit.outputUtxos,
-  recipient,
-  10_000_000n,
-  {
-    connection,
-    programId,
-    relayUrl,
-    depositorKeypair: signer,
-    walletPublicKey: signer.publicKey,
-    cachedMerkleTree: deposit.merkleTree,
-  },
-);
-
-// The change note. Losing this line loses the ~0.01 SOL that stayed shielded.
-recordNotes(withdrawal.outputUtxos);
-
-const { value: after } = await kitRpc
-  .getBalance(address(signer.publicKey.toBase58()))
-  .send();
-console.log(before.toString(), after.toString());
+const options = {
+  connection,
+  programId: CLOAK_PROGRAM_ID,
+  relayUrl: CLOAK_PRODUCTION_RELAY_URL,
+  depositorKeypair,
+};
 ```
 
-A keypair signs in microseconds and never prompts.
+`generateKeyPairSigner()` gives a throwaway signer for tests, and `signerFromKeypair({ secretKey })`
+accepts an object that already carries raw secret-key bytes.
 
-Treat that notes file the way you treat the keypair file. Each line carries the note's private key
-and blinding, so whoever can read it can spend the note.
+## Coming from web3.js
 
-The append-only file above is enough for a one-shot script: a note that has already been spent
-fails loudly on its nullifier if you try to spend it twice. A long-lived service needs to track
-spends as well, which is what `UtxoWallet.markSpent` is for. Both shapes, and the reconciliation
-gap where `UtxoWallet.serialize()` drops `commitment` and `verifyUtxos` then reports those notes as
-`skipped`, are covered in
-[where your notes live between sessions](/sdk/wallet-integration#where-your-notes-live-between-sessions).
+If you are upgrading an integration written against 0.2.2 or earlier:
+
+| Before (≤ 0.2.4) | Now (0.2.5) |
+|---|---|
+| `new Connection(rpcUrl, "confirmed")` | `createCloakRpc(rpcUrl)` |
+| `new PublicKey(value)` | `address(value)` |
+| a web3.js `PublicKey` you already hold | `addressFromPublicKey(publicKey)` |
+| `Keypair.fromSecretKey(bytes)` | `await signerFromSecretKey(bytes)` |
+| `keypairToAdapter(keypair)` | removed — use a `KeyPairSigner` directly |
+| `WalletAdapter` type | removed — use `LegacyWalletAdapter` with `signerFromWalletAdapter` |
 
 ## Related pages
 

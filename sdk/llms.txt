@@ -20,7 +20,8 @@ Use this file as your primary SDK briefing and only fall back to the friendlier 
 ## 1. Package
 
 - Name: `@cloak.dev/sdk`
-- Version: `0.2.2` (the exported `VERSION` constant currently lags at `"0.2.1"` due to a known bug; it is informational only and shouldn't be used to detect the installed package version — check `package.json` instead)
+- Version: `0.2.5`. The exported `VERSION` constant now matches the published package version (it lagged before 0.2.5); it is still informational only — check `package.json` to detect the installed version.
+- **0.2.5 moved the SDK onto `@solana/kit`.** `connection` is a `CloakRpc` from `createCloakRpc(rpcUrl)`; `programId`, mints and recipients are Kit `Address` strings; `depositorKeypair` is a Kit `KeyPairSigner`; `signer` is a Kit transaction signer. `@solana/web3.js` is an optional peer dependency, needed only by `signerFromWalletAdapter` (the browser wallet bridge). `@solana/spl-token` was replaced by `@solana-program/token`. Removed in 0.2.5: `keypairToAdapter` and the `WalletAdapter` type. **Sections below that still spell signatures with web3.js `PublicKey` / `Connection` / `Transaction` describe the pre-0.2.5 shape and are being migrated; treat the Kit types above as authoritative.**
 - Runtime: Node `>=18` and modern browsers. ESM and CJS both shipped (`dist/index.js`, `dist/index.cjs`).
 - Types: `dist/index.d.ts`
 - Program ID (default, mainnet): `zh1eLd6rSphLejbFfJEneUwzHRfMKxgzrgkfwA6qRkW`
@@ -102,6 +103,8 @@ Core note/transaction types (from `core/types`):
 ```ts
 type Network = "localnet" | "devnet" | "mainnet" | "testnet";
 
+// The `WalletAdapter` type was REMOVED in 0.2.5. The equivalent is `LegacyWalletAdapter`, wrapped
+// with `signerFromWalletAdapter(adapter, { web3: { VersionedTransaction } })` to get a Kit signer.
 interface WalletAdapter {
   publicKey: PublicKey | null;
   signTransaction?<T extends Transaction>(tx: T): Promise<T>;
@@ -217,7 +220,7 @@ There is no client class. The transaction entry points are free functions, liste
 
 - `CLOAK_PROGRAM_ID`: `PublicKey`, mainnet program
 - `NATIVE_SOL_MINT`: `PublicKey`, SOL pool mint identity
-- `VERSION`: string, currently `"0.2.1"` -- lags the published package version (`0.2.2`) due to a known bug; informational only, don't use it to detect the installed package version (check `package.json` instead)
+- `VERSION`: string, currently `"0.2.5"` -- matches the published package version (it lagged before 0.2.5); informational only, don't use it to detect the installed package version (check `package.json` instead)
 - `setDebugMode(enabled: boolean)`: global SDK logging switch
 - `LocalStorageAdapter` / `MemoryStorageAdapter`: `StorageAdapter` implementations (see §5.13)
 
@@ -993,7 +996,7 @@ function sendTransaction(
   options?: SendOptions,
 ): Promise<string>;
 function signTransaction<T extends Transaction>(tx: T, wallet: WalletAdapter | Keypair): Promise<T>;
-function keypairToAdapter(keypair: Keypair): WalletAdapter;
+// keypairToAdapter was REMOVED in 0.2.5 -- pass a Kit `KeyPairSigner` (signerFromSecretKey) directly.
 ```
 
 `UtxoWallet` and `SimpleWallet` are also exported and are NOT send paths. `UtxoWallet.prepareSend`

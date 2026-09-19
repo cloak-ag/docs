@@ -6,19 +6,29 @@ icon: "shield-halved"
 
 `@cloak.dev/sdk` is the first-party SDK for the Cloak protocol. It is built on free functions
 (`transact`, `transfer`, `partialWithdraw`, `fullWithdraw`, `swapWithChange`), with wallet-adapter
-integration, a built-in scanner and note storage, and it works with both `@solana/web3.js` and
-`@solana/kit`.
+integration, a built-in scanner and note storage. Since 0.2.5 it is built on `@solana/kit`;
+`@solana/web3.js` is an optional peer dependency used only by the wallet-adapter bridge.
 
 One package covers every host: a web frontend or browser wallet, a Next.js or Node.js backend, and
 long-running server-side services. Proving, note handling and submission are the same everywhere;
 what changes is who signs. In a browser that is a connected wallet adapter, on a server it is a
 keypair you hold.
 
-Install (current release: `@cloak.dev/sdk` 0.2.2):
+Install (current release: `@cloak.dev/sdk` 0.2.5):
 
 ```bash
-npm install @cloak.dev/sdk @solana/web3.js
+npm install @cloak.dev/sdk @solana/kit
 ```
+
+<Note>
+**0.2.5 moved the SDK onto `@solana/kit`.** `connection` is now a `CloakRpc` from
+`createCloakRpc(rpcUrl)` rather than a web3.js `Connection`, `programId` and other addresses are
+Kit `Address` strings rather than `PublicKey` instances, and `depositorKeypair` is a Kit
+`KeyPairSigner`. Browser apps on `@solana/wallet-adapter` keep working through
+`signerFromWalletAdapter`, which is why `@solana/web3.js` remains a peer dependency. Pages whose
+samples still show the pre-0.2.5 shape are being migrated; [Solana Kit
+integration](/sdk/kit-integration) has the current wiring.
+</Note>
 
 ## Shared runtime values
 
@@ -29,7 +39,7 @@ yours to pass, and there is no Cloak-hosted RPC to point at.
 | Setting | Value | Applied by |
 |---|---|---|
 | Program ID | `zh1eLd6rSphLejbFfJEneUwzHRfMKxgzrgkfwA6qRkW` | SDK default |
-| Solana RPC | Your own endpoint. You construct the `Connection` and pass it as `connection`; Cloak hosts no RPC and requires no particular provider | You |
+| Solana RPC | Your own endpoint. You build it with `createCloakRpc(rpcUrl)` and pass it as `connection`; Cloak hosts no RPC and requires no particular provider | You |
 | Relay URL | Not a default: the SDK applies none and reads no environment variable. Pass `relayUrl` on every call; on mainnet the value is `https://api.cloak.ag` | You, every call |
 | Circuits base URL | `https://storage.googleapis.com/cloak-circuits/circuits/0.2.0` (ceremony bundle; artifacts are hash-verified before proving) | SDK default |
 | Merkle tree height | 32 | Protocol constant |

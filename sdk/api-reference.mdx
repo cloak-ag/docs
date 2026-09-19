@@ -274,10 +274,80 @@ Detailed usage: [Error Handling](/sdk/error-handling)
 ## Versioned exports
 
 ```typescript
-VERSION; // "0.2.1" -- lags the published package version (currently 0.2.2) due to a
-         // known bug; informational only, don't use it for feature detection
+VERSION; // "0.2.5" -- matches the published package version
 CLOAK_PROGRAM_ID; // mainnet program constant
 ```
+
+`VERSION` tracked the package version incorrectly before 0.2.5 and is now in step with it. It is
+still informational: read `package.json` if you need to branch on the installed version.
+
+## Batch signing
+
+`transactBatch` runs N private spends behind **one wallet approval**. Each item is proved
+concurrently so every proof exists before the wallet is asked, then all items are submitted under a
+single batch signature.
+
+```typescript
+transactBatch(
+  items: readonly TransactBatchItem[],
+  options: TransactBatchOptions,
+): Promise<TransactBatchResult>
+
+TransactBatchItem;    // { params: TransactParams; options?: Partial<TransactOptions> }
+TransactBatchOptions; // TransactOptions, plus:
+                      //   proofConcurrency?  items proved at once (default 2)
+                      //   submitConcurrency? items released at once after signing (default 3)
+TransactBatchResult;  // { results: TransactBatchItemOutcome[]; approvals: number }
+TransactBatchItemOutcome; // { status: "fulfilled"; value: TransactResult }
+                          // | { status: "rejected"; reason: unknown }
+
+RELAY_BATCH_AUTH_MAX_ITEMS; // 64 -- hard cap per call
+```
+
+`results` has one entry per item in input order, and a rejected item leaves the others unaffected.
+`approvals` counts the wallet dialogs actually raised: 1 for the batch, plus 1 per wave of
+stale-root re-proves.
+
+The call requires `relayUrl` and an authenticated sender — `depositorKeypair`, or `walletPublicKey`
+with `signMessage`, or `signer`. Both are checked before any proof is computed, so a batch that
+cannot be authenticated fails without doing work.
+
+<Warning>
+**`transactBatch` does not plan the rows.** Two items that spend the same note collide on their
+nullifier, and an item that spends another item's change cannot be proved until that change has
+landed. Give each item its own already-landed input notes; selecting them is the caller's job.
+Above `RELAY_BATCH_AUTH_MAX_ITEMS` the call throws — chunk the payout. The practical bound is
+lower than 64, because the chain keeps a ring of 100 recent roots and each item consumes room in
+it.
+</Warning>
+
+## Solana Kit runtime
+
+Since 0.2.5 the SDK is built on `@solana/kit`. These are the helpers a normal integration touches.
+
+```typescript
+createCloakRpc(endpoint: string): CloakRpc; // pass as `connection`
+CloakRpc; // Rpc<SolanaRpcApi> & { readonly endpoint: string }
+
+address(value: string): Address;
+toAddress(value): Address;
+isAddress(value): boolean;
+addressFromPublicKey(publicKey: { toBase58(): string }): Address; // web3.js PublicKey -> Address
+
+generateKeyPairSigner(): Promise<KeyPairSigner>;
+signerFromSecretKey(secretKey: Uint8Array): Promise<KeyPairSigner>;
+signerFromKeypair(keypair: { secretKey: Uint8Array }): Promise<KeyPairSigner>;
+signerFromWalletAdapter(adapter, options?): WalletSigner; // browser wallet-adapter bridge
+
+sendInstructions(...);
+sendRawTransaction(...);
+confirmSignature(...);
+fetchLatestBlockhash(...);
+```
+
+`connection` takes a `CloakRpc`, `programId` and other addresses take Kit `Address` strings, and
+`depositorKeypair` takes a `KeyPairSigner`. Wiring a browser wallet is covered in [Solana Kit
+integration](/sdk/kit-integration).
 
 ## Protocol and service docs
 

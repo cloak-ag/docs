@@ -69,14 +69,24 @@ Open the preview URL `mint dev` prints. Nothing else to build or install.
   keypair file/path as if it were an app-facing flow.
 - Do not name the audit firm publicly in any page. Describe remediations
   and findings without attribution.
-- Use the SDK's actual published version numbers: `0.2.2` is the current
-  live release (published 2026-09-06), referenced in `sdk/introduction.mdx`,
+- Use the SDK's actual published version numbers: `0.2.5` is the current
+  live release (published 2026-09-17), referenced in `sdk/introduction.mdx`,
   `sdk/api-reference.mdx`, and `sdk/llms.txt`. The exported `VERSION`
-  constant currently lags at `"0.2.1"` due to a known SDK bug — don't
-  document it as the package version; see the Versioned exports section of
-  `sdk/api-reference.mdx` for how that's phrased. The circuits bundle
-  version (`circuits/0.2.0`, ceremony `cloak-transaction-0.2.0`) is a
-  separate number and did not change in 0.2.2 — don't bump those.
+  constant matches the package version again as of 0.2.5 (it lagged at
+  `"0.2.1"` through 0.2.2); it is still informational only. The circuits
+  bundle version (`circuits/0.2.0`, ceremony `cloak-transaction-0.2.0`) is a
+  separate number and did not change in 0.2.3–0.2.5 — don't bump those.
+- **SDK 0.2.5 is `@solana/kit`-native.** `connection` is a `CloakRpc` from
+  `createCloakRpc()`, addresses are Kit `Address` strings, `depositorKeypair`
+  is a `KeyPairSigner`, and `@solana/web3.js` is only a peer dependency used
+  by `signerFromWalletAdapter`. `keypairToAdapter` and the `WalletAdapter`
+  type were removed. Code samples still written against web3.js
+  (`new Connection`, `new PublicKey`, `Keypair.fromSecretKey`) are stale:
+  `sdk/quickstart.mdx`, `sdk/examples.mdx`, `sdk/utxo-transactions.mdx`,
+  `sdk/shielded-transfers.mdx`, `sdk/wallet-integration.mdx`,
+  `sdk/error-handling.mdx`, `sdk/request-authentication.mdx`,
+  `development/devnet.mdx` and most of `sdk/llms.txt` still need the pass.
+  Source new samples from the SDK repo's `examples/`, which CI dry-runs.
 - Prefer documenting implemented behavior over planned behavior (see
   `README.md`).
 - Never state a figure you did not read from source or observe. Where a number
