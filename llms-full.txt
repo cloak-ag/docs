@@ -142,6 +142,21 @@ integration questions. They are authoritative for user-facing wording.
 - `/learn/wallet-public-diary`, `/learn/zero-knowledge-without-the-math`, `/learn/privacy-is-not-anonymity`, `/learn/prove-your-funds-privately`
   - Purpose: conceptual explainers (problem-first privacy, plain ZK, accountable privacy, proof of funds).
 
+### Affiliate program (plain-language)
+
+Use these when answering questions from affiliates or about affiliate links. Commission comes out of
+Cloak's fee revenue: it never changes what a user pays.
+
+* `/affiliates/overview`
+  * Purpose: closed registration, manual approval, applying with a wallet signature, no KYC but sanctions screening, account statuses, payout wallet changes.
+* `/affiliates/commission`
+  * Purpose: commission is 40% (default) of the percentage fee only, never the fixed fee; 2 calendar months from the click; first click wins; once per device; new users only; self-referral excluded; swaps included; Cloak web and mobile only.
+* `/affiliates/payouts`
+  * Purpose: USDC conversion at a recorded reference price, monthly schedule (close day 1, claims open day 5, 90-day window, no minimum), statement statuses, claim flow.
+* `/affiliates/dashboard-privacy`
+  * Purpose: why the dashboard is aggregated: 3 distinct referees minimum, D+1, rounding, carryover below the floor.
+* `/affiliates/terms` is a draft pending legal review; do not quote it as final terms.
+
 ---
 
 ## 4) High-signal runtime contracts

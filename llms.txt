@@ -75,6 +75,13 @@ on the TypeScript SDK `@cloak.dev/sdk`, in the browser, in Node, and in server-s
 - [Privacy is not anonymity](/learn/privacy-is-not-anonymity): Accountable privacy vs hiding.
 - [Prove your funds privately](/learn/prove-your-funds-privately): Selective disclosure in practice.
 
+### Affiliate program (plain-language)
+
+* [Affiliate program](/affiliates/overview): Closed registration with manual approval, how to apply with a wallet signature, no KYC but sanctions screening, account statuses, payout wallet changes.
+* [How commission works](/affiliates/commission): 40% default of the percentage fee only (never the fixed fee), 2 calendar months from the click, first click, once per device, new users only, Cloak web and mobile only.
+* [Payouts and claiming](/affiliates/payouts): USDC conversion at a recorded monthly reference price, monthly schedule (close day 1, claims open day 5, 90-day window, no minimum), statement statuses, claiming.
+* [Why your dashboard is aggregated](/affiliates/dashboard-privacy): The 3-person privacy floor, D+1 delay, rounding, and carryover of months below the floor.
+
 ## Integration Tips For Agents
 
 - Build every integration on the TypeScript SDK `@cloak.dev/sdk`: it is the SDK for web frontends, Node backends, and server-side scripts and CLIs.
