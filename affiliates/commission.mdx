@@ -1,0 +1,95 @@
+---
+title: "How commission works"
+description: "What earns commission, how it is calculated, and how a new user is attributed to your link"
+icon: "percent"
+---
+
+You earn a share of the **percentage fee** Cloak collects from the people your link brings in, for two calendar months after each of them opens it. This page covers what counts, how the amount is calculated, and the attribution rules.
+
+## What earns commission
+
+Cloak charges a fee only when value leaves the pool (see [Fees](/guide/fees)). Those are the only transactions that earn commission:
+
+| Action by the person you referred | Earns commission? |
+| --- | --- |
+| Private send to an address | Yes |
+| Withdraw (unshield) to their own wallet | Yes |
+| Private swap | Yes. The fee is taken in SOL when the swap starts, and commission is earned on it then. |
+| Shield (deposit) | No. Shielding is free. |
+| Shielded transfer (funds stay in the pool) | No. It is free. |
+| [Bridge in](/guide/bridge) from another chain | No. Arriving is free. |
+
+## How the amount is calculated
+
+Every fee-bearing transaction pays two parts: a **fixed fee** (0.005 SOL, or 0.45 USDC or USDT) and a **percentage fee** (0.3% of the amount). Your commission is a share of the percentage fee only:
+
+```text
+commission = percentage fee × your rate
+```
+
+The default rate is **40%**. Since the percentage fee is 0.3% of the amount, 40% of it works out to 0.12% of the amount the person sent, withdrew or swapped.
+
+**The fixed fee is never shared.** Cloak keeps it in full, whatever your rate.
+
+**Commission follows the fee actually charged.** The percentage fee is set per pool in the Cloak program's on-chain configuration. Commission is computed from the fee the program really collected on each transaction, not from a hard-coded 0.3%.
+
+**Custom rates.** Cloak may agree a different rate with an individual affiliate, up to a program maximum. A rate change never applies retroactively: it takes effect on the first day of the next UTC month, and each month's commission uses the rate that was in effect on the first day of that month. Your dashboard shows your current rate and, when a change is scheduled, the next rate and the date it starts.
+
+### Worked examples
+
+| The referred person | Percentage fee (0.3%) | Your commission at 40% |
+| --- | --- | --- |
+| Withdraws 1,000 USDC | 3.00 USDC | 1.20 USDC |
+| Sends 100 USDC to an address | 0.30 USDC | 0.12 USDC |
+| Withdraws 10 SOL | 0.03 SOL | 0.012 SOL, paid in USDC at the month's [reference price](/affiliates/payouts#conversion-to-usdc) |
+
+In every row, the person also pays the fixed fee (0.45 USDC or 0.005 SOL). None of it is part of your commission.
+
+Commission is added up across the month and rounded down once, when the month closes, not transaction by transaction. The exact figures appear on your monthly [statement](/affiliates/payouts#statement-statuses).
+
+## How people are attributed to you
+
+Attribution happens on the referred person's **device**, not on Cloak's servers.
+
+1. Someone opens your link, `https://cloak.ag/r/<your-code>`, in a browser or on a phone with the Cloak app installed.
+2. If your account is approved and the device qualifies (see the rules below), the Cloak app on that device records your code and the time of the click. The code is removed from the address bar straight away.
+3. For the next two calendar months, the fee-bearing transactions that person makes from that device, in the Cloak web or mobile app, earn you commission.
+
+### The rules
+
+**Two calendar months from the click.** The window is counted per person, from the moment they opened your link. A click on 15 January at 10:00 UTC stays active until 15 March at 10:00 UTC. When the target month is shorter, the window ends on its last day: a click on 31 December at 10:00 UTC ends on 28 February at 10:00 UTC (29 February in a leap year). After the window ends, that person's transactions stop earning commission.
+
+**Your link never expires.** As long as your account is approved, your link keeps attributing new people. Only each person's own two-month window ends.
+
+**First click wins.** If a device opens your link and later opens another affiliate's link, only the first one counts.
+
+**Once per device, ever.** A device is attributed at most once. When its window ends, it is never attributed again, to you or to any other affiliate.
+
+**New users only.** A device that already has Cloak activity (a deposit, a private balance, or transaction history in the Cloak app) is not attributed. Your link works for people who are new to Cloak.
+
+**Self-referral earns nothing.** A transaction sent from your own payout wallet never earns commission, even through your own link.
+
+**Cloak's own apps only.** Commission is earned only on transactions made in the Cloak web app at [cloak.ag](https://cloak.ag) and in the Cloak mobile apps for iOS and Android. Transactions made through third-party apps, websites, wallets or SDK integrations never earn commission, even when the same person was attributed to you.
+
+**Attribution stays on the device.** It lives in that browser or in the app on that phone. If the person moves to another device or browser, or clears the site data, transactions made there are not attributed.
+
+**A link never gets in the way.** An unknown, inactive or ineligible code is ignored silently. A transaction never fails, and never costs more, because of an affiliate link.
+
+### What the referred person sees
+
+The referred person uses Cloak exactly as anyone else would: the same app, the same steps and the [same fees](/guide/fees). Their transactions are as private as anyone else's. Cloak never keeps a permanent record of which wallet came through which link, and nothing about affiliates is ever written on-chain. See [Why your dashboard is aggregated](/affiliates/dashboard-privacy).
+
+## Clicks and conversions
+
+Your dashboard also counts **clicks** (times your link was opened while your account was approved) and **conversions** (attributed devices that went on to make their first deposit). These are daily totals, shown one day late. They help you see which channels work; they do not change your commission.
+
+## Where next
+
+<CardGroup cols={2}>
+  <Card title="Payouts and claiming" icon="calendar-check" href="/affiliates/payouts">
+    How the month closes, how commission becomes USDC, and how to claim it.
+  </Card>
+  <Card title="Why your dashboard is aggregated" icon="eye-slash" href="/affiliates/dashboard-privacy">
+    Why you see grouped, delayed, rounded numbers, and never individual transactions.
+  </Card>
+</CardGroup>

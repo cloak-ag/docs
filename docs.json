@@ -44,6 +44,15 @@
             ]
           },
           {
+            "group": "Affiliate program",
+            "pages": [
+              "affiliates/overview",
+              "affiliates/commission",
+              "affiliates/payouts",
+              "affiliates/dashboard-privacy"
+            ]
+          },
+          {
             "group": "Reference",
             "pages": [
               "guide/faq",

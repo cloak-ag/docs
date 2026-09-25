@@ -1,0 +1,63 @@
+---
+title: "Why your dashboard is aggregated"
+description: "Why affiliates see grouped, delayed, rounded numbers, and never an individual person's transactions"
+icon: "eye-slash"
+---
+
+Your dashboard never shows what any one person did. It shows daily estimates that cover at least three different people, one day late, rounded down.
+
+**The reason, in one sentence:** if your dashboard showed a day on which only one person used your link, you would know exactly how much that person moved and when, and Cloak exists so that nobody learns that.
+
+The people you refer are Cloak users like any other, and their privacy does not depend on who sent them. The rules on this page are what make that true.
+
+## What the dashboard shows
+
+| You see | You never see |
+| --- | --- |
+| Your estimated commission for the current month, in USDC | Individual transactions |
+| Daily estimates, one day late, only for days that cover at least three people | Wallet addresses of the people you referred |
+| Daily clicks and conversions, one day late | Transaction signatures, amounts per person, or times finer than a day |
+| Your rate, and any scheduled rate change | How many transactions were made |
+| Your monthly statements with exact amounts | Anything that isolates a single person |
+
+## The three rules
+
+### 1. At least three people
+
+A day's estimate appears only when it covers at least **three different people** who used your link. If a day covers fewer, it is not shown on its own: it is merged with the following days of the same month until the group reaches three people, and the combined estimate is shown on the last day of the group. A day that never reaches the floor within its month is left out of the daily view; its commission is not lost (see [the release floor](#the-release-floor)).
+
+### 2. One day late
+
+A day becomes visible at 00:00 UTC the following day, never while it is still in progress. Clicks and conversions follow the same delay. They are not subject to the three-person floor, because a count of clicks reveals no amounts.
+
+### 3. Rounded down
+
+Daily estimates are rounded down to steps of 0.10 USDC and valued at the current market price, so they are labeled **estimated**. Exact amounts appear only on closed monthly statements, which use the month's recorded [reference price](/affiliates/payouts#conversion-to-usdc).
+
+## The release floor
+
+The same three-person rule applies when a month closes. A month becomes a statement only if the commission it contains came from at least three different people. If it did not, the month's commission **carries over**: it is kept, and released together with a later month once the combined period covers at least three people. Carried-over commission is never forfeited for this reason, however long it takes. Your dashboard shows when the current month is carrying over.
+
+## How Cloak counts people without keeping a list of them
+
+To apply the three-person rule, Cloak has to tell people apart without keeping a record of who they are:
+
+* Cloak never keeps a permanent record of which wallet came through which link. The referral itself lives only on the referred person's device.
+* To count distinct people, Cloak stores a **pseudonymous mark** per person per month, made with a secret that is unique to that month. The mark is a one-way code: it does not contain the wallet address and cannot be turned back into it, and marks from different months cannot be matched to each other.
+* When a month is paid out, its marks and its secret are deleted. A month that carries over keeps them only until it is paid out.
+* Nothing about affiliates is ever written on-chain.
+
+## A limit worth knowing
+
+The three-person floor protects against reading one person's activity from the numbers. It is not a guarantee against every deliberate attack: an affiliate who created fake referees of their own could, in principle, subtract their own activity from a group. Cloak limits this with manual approval of every affiliate, rounding, the two-month window, and monitoring for patterns of test wallets. Creating fake referees breaks the [affiliate terms](/affiliates/terms) and leads to suspension.
+
+## Where next
+
+<CardGroup cols={2}>
+  <Card title="Payouts and claiming" icon="calendar-check" href="/affiliates/payouts">
+    The monthly schedule, statement statuses, and how to claim.
+  </Card>
+  <Card title="Privacy is not anonymity" icon="scale-balanced" href="/learn/privacy-is-not-anonymity">
+    Why Cloak treats privacy as accountable, not as hiding.
+  </Card>
+</CardGroup>
