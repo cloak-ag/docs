@@ -57,9 +57,9 @@ npm install @solana/wallet-adapter-react @solana/web3.js
 5. Public inputs for the transact/withdraw-swap proofs are 264-byte payloads; do not hand-pack them.
 6. On-chain fee model (read by the program from each pool's `pool_config` PDA and collected by the program into the treasury; `transact` reads the live config before building a fee-bearing proof):
    - SOL: `5_000_000` lamports fixed (`0.005 SOL`) + `0.3 %` variable. SDK helpers: `calculateFee(number)`, `calculateFeeBigint(bigint)`, `isWithdrawAmountSufficient(bigint)`, `getDistributableAmount(number)`.
-   - SPL (USDC/USDT, 6 decimals): `450_000` base units fixed (`0.45` token) + `0.3 %` variable, charged in the withdrawn token. The SDK does not compute SPL fees; there is no SPL fee helper.
-   - Fees only apply on withdrawal/swap paths. Deposits and shield-to-shield transfers pay zero protocol fee.
-   - Minimum deposit: `10_000_000` lamports for SOL, `1_000_000` base units for USDC/USDT.
+   - Token pools (SPL Token or Token-2022 mints): a per-pool fixed fee in the pool token's base units + `0.3 %` variable, charged in that token. USDC/USDT (6 decimals): `450_000` fixed (`0.45` token); a new token pool starts at `0` fixed. There is no exported token-pool fee helper.
+   - Fees only apply on withdrawal/swap paths; a swap pays the fee of the pool it spends from. Deposits and shield-to-shield transfers pay zero protocol fee.
+   - Minimum deposit: `10_000_000` lamports for SOL. A token-pool deposit must be larger than that pool's own fee on the same amount (`451_355` base units for USDC/USDT), else `DepositTooSmall` (`0x1038`); `transact` reads the live `PoolConfig` and throws before proving.
 7. Viewing-key registration is required before scanner/compliance flows can decrypt chain notes. `enforceViewingKeyRegistration: false` in `TransactOptions` is the only thing that turns that check off, and it defaults to enabled. It is also the flag that gates `relayUrl: ""`: with the check on (the default) an empty or omitted `relayUrl` throws before any network call, and only with the check off does `""` act as the caller-signed direct-submission signal described in §1. Do NOT combine it with an omitted or empty `relayUrl`: with the check off and a signer present (`depositorKeypair`, or `signTransaction` + `depositorPublicKey`), `transact` / `transfer` / `partialWithdraw` / `fullWithdraw` submit directly, signed and paid by the user's own key, which links the transaction to that key and loses the privacy the flow exists for. With the check off, no relay and no signer, the call does not fail cleanly either: it reports the problem through `onProgress` and then throws a misleading `commitment indices missing: [-1, -1]` error. Deposits are the one flow where direct submission is correct: they always submit under the depositor's key by design, and require `depositorKeypair` or `signTransaction` + `depositorPublicKey`.
 8. Merkle root freshness: treat `RootNotFound` / stale-root errors as retryable. SDK transaction paths already retry these by default; use `preflightCheck` / `waitForRoot` only for advanced/operator flows.
 9. Never log secrets: spend keys, viewing keys (`nk`), UTXO private keys, blindings, signed messages, note payloads.
@@ -371,18 +371,19 @@ const DEFAULT_TRANSACTION_CIRCUITS_URL: string | null; // ".../cloak-circuits/ci
 const TRANSACTION_CIRCUITS_VERSION: "0.2.0";
 ```
 
-**`UtxoSwapResult.refund` is the user's principal, not telemetry.** A swap locks the SOL in a
+**`UtxoSwapResult.refund` is the user's principal, not telemetry.** A swap locks its input in a
 SwapState PDA and only settles on a second transaction. If it times out before that, the close path
 returns the principal to the pool as an amount-bound note
 
 ```
-R_fb = Poseidon(amountAfterFee, refund.publicKey, refund.blinding, WSOL)
+R_fb = Poseidon(amountAfterFee, refund.publicKey, refund.blinding, poolMint)
 ```
 
-where `amountAfterFee` is the amount the program actually locked, read authoritatively from the
-on-chain `SwapState.sol_amount` (the gross swap amount minus the on-chain program fee). Claiming it
-back requires `refund.privateKey`. Persist the whole `refund` object alongside the change note, in
-the same tick `swapUtxo` / `swapWithChange` returns.
+where `poolMint` is the input pool's mint (wSOL for a SOL swap) and `amountAfterFee` is the amount
+the program actually locked, read authoritatively from the on-chain `SwapState.sol_amount` (the
+gross swap amount minus the on-chain program fee). Claiming it back requires `refund.privateKey`.
+Persist the whole `refund` object alongside the change note, in the same tick `swapUtxo` /
+`swapWithChange` returns.
 
 `derivedFromNk` says whether losing it is survivable. When it is `true`, the same secret can be
 rebuilt later from the wallet's `nk` plus the swap's public first input nullifier, which is what
@@ -446,6 +447,14 @@ interface TransactOptions {
   metadataBundle?: EncryptedMetadataBundle;
   encryptedNotes?: string[];
   enforceViewingKeyRegistration?: boolean;
+
+  // Withdrawal memo (withdrawals to a public wallet ONLY; deposits, sends and swaps throw):
+  withdrawalMemo?: string;                // PUBLIC AND PERMANENT: written on chain via SPL Memo,
+                                          // readable by anyone. 1..64 UTF-8 bytes
+                                          // (WITHDRAWAL_MEMO_MAX_BYTES), no control or
+                                          // text-direction chars, no CLK1/CLKD1 prefix
+                                          // (validateWithdrawalMemo). Bound into extDataHash.
+                                          // transactBatch: per row in item.options only.
 
   // Performance:
   cachedMerkleTree?: MerkleTree;
@@ -678,7 +687,7 @@ function discoverSwapRefunds(
     untilSignature?: string;            // resume cursor from a previous run (exclusive)
     batchSize?: number;                 // getTransaction concurrency, default 50
     onStatus?: (status: string) => void;
-    poolMint?: Address;               // swap input is wSOL-locked; the SOL default is correct
+    poolMint?: Address;               // the pool to scan (default wSOL); scan each pool you swap from
   },
 ): Promise<DiscoveredSwapRefund[]>;
 
@@ -1031,9 +1040,10 @@ function formatAmount(lamports: number, decimals?: number): string;
 function parseAmount(sol: string): number;
 ```
 
-There is NO SPL fee helper. USDC and USDT pools charge `450_000` base units fixed (0.45 token at
-6 decimals) plus the same `3 / 1000` variable fee in the withdrawn token, and the program reads the
-effective values from the `pool_config` PDA; minimum SPL deposit is `1_000_000` base units (1.00).
+There is NO token-pool fee helper. USDC and USDT pools charge `450_000` base units fixed (0.45 token at
+6 decimals) plus the same `3 / 1000` variable fee in the withdrawn token (a new token pool starts at
+`0` fixed), and the program reads the effective values from the `pool_config` PDA. A token-pool
+deposit must be larger than that pool's own fee on it: `451_355` base units for USDC/USDT.
 Compute an SPL fee yourself, or read it back from the transaction result. Do not invent a
 `calculateSpl*` or Q64 helper: none exists. See `/protocol/fee-model`.
 
@@ -1502,6 +1512,9 @@ const wd = await fullWithdraw([dep.outputUtxos[0]], recipientPublicKey, {
 
 ### 6.6 Swap SOL -> SPL (with shielded change)
 
+The input pool is the one the input notes belong to; this example spends SOL. A swap from a token
+pool works the same way with that pool's notes and an amount in its base units.
+
 ```ts
 import { NATIVE_SOL_MINT, serializeUtxo, swapWithChange } from "@cloak.dev/sdk";
 import { address } from "@cloak.dev/sdk";
@@ -1519,7 +1532,7 @@ const [recipientAta] = await findAssociatedTokenPda({
 // Quote (Jupiter) -> pick minOut:
 const jup = createJupiterApiClient();
 const quote = await jup.quoteGet({
-  inputMint: NATIVE_SOL_MINT.toBase58(),   // swap input is wSOL-locked
+  inputMint: NATIVE_SOL_MINT.toBase58(),   // the input pool's mint; SOL in this example
   outputMint: outputMint.toBase58(),
   amount: Number(swapAmount),
   slippageBps: 1500,
@@ -1777,6 +1790,7 @@ do not adapt the Node one by hand.
 16. Never substitute an ephemeral, session or service-held key for the authenticated `sender`. It is the key screened for sanctions; substituting it moves screening off the actual user.
 17. Do not hand-roll the request-auth scheme when `submitTransactToRelay` will do. If you do hand-roll it, use `buildRelayAuthPreimage` + `canonicalJson` and read `TRANSACT_AUTH_FIELDS` / `TRANSACT_SWAP_AUTH_FIELDS` from the package rather than retyping them.
 18. Never claim an integrator must use a Cloak-operated RPC. Only the submission endpoint is pinned; the `Connection` is entirely the caller's, and any non-loopback RPC works.
+19. Never put private data (names, emails, account numbers, anything that identifies a person) in `withdrawalMemo`. The memo is written on chain in plain text and is public and permanent. Use it for references only: an invoice or payment reference, an exchange deposit tag, a payroll label, a reconciliation id.
 
 ---
 

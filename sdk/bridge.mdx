@@ -36,7 +36,7 @@ throws on a non-integer, a negative value, or anything above `MAX_RECEIVER_INDEX
 assessBridgeQuote(q: BridgeQuoteInput): BridgeQuoteAssessment
 renderAssessment(a: BridgeQuoteAssessment): string
 
-MIN_DEPOSIT_SPL_BASE_UNITS; // 1_000_000 — the program's USDC/USDT deposit minimum
+MIN_DEPOSIT_SPL_BASE_UNITS; // 1_000_000 (1.00 USDC): the least a viable quote must leave to shield
 ECONOMIC_MINIMUM;           // below this, fixed costs dominate the amount
 withdrawFeeFor(amount: bigint): bigint;
 WITHDRAW_FIXED_FEE;         // 450_000 base units
@@ -44,10 +44,11 @@ WITHDRAW_FEE_BPS;           // 30 (0.3%)
 ```
 
 `assessBridgeQuote` returns what the user actually ends up with, and whether the quote is worth
-taking at all: `viable` is false when what would arrive cannot clear the program's deposit minimum
-once costs are covered. It throws rather than compute on a nonsensical quote (a negative amount, or
-a route claiming to deliver more than it was given). `renderAssessment` formats the same numbers for
-a CLI.
+taking at all: `viable` is false when what would arrive, once costs are covered, is below
+`MIN_DEPOSIT_SPL_BASE_UNITS`. That 1.00 USDC is the quote's own floor and sits above the program's:
+a USDC deposit only has to be larger than the pool's fee on it (about 0.4514 USDC). It throws rather
+than compute on a nonsensical quote (a negative amount, or a route claiming to deliver more than it
+was given). `renderAssessment` formats the same numbers for a CLI.
 
 <Note>
 `WITHDRAW_FIXED_FEE` and `WITHDRAW_FEE_BPS` are compile-time **fallbacks for quote arithmetic**, used

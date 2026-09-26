@@ -35,9 +35,12 @@ Cloak is a UTXO privacy system on Solana with four active runtime surfaces:
   transfers are fee-free
 - Fees are enforced on-chain from each pool's `PoolConfig`
 - SOL pool fee: `5_000_000` lamports fixed + `gross * 3 / 1000` variable
-- SPL pool fee (USDC/USDT): `450_000` base units fixed + `gross * 3 / 1000` variable, in the withdrawn token
+- Token pool fee: a per-pool fixed fee in the pool token's base units + `gross * 3 / 1000` variable,
+  in the withdrawn token (USDC/USDT: `450_000` fixed; a new token pool starts at `0`)
 - Net recipient amount: `gross - fee`
-- Minimum deposit: `10_000_000` lamports (SOL pool); `1_000_000` base units (USDC/USDT pools)
+- Minimum deposit: `10_000_000` lamports (SOL pool); a token-pool deposit must be larger than that
+  pool's own fee on it (`451_355` base units at the USDC/USDT fee), else `DepositTooSmall` (`0x1038`)
+- A swap spends from any pool and pays the input pool's fee, in the input token
 
 See [Fee Model](/protocol/fee-model) for worked examples and the per-flow breakdown.
 

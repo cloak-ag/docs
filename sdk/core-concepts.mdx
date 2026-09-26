@@ -55,12 +55,17 @@ For SOL withdrawals/swaps:
 - `fee` = `5_000_000` lamports fixed (0.005 SOL) + `gross * 3 / 1000`
 - `net` = `gross - fee`
 
-For SPL (USDC/USDT) withdrawals:
+For token-pool withdrawals and swaps:
 
-- `fee` = `450_000` base units fixed (0.45 USDC/USDT) + `floor(gross * 3 / 1000)` (0.3%), charged in the withdrawn token
+- `fee` = the pool's fixed fee + `floor(gross * 3 / 1000)` (0.3%), charged in the pool's token. USDC
+  and USDT charge `450_000` base units fixed (0.45 USDC/USDT); a new token pool starts at `0`.
 
-Minimum deposit: `10_000_000` lamports (`0.01 SOL`) on the SOL pool; `1_000_000` base units
-(`1.00 token`) on the USDC and USDT pools. See [Fee Model](/protocol/fee-model).
+A swap can start from any pool and pays that input pool's fee, in the input token.
+
+Minimum deposit: `10_000_000` lamports (`0.01 SOL`) on the SOL pool. A token-pool deposit must be
+larger than the pool's own fee on the same amount: `451_355` base units (about `0.4514` token) at the
+USDC/USDT fee. The SDK checks this against the live `PoolConfig` before proving; the program rejects
+a smaller deposit with `DepositTooSmall` (`0x1038`). See [Fee Model](/protocol/fee-model).
 
 ## Proof data shapes
 

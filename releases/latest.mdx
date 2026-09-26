@@ -8,6 +8,8 @@ What is live on Solana mainnet today, and the hashes you can check yourself.
 
 ## Program
 
+{/* TEAM: on the program upgrade, replace the artifact sha256, size and "Live since" date here, in the verify recipe below, and in protocol/shield-pool.mdx. */}
+
 | | |
 |---|---|
 | Program ID | `zh1eLd6rSphLejbFfJEneUwzHRfMKxgzrgkfwA6qRkW` |
@@ -17,6 +19,20 @@ What is live on Solana mainnet today, and the hashes you can check yourself.
 
 The program has undergone an independent security audit, and the deployed bytecode is built from
 the audited release.
+
+Changes from the 2026-08-24 program:
+
+- **Swaps from any pool.** A private swap can spend from the SOL pool or any token pool and deliver
+  any Jupiter-routable token. It pays the input pool's fee, in the input token.
+- **Token-2022 pools.** A token pool's mint can be an SPL Token or a Token-2022 mint. A newly
+  initialized token pool starts at a fixed fee of 0 plus 0.3%, set per pool in its `PoolConfig`.
+- **Token deposit floor from the pool's fee.** A token-pool deposit must be larger than that pool's
+  own fee on it (see below), replacing the fixed 1.00-token minimum. A token deposit now names the
+  pool's `PoolConfig` account: SDK 0.2.5 and earlier do not, so their token deposits fail with
+  `MissingAccounts` (`0x1063`) until they upgrade. SOL deposits and every other flow are unaffected.
+- **Withdrawal memos.** A withdrawal to a public wallet can carry a short memo, bound into the proof
+  and written on chain through SPL Memo, where anyone can read it. See
+  [Withdrawal memos](/sdk/utxo-transactions#withdrawal-memos).
 
 ## Verifying key and circuits
 
@@ -58,11 +74,13 @@ charges a fee.
 | Pool | Fixed fee | Variable fee | Minimum deposit |
 |---|---|---|---|
 | SOL | 0.005 SOL | 0.3% | 0.01 SOL |
-| USDC | 0.45 USDC | 0.3% | 1.00 USDC |
-| USDT | 0.45 USDT | 0.3% | 1.00 USDT |
+| USDC | 0.45 USDC | 0.3% | 0.451355 USDC (more than its own fee) |
+| USDT | 0.45 USDT | 0.3% | 0.451355 USDT (more than its own fee) |
 
-Fees apply to withdrawals and swaps only. Deposits and private sends carry no protocol fee (network
-fees only). Full breakdown: [Fee model](/protocol/fee-model).
+Fees apply to withdrawals and swaps only; a swap pays the fee of the pool it spends from. Deposits and
+private sends carry no protocol fee (network fees only). A token-pool deposit must be larger than
+that pool's own fee on the same amount, so the note can pay for its own withdrawal; anything smaller
+fails with `DepositTooSmall` (`0x1038`). Full breakdown: [Fee model](/protocol/fee-model).
 
 ## Compliance
 
@@ -74,6 +92,8 @@ fees only). Full breakdown: [Fee model](/protocol/fee-model).
   [Compliance](/guide/compliance).
 
 ## SDK — current release `0.2.5`
+
+{/* TEAM: on the SDK release paired with the program upgrade, add its version, date and install line here. It sends PoolConfig on token deposits and adds `withdrawalMemo`, swaps from any pool and Token-2022 pools. */}
 
 Published 2026-09-17. The program, the verifying key and the `circuits/0.2.0` bundle did **not**
 change with it; 0.2.5 is a client-side release.

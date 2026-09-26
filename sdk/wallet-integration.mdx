@@ -424,7 +424,7 @@ Most of it does not come back. Be precise with yourself about which parts do:
 | A deposit built with `createUtxo` | **No** | Same missing `blinding`. It appears in history as an amount, which is not a spendable note |
 | A deposit built with `createRecoverableDepositUtxo` | Yes | Secrets are a PRF of your `nk` and the salt the chain note already carries, so a cold scan can replay the derivation |
 | A note someone sent you, when the sender passed `recipientViewingPublicKey` | Yes | The sender sealed `amount` and `blinding` into an on-chain envelope addressed to your viewing key |
-| A swap input stranded by a timeout | Yes, if the swap was built with an `nk` | `discoverSwapRefunds` replays the same PRF shape over refund leaves. Older swaps, and any swap built without an `nk`, exist only in the `refund` field of the `UtxoSwapResult` you were handed |
+| A swap input stranded by a timeout | Yes, if the swap was built with an `nk` | `discoverSwapRefunds` replays the same PRF shape over refund leaves, one pool per call (`poolMint`, wSOL by default). Older swaps, and any swap built without an `nk`, exist only in the `refund` field of the `UtxoSwapResult` you were handed |
 
 **`scanTransactions` is not note recovery.** It decrypts your own chain notes with `nk` and produces
 the history rows the site documents elsewhere: gross, fee, `netAmount` and a running balance, ready

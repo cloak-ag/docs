@@ -37,7 +37,7 @@ Cloak is built to be private by default, auditable when required. Every transact
 </Accordion>
 
 <Accordion title="What does it cost?">
-Shielding is free; sending SOL to a public address costs 0.005 SOL fixed plus 0.3%, while USDC and USDT pay 0.45 tokens fixed plus 0.3%. A private swap costs 0.005 SOL plus 0.3% of the SOL swapped, and shielded-to-shielded transfers are free at the protocol level. Fees are collected on-chain by the program — nothing else charges you; the full table is at [Fees](/guide/fees).
+Shielding is free; sending SOL to a public address costs 0.005 SOL fixed plus 0.3%, while USDC and USDT pay 0.45 tokens fixed plus 0.3%. A private swap pays the fee of the token it swaps from, in that token: 0.005 SOL plus 0.3% from SOL, or 0.45 tokens plus 0.3% from USDC or USDT. Shielded-to-shielded transfers are free at the protocol level. Fees are collected on-chain by the program — nothing else charges you; the full table is at [Fees](/guide/fees).
 </Accordion>
 
 <Accordion title="Why is there no fee to shield or to receive?">
@@ -45,7 +45,7 @@ The protocol charges only when value leaves the pool, so deposits carry no proto
 </Accordion>
 
 <Accordion title="Which tokens and wallets are supported?">
-You can shield and send SOL, USDC, and USDT, each in its own shielded pool; swaps take shielded SOL in and deliver any Jupiter-verified token out. Phantom, Solflare, Ledger, and Solana Mobile are supported, and any Wallet Standard wallet (such as Backpack) is auto-detected. Details at [Wallets &amp; tokens](/guide/wallets-and-tokens).
+You can shield and send SOL, USDC, and USDT, each in its own shielded pool; swaps take any of them in from your private balance and deliver any Jupiter-verified token out. Phantom, Solflare, Ledger, and Solana Mobile are supported, and any Wallet Standard wallet (such as Backpack) is auto-detected. Details at [Wallets &amp; tokens](/guide/wallets-and-tokens).
 </Accordion>
 
 <Accordion title="Can I bring in funds from another chain?">
@@ -57,7 +57,7 @@ The shield is a step that runs in your browser, so an arrival that lands while y
 </Accordion>
 
 <Accordion title="Is there a minimum amount?">
-Yes. Shielding SOL takes at least 0.01 SOL, and a private swap takes at least 0.01 SOL in. Shielding USDC or USDT takes at least 1.00 token; the program rejects smaller deposits on-chain. Bridging in inherits that 1.00 USDC floor — the app refuses to show you a deposit address for an amount it could not shield once costs are covered, and warns you below roughly 15 USDC, where the fixed costs start to dominate.
+Yes. Shielding SOL takes at least 0.01 SOL, and a private swap from SOL takes at least 0.01 SOL in. A USDC or USDT deposit must be larger than the fee it would pay to leave (about 0.4514 tokens), so it can pay for its own withdrawal; the program rejects smaller deposits on-chain, and a swap from USDC or USDT must likewise be larger than its fee. Bridging in has its own floor: the app refuses to show you a deposit address unless at least 1.00 USDC would be left to shield once costs are covered, and warns you below roughly 15 USDC, where the fixed costs start to dominate.
 </Accordion>
 
 <Accordion title="Who pays the gas?">

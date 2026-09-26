@@ -181,7 +181,9 @@ chain note leaves the deposit exactly as undiscoverable as before.
 `discoverSwapRefunds` walks program history for swap timeout-refund leaves that belong to the holder
 of `viewingKeyNk` and returns each in spendable form. It is forward-looking only: it finds refunds
 whose keys were derived from `nk`, so a swap built without an `nk` has no derivation to replay and no
-key-only scan can recover it. An empty result is not proof that a wallet has no stranded refund.
+key-only scan can recover it. An empty result is not proof that a wallet has no stranded refund. It
+scans one pool per call, `options.poolMint` (wrapped SOL by default): a timed-out swap is refunded
+into the pool it spent from, so scan each pool the wallet swaps from.
 
 <Warning>
 Change notes are outside both helpers. `createUtxo` draws each change note's `blinding` from fresh
@@ -205,9 +207,9 @@ Notes:
 ## Fee constants
 
 Fees are enforced on-chain from each pool's `PoolConfig`; `transact` reads the live config before
-building a fee-bearing proof. These constants mirror the deployed SOL-pool defaults for display
-math. SPL pools (USDC/USDT) charge `450_000` base units fixed (0.45) + 0.3%; see
-[Fee Model](/protocol/fee-model).
+building a fee-bearing proof, and before a token-pool deposit to check its floor. These constants
+mirror the deployed SOL-pool defaults for display math. Token pools set their own fixed fee (USDC
+and USDT: `450_000` base units, 0.45, + 0.3%); see [Fee Model](/protocol/fee-model).
 
 ```typescript
 FIXED_FEE_LAMPORTS       // 5_000_000
@@ -225,9 +227,27 @@ formatAmount(lamports: number, decimals?: number)
 parseAmount(sol: string)
 ```
 
-These values cover the native SOL pool. SPL pools (USDC and USDT) charge a fixed 0.45 token,
-450,000 raw units at 6 decimals, plus the same 0.3 percent variable fee. The program reads the
-effective values from the `pool_config` PDA; the SDK does not compute SPL fees.
+These values cover the native SOL pool. Each token pool's fixed fee is in its own base units and
+set in its `pool_config` PDA: USDC and USDT charge 0.45 token (450,000 raw units at 6 decimals), and
+a new token pool starts at 0, each plus the same 0.3 percent variable fee. `MIN_DEPOSIT_LAMPORTS` is
+the SOL pool's floor; a token pool's floor is its own fee on the deposit, which `transact` reads from
+`pool_config` and checks before proving. There is no exported token-pool fee helper.
+
+## Withdrawal memos
+
+```typescript
+withdrawalMemo?: string;           // TransactOptions: a memo on a withdrawal to a public wallet
+WITHDRAWAL_MEMO_MAX_BYTES;         // 64 (UTF-8 bytes)
+validateWithdrawalMemo(memo: string): void; // throws with the reason a memo is refused
+withdrawalMemoField(bytes: Uint8Array): bigint; // the memo's field element in extDataHash
+ExtDataRejectedError;              // a withdrawal's memo, recipient or fee limit was refused
+```
+
+`withdrawalMemo` puts a short reference (an invoice or payment reference, a payroll label, a
+reconciliation id) on a withdrawal. It is bound into the proof and written on chain as an SPL Memo
+instruction, so it is **public and permanent**: never put private data in it. Withdrawals only;
+deposits, private sends and swaps refuse it. Limits, the memo-required recipient case and history:
+[Withdrawal memos](/sdk/utxo-transactions#withdrawal-memos).
 
 ## Advanced `TransactOptions`
 

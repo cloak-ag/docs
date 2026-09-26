@@ -45,14 +45,17 @@ Under the hood, SDK builds proof + `264`-byte public inputs and submits the resu
   - `gross = abs(externalAmount)`
   - `fee = 5_000_000 + floor(gross * 3 / 1000)`
   - `net = gross - fee`
-- SPL (USDC/USDT) withdraw: `fee = 450_000 + floor(gross * 3 / 1000)` in token base units,
-  i.e. 0.45 token fixed plus 0.3%, charged in the withdrawn token
-- Deposits and shielded transfers have no protocol fee, but every deposit must meet the
-  on-chain minimum: `10_000_000` lamports (0.01 SOL) for the SOL pool, and `1_000_000`
-  base units (1.00 token) for the 6-decimal USDC/USDT pools. Anything below the minimum
-  is rejected by the program with `DepositTooSmall` (`0x1038`). The SDK exports
-  `MIN_DEPOSIT_LAMPORTS` for the SOL pool only, so an under-minimum USDC or USDT deposit
-  is not caught client side and fails at submission.
+- Token-pool withdraw/swap: `fee = fixed + floor(gross * 3 / 1000)` in token base units, with
+  `fixed` from the pool's `PoolConfig`, charged in the pool's token. USDC and USDT charge
+  `450_000` fixed (0.45 token plus 0.3%); a new token pool starts at `0` fixed.
+- A swap pays the fee of the pool it spends from, in that pool's token.
+- Deposits and shielded transfers have no protocol fee, but every deposit must clear a floor.
+  The SOL pool's is `10_000_000` lamports (0.01 SOL). A token-pool deposit must be larger than
+  that pool's own fee on the same amount, so the note can pay for its own withdrawal: at the
+  USDC/USDT fee the smallest accepted deposit is `451_355` base units (about 0.4514 token).
+  The program rejects anything smaller with `DepositTooSmall` (`0x1038`). The SDK checks both
+  floors before proving, reading the token pool's live `PoolConfig`, so an under-floor deposit
+  throws `Deposit amount too small` without a proof or a wallet prompt.
 
 SDK helpers you can call directly:
 
@@ -352,6 +355,45 @@ Each of these asks the wallet to sign exactly once, whatever happens on the netw
 retry re-uses the same proof and the same signed request. See
 [how many wallet prompts to expect](/sdk/request-authentication#how-many-wallet-prompts-to-expect).
 
+### Withdrawal memos
+
+A withdrawal to a public wallet can carry a short memo: the payment reference on an invoice, the
+deposit tag an exchange asks for, a payroll label, a reconciliation id. Pass it as `withdrawalMemo`:
+
+```typescript
+const withdrawn = await partialWithdraw(inputUtxos, exchangeWallet, 10_000_000n, {
+  ...options,
+  withdrawalMemo: "INV-2026-0142",
+});
+await persistOutputs(withdrawn.outputUtxos);
+```
+
+<Warning>
+A memo is public and permanent. The program writes it on chain as an SPL Memo instruction next to
+the withdrawal, in plain text, and anyone can read it. Never put private data in a memo: no names,
+email addresses, account numbers or anything else that ties the withdrawal to a person.
+</Warning>
+
+- **Limits.** 1 to 64 bytes of UTF-8 (`WITHDRAWAL_MEMO_MAX_BYTES`), with no control characters
+  (a newline or a tab), no text-direction characters, and no `CLK1` or `CLKD1` prefix.
+  `validateWithdrawalMemo(memo)` throws with the reason. The SDK never trims or rewrites a memo,
+  because the exact string is what gets bound.
+- **Withdrawals only.** `partialWithdraw`, `fullWithdraw`, or `transact` with a negative
+  `externalAmount`. Deposits, private sends and swaps refuse it. `partialWithdraw` and
+  `fullWithdraw` put it on the final withdrawal, never on the consolidation merges before it; in
+  `transactBatch`, set it per row in `item.options`.
+- **Bound into the proof.** The memo is part of `extDataHash`, so it cannot be altered or stripped
+  after the proof exists.
+- **Memo-required recipients.** The program logs the memo immediately before the transfer to the
+  recipient, so a Token-2022 token account that requires a memo on incoming transfers can receive a
+  withdrawal that carries one. A swap cannot deliver to such an account.
+- **Checked before proving.** A memo that fails validation, or one that cannot be carried for this
+  request, throws before any proof or merge, and nothing is sent. Caller-signed direct submission
+  (`relayUrl: ""`) cannot carry a memo. `ExtDataRejectedError` on submission means the memo, or the
+  recipient and fee limit bound with it, was refused: nothing was sent, and retrying the same
+  request cannot help.
+- **In history.** `scanTransactions` returns it as `memo` on the withdraw row.
+
 ## Swap example
 
 <CodeGroup>
@@ -399,7 +441,7 @@ declare function saveSwapRefund(
 
 const swapped = await swapWithChange(
   inputUtxos,
-  50_000_000n, // swap amount (lamports)
+  50_000_000n, // swap amount, in the input pool's base units (lamports for SOL)
   outputMint,
   recipientAta,
   1_000_000n, // min output
@@ -420,6 +462,12 @@ await saveSwapRefund(swapped.swapStatePda, swapped.refund); // reclaims a timed-
 </CodeGroup>
 
 `swapWithChange` sends a `TransactSwap` payload (`proof + 264-byte public inputs + swap params`).
+
+The swap spends from the pool its input notes belong to: SOL, USDC, USDT or any other shield pool,
+under SPL Token or Token-2022. All input notes must share one mint. The output can be any
+Jupiter-routable SPL Token or Token-2022 mint; derive `recipientAta` under the program that owns the
+output mint. The fee is the input pool's, taken in the input token, so quote Jupiter on the amount
+after that fee.
 
 A swap returns two things worth keeping, not one. `outputUtxos` carries the change note, exactly as
 every other flow does. `refund` is separate: it is the secret that reclaims the swap principal if

@@ -89,7 +89,7 @@ The app quotes every one of these before you send, and it leads with the number 
 Below roughly 15 USDC the fixed costs start to dominate — a round trip in and back out costs about the same in absolute terms whatever the size. The app computes the exact figure at quote time and warns you before you can reveal an address. It is your money and your call; it just refuses to let you make it blind.
 </Tip>
 
-If the amount is so small that shielding it would be *impossible* — less than the program's 1.00 USDC deposit minimum once network costs are covered — the app refuses before showing you an address at all. Nothing is reserved and nothing is sent. That is deliberate: the alternative is money stranded, unshielded, at an address you have never heard of.
+If less than 1.00 USDC would be left to shield once network costs are covered, the app refuses before showing you an address at all. Nothing is reserved and nothing is sent. That is deliberate: the alternative is money stranded, unshielded, at an address you have never heard of.
 
 ## If too little or too much arrives
 
@@ -99,7 +99,7 @@ If the amount is so small that shielding it would be *impossible* — less than 
 
 - **On the 1Click route**, an order it cannot fill is refunded to the origin-chain address you gave — that is what that address is for. It is used for nothing else.
 - **On the Jupiter route** there is no refund path at all. Its interface has no refund concept, so an undershoot has no automated recovery and unwinding it means asking the provider out of band. This is the single biggest practical difference between the two routes.
-- **Under 1.00 USDC on Solana**, whichever route delivered it, the program cannot accept the deposit — that is the on-chain minimum for the USDC pool. The tokens are still yours, at your one-time address; they just cannot enter the pool until there is at least 1.00 USDC there.
+- **Too little on Solana to shield**, whichever route delivered it: what is left after network costs must be larger than the USDC pool's own fee on it (about 0.4514 USDC), or the program refuses the deposit. The tokens are still yours, at your one-time address; they just cannot enter the pool until there is enough there.
 
 <Note>
 Anyone can send a tiny amount to any address on Solana, including yours. A stray amount that arrives **before** your deposit is simply shielded along with everything else. One that arrives **after** is left where it is on purpose: sweeping it out would publish a link between your one-time address and wherever it was swept to, which is exactly the link this whole flow exists to break.
