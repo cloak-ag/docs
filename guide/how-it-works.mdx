@@ -10,7 +10,7 @@ Every private action in Cloak is authorized by a Groth16 zero-knowledge proof, g
 
 Shielding moves SOL, USDC, or USDT from your wallet into your private balance. Your wallet signs the transaction and the funds enter the shielded pool for that token — each token has its own pool. In return, your private balance holds UTXOs: encrypted private notes of value that only you hold.
 
-- Minimum 0.01 SOL for SOL; 1.00 USDC or 1.00 USDT for stablecoins.
+- Minimum 0.01 SOL for SOL. For USDC or USDT, a deposit must be larger than the fee it would pay to leave, about 0.4514 USDC or USDT; the app shows the exact minimum.
 - No protocol fee on deposits.
 - This is the only step where your wallet pays gas — normal Solana network costs, not a Cloak fee.
 
@@ -39,10 +39,10 @@ Don't have the recipient's address? Send a [payment link](/guide/payment-links) 
 
 ## 3. Private swap
 
-Swap shielded SOL into any Jupiter-verified token — USDC, USDT, ZEC, and BONK by default, or search the full list. Cloak routes the swap through Jupiter for the best price. The output lands at the recipient address you choose as a normal public token balance; the link back to your funding wallet stays hidden.
+Swap any token in your private balance (SOL, USDC, or USDT) into any Jupiter-verified token — USDC, USDT, ZEC, and BONK by default, or search the full list. Cloak routes the swap through Jupiter for the best price. The output lands at the recipient address you choose as a normal public token balance; the link back to your funding wallet stays hidden.
 
-- Input is SOL only, minimum 0.01 SOL.
-- Fee: 0.005 SOL fixed + 0.3% of the SOL swapped. Jupiter's price impact and slippage are separate from Cloak's fee.
+- Minimum 0.01 SOL when swapping SOL. From USDC or USDT, the amount must be larger than the swap's fee.
+- Fee: the fee of the token you swap from, taken in that token: 0.005 SOL fixed + 0.3% of the SOL swapped, or 0.45 USDC/USDT fixed + 0.3% of the stablecoin swapped. Jupiter's price impact and slippage are separate from Cloak's fee.
 
 ## 4. Unshield
 

@@ -14,11 +14,18 @@ swaps). Deposits and shield-to-shield transfers charge no fee.
 ## Constants
 
 - SOL pool fixed fee: `5_000_000` lamports (`0.005 SOL`)
-- SPL pool fixed fee (USDC/USDT): `450_000` base units (`0.45 USDC` / `0.45 USDT`), charged in
-  the withdrawn token
-- Variable fee (all pools): `gross * 3 / 1000` (0.30%)
-- Minimum deposit: `10_000_000` lamports (`0.01 SOL`) on the SOL pool; `1_000_000` base units
-  (`1.00 USDC` / `1.00 USDT`) on the SPL pools
+- Token pool fixed fee: set per pool in its `PoolConfig`, in the pool token's base units, and
+  charged in that token. The USDC and USDT pools charge `450_000` base units (`0.45 USDC` /
+  `0.45 USDT`); a newly initialized token pool starts at `0`.
+- Variable fee: `gross * 3 / 1000` (0.30%), the default for every pool
+- Minimum deposit, SOL pool: `10_000_000` lamports (`0.01 SOL`)
+- Minimum deposit, token pools: a deposit must be larger than that pool's own fee on the same
+  amount (`deposit > fixed + deposit * 3 / 1000` at the default rate), or the program rejects it
+  with `DepositTooSmall` (`0x1038`): a smaller note could never pay for its own withdrawal. At the
+  USDC/USDT fee of 0.45 + 0.3% the smallest accepted deposit is `451_355` base units (about
+  `0.4514` token). With a fixed fee of `0`, any deposit above zero clears it.
+
+A token pool's mint can be an SPL Token or a Token-2022 mint.
 
 ## Per-flow behavior
 
@@ -28,8 +35,10 @@ swaps). Deposits and shield-to-shield transfers charge no fee.
   commitments sum to the inputs.
 - **Withdrawal (`publicAmount < 0`)**: the destination receives `net = gross - fee`; the treasury
   PDA receives `fee`.
-- **Swap (`TransactSwap`, SOL pool only)**: `fee = fixed + variable` is taken from the gross SOL
-  at the first transaction; the remainder (`gross - fee`) is what gets swapped.
+- **Swap (`TransactSwap`)**: a swap spends from any pool, SOL or a token pool, and delivers any
+  Jupiter-routable mint. `fee = fixed + variable` comes from the input pool's `PoolConfig`, in the
+  input token, and is taken from the gross amount at the first transaction; the remainder
+  (`gross - fee`) is what gets swapped.
 
 ## Fee math
 
@@ -39,7 +48,7 @@ SOL pool (withdraw/swap):
 fee = 5_000_000 + gross * 3 / 1000
 ```
 
-SPL pools (withdraw):
+USDC and USDT pools (withdraw/swap), in token base units:
 
 ```
 fee = 450_000 + gross * 3 / 1000
