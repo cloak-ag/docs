@@ -30,6 +30,9 @@ Changes from the 2026-08-24 program:
   own fee on it (see below), replacing the fixed 1.00-token minimum. A token deposit now names the
   pool's `PoolConfig` account: SDK 0.2.5 and earlier do not, so their token deposits fail with
   `MissingAccounts` (`0x1063`) until they upgrade. SOL deposits and every other flow are unaffected.
+- **Withdrawal memos.** A withdrawal to a public wallet can carry a short memo, bound into the proof
+  and written on chain through SPL Memo, where anyone can read it. See
+  [Withdrawal memos](/sdk/utxo-transactions#withdrawal-memos).
 
 ## Verifying key and circuits
 

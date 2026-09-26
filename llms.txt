@@ -90,6 +90,7 @@ on the TypeScript SDK `@cloak.dev/sdk`, in the browser, in Node, and in server-s
 - In `@cloak.dev/sdk` the pin accepts exactly two values for `relayUrl`: an allowlisted origin (name it with `CLOAK_PRODUCTION_RELAY_URL` rather than typing a host), or `""` for caller-signed direct submission. `""` only carries that meaning when `enforceViewingKeyRegistration: false` is set in the same options; on default options an empty or omitted `relayUrl` throws before any network call, on every flow including deposits. Standard integrations pass the origin, never the pair, which would submit a send or withdrawal under the user's own key and publicly link it.
 - Treat stale-root failures as retryable: `transact` and the swap helpers already retry `RootNotFound` internally, bounded by `maxRootRetries` (default 5). Do not wrap them in a retry loop of your own unless app policy explicitly asks for more attempts.
 - Never log private keys, viewing keys (`nk`), seed material, or raw note payloads.
+- `TransactOptions.withdrawalMemo` puts a short reference (invoice or payment reference, payroll label, reconciliation id) on a withdrawal to a public wallet, 1 to 64 UTF-8 bytes. It is written on chain through SPL Memo and is public and permanent: never put private data in it. Deposits, private sends and swaps refuse it. See `/sdk/utxo-transactions#withdrawal-memos`.
 - Transaction signatures are public and can be logged for support/debugging.
 - For one-shot work, start with `/ai-tools/ai-integration`.
 

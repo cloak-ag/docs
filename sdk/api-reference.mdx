@@ -233,6 +233,22 @@ a new token pool starts at 0, each plus the same 0.3 percent variable fee. `MIN_
 the SOL pool's floor; a token pool's floor is its own fee on the deposit, which `transact` reads from
 `pool_config` and checks before proving. There is no exported token-pool fee helper.
 
+## Withdrawal memos
+
+```typescript
+withdrawalMemo?: string;           // TransactOptions: a memo on a withdrawal to a public wallet
+WITHDRAWAL_MEMO_MAX_BYTES;         // 64 (UTF-8 bytes)
+validateWithdrawalMemo(memo: string): void; // throws with the reason a memo is refused
+withdrawalMemoField(bytes: Uint8Array): bigint; // the memo's field element in extDataHash
+ExtDataRejectedError;              // a withdrawal's memo, recipient or fee limit was refused
+```
+
+`withdrawalMemo` puts a short reference (an invoice or payment reference, a payroll label, a
+reconciliation id) on a withdrawal. It is bound into the proof and written on chain as an SPL Memo
+instruction, so it is **public and permanent**: never put private data in it. Withdrawals only;
+deposits, private sends and swaps refuse it. Limits, the memo-required recipient case and history:
+[Withdrawal memos](/sdk/utxo-transactions#withdrawal-memos).
+
 ## Advanced `TransactOptions`
 
 Five options a standard integration never sets, listed because nothing else documents them.

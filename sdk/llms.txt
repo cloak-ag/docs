@@ -448,6 +448,14 @@ interface TransactOptions {
   encryptedNotes?: string[];
   enforceViewingKeyRegistration?: boolean;
 
+  // Withdrawal memo (withdrawals to a public wallet ONLY; deposits, sends and swaps throw):
+  withdrawalMemo?: string;                // PUBLIC AND PERMANENT: written on chain via SPL Memo,
+                                          // readable by anyone. 1..64 UTF-8 bytes
+                                          // (WITHDRAWAL_MEMO_MAX_BYTES), no control or
+                                          // text-direction chars, no CLK1/CLKD1 prefix
+                                          // (validateWithdrawalMemo). Bound into extDataHash.
+                                          // transactBatch: per row in item.options only.
+
   // Performance:
   cachedMerkleTree?: MerkleTree;
   useChainForMerkle?: boolean;
@@ -1782,6 +1790,7 @@ do not adapt the Node one by hand.
 16. Never substitute an ephemeral, session or service-held key for the authenticated `sender`. It is the key screened for sanctions; substituting it moves screening off the actual user.
 17. Do not hand-roll the request-auth scheme when `submitTransactToRelay` will do. If you do hand-roll it, use `buildRelayAuthPreimage` + `canonicalJson` and read `TRANSACT_AUTH_FIELDS` / `TRANSACT_SWAP_AUTH_FIELDS` from the package rather than retyping them.
 18. Never claim an integrator must use a Cloak-operated RPC. Only the submission endpoint is pinned; the `Connection` is entirely the caller's, and any non-loopback RPC works.
+19. Never put private data (names, emails, account numbers, anything that identifies a person) in `withdrawalMemo`. The memo is written on chain in plain text and is public and permanent. Use it for references only: an invoice or payment reference, an exchange deposit tag, a payroll label, a reconciliation id.
 
 ---
 

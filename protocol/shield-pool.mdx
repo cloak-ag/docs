@@ -92,6 +92,10 @@ Token-2022 mint; its vault and treasury token accounts live under that mint's ow
   - positive: deposit from payer to pool
   - negative: withdrawal from pool to recipient + fee to treasury
   - zero: pure shield transfer (no external SOL movement)
+- A withdrawal may carry a UTF-8 memo (the SDK caps it at 64 bytes, which fits a withdrawal in one
+  transaction on every pool). It is bound into `extDataHash`, so it cannot be changed after proving,
+  and logged through the SPL Memo program immediately before the recipient transfer. It is public:
+  anyone can read it on chain.
 - Deposits carry a signed risk quote bound to the deposit, checked on-chain.
 - Withdrawals and swaps carry a signed withdraw authorization when a withdraw authorizer is set on the pool.
 

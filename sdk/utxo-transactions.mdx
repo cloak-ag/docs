@@ -355,6 +355,45 @@ Each of these asks the wallet to sign exactly once, whatever happens on the netw
 retry re-uses the same proof and the same signed request. See
 [how many wallet prompts to expect](/sdk/request-authentication#how-many-wallet-prompts-to-expect).
 
+### Withdrawal memos
+
+A withdrawal to a public wallet can carry a short memo: the payment reference on an invoice, the
+deposit tag an exchange asks for, a payroll label, a reconciliation id. Pass it as `withdrawalMemo`:
+
+```typescript
+const withdrawn = await partialWithdraw(inputUtxos, exchangeWallet, 10_000_000n, {
+  ...options,
+  withdrawalMemo: "INV-2026-0142",
+});
+await persistOutputs(withdrawn.outputUtxos);
+```
+
+<Warning>
+A memo is public and permanent. The program writes it on chain as an SPL Memo instruction next to
+the withdrawal, in plain text, and anyone can read it. Never put private data in a memo: no names,
+email addresses, account numbers or anything else that ties the withdrawal to a person.
+</Warning>
+
+- **Limits.** 1 to 64 bytes of UTF-8 (`WITHDRAWAL_MEMO_MAX_BYTES`), with no control characters
+  (a newline or a tab), no text-direction characters, and no `CLK1` or `CLKD1` prefix.
+  `validateWithdrawalMemo(memo)` throws with the reason. The SDK never trims or rewrites a memo,
+  because the exact string is what gets bound.
+- **Withdrawals only.** `partialWithdraw`, `fullWithdraw`, or `transact` with a negative
+  `externalAmount`. Deposits, private sends and swaps refuse it. `partialWithdraw` and
+  `fullWithdraw` put it on the final withdrawal, never on the consolidation merges before it; in
+  `transactBatch`, set it per row in `item.options`.
+- **Bound into the proof.** The memo is part of `extDataHash`, so it cannot be altered or stripped
+  after the proof exists.
+- **Memo-required recipients.** The program logs the memo immediately before the transfer to the
+  recipient, so a Token-2022 token account that requires a memo on incoming transfers can receive a
+  withdrawal that carries one. A swap cannot deliver to such an account.
+- **Checked before proving.** A memo that fails validation, or one that cannot be carried for this
+  request, throws before any proof or merge, and nothing is sent. Caller-signed direct submission
+  (`relayUrl: ""`) cannot carry a memo. `ExtDataRejectedError` on submission means the memo, or the
+  recipient and fee limit bound with it, was refused: nothing was sent, and retrying the same
+  request cannot help.
+- **In history.** `scanTransactions` returns it as `memo` on the withdraw row.
+
 ## Swap example
 
 <CodeGroup>
