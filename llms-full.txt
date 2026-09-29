@@ -155,7 +155,7 @@ Cloak's fee revenue: it never changes what a user pays.
   * Purpose: USDC valuation at a recorded Pyth reference price, monthly schedule (close day 1, manual claims from day 5 for 90 days, unclaimed amounts stay with Cloak, no minimum), statement statuses, claim flow; Cloak pays each claim through a Cloak private withdrawal to the affiliate's payout wallet.
 * `/affiliates/dashboard-privacy`
   * Purpose: why the dashboard is aggregated: 3 distinct referees minimum, D+1, rounding, carryover below the floor.
-* `/affiliates/terms` is a draft pending legal review; do not quote it as final terms.
+* The affiliate terms are pending legal review and are not published. The binding terms are the version an applicant accepts in the application flow; do not quote any draft as final terms.
 
 ---
 
