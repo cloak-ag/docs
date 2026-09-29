@@ -24,24 +24,22 @@ Cloak charges a fee only when value leaves the pool (see [Fees](/guide/fees)). T
 Every fee-bearing transaction pays two parts: a **fixed fee** (0.005 SOL, or 0.45 USDC or USDT) and a **percentage fee** (0.3% of the amount). Your commission is a share of the percentage fee only:
 
 ```text
-commission = percentage fee × your rate
+commission = percentage fee × 20%
 ```
 
-The default rate is **40%**. Since the percentage fee is 0.3% of the amount, 40% of it works out to 0.12% of the amount the person sent, withdrew or swapped.
+The rate is a fixed **20%**, the same for every affiliate. Since the percentage fee is 0.3% of the amount, 20% of it works out to 0.06% of the amount the person sent, withdrew or swapped.
 
-**The fixed fee is never shared.** Cloak keeps it in full, whatever your rate.
+**The fixed fee is never shared.** Cloak keeps it in full.
 
 **Commission follows the fee actually charged.** The percentage fee is set per pool in the Cloak program's on-chain configuration. Commission is computed from the fee the program really collected on each transaction, not from a hard-coded 0.3%.
 
-**Custom rates.** Cloak may agree a different rate with an individual affiliate, up to a program maximum. A rate change never applies retroactively: it takes effect on the first day of the next UTC month, and each month's commission uses the rate that was in effect on the first day of that month. Your dashboard shows your current rate and, when a change is scheduled, the next rate and the date it starts.
-
 ### Worked examples
 
-| The referred person | Percentage fee (0.3%) | Your commission at 40% |
+| The referred person | Percentage fee (0.3%) | Your commission at 20% |
 | --- | --- | --- |
-| Withdraws 1,000 USDC | 3.00 USDC | 1.20 USDC |
-| Sends 100 USDC to an address | 0.30 USDC | 0.12 USDC |
-| Withdraws 10 SOL | 0.03 SOL | 0.012 SOL, paid in USDC at the month's [reference price](/affiliates/payouts#conversion-to-usdc) |
+| Withdraws 1,000 USDC | 3.00 USDC | 0.60 USDC |
+| Sends 100 USDC to an address | 0.30 USDC | 0.06 USDC |
+| Withdraws 10 SOL | 0.03 SOL | 0.006 SOL, paid in USDC at the month's [reference price](/affiliates/payouts#conversion-to-usdc) |
 
 In every row, the person also pays the fixed fee (0.45 USDC or 0.005 SOL). None of it is part of your commission.
 

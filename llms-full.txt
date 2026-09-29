@@ -150,7 +150,7 @@ Cloak's fee revenue: it never changes what a user pays.
 * `/affiliates/overview`
   * Purpose: closed registration, manual approval, applying with a wallet signature, no KYC but sanctions screening, account statuses, payout wallet changes.
 * `/affiliates/commission`
-  * Purpose: commission is 40% (default) of the percentage fee only, never the fixed fee; 2 calendar months from the click; first click wins; once per device; new users only; self-referral excluded; swaps included; Cloak web and mobile only.
+  * Purpose: commission is a fixed 20% of the percentage fee only, never the fixed fee; 2 calendar months from the click; first click wins; once per device; new users only; self-referral excluded; swaps included; Cloak web and mobile only.
 * `/affiliates/payouts`
   * Purpose: USDC conversion at a recorded reference price, monthly schedule (close day 1, claims open day 5, 90-day window, no minimum), statement statuses, claim flow.
 * `/affiliates/dashboard-privacy`

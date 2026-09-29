@@ -34,7 +34,7 @@ The calculation for a month is:
 
 ```text
 USD value  = USDC fees + (SOL fees × SOL reference price) + (USDT fees × USDT reference price)
-commission = USD value × your rate, rounded down to the smallest USDC unit (0.000001 USDC)
+commission = USD value × 20%, rounded down to the smallest USDC unit (0.000001 USDC)
 ```
 
 Rounding is applied once per month and token, never per transaction. When Cloak later converts its own SOL and USDT into USDC to fund payouts, any difference between that execution price and the reference price is Cloak's. Your statement is never recalculated from it.
