@@ -79,7 +79,7 @@ on the TypeScript SDK `@cloak.dev/sdk`, in the browser, in Node, and in server-s
 
 * [Affiliate program](/affiliates/overview): Closed registration with manual approval, how to apply with a wallet signature, no KYC but sanctions screening, account statuses, payout wallet changes.
 * [How commission works](/affiliates/commission): a fixed 20% of the percentage fee only (never the fixed fee), 2 calendar months from the click, first click, once per device, new users only, Cloak web and mobile only.
-* [Payouts and claiming](/affiliates/payouts): USDC conversion at a recorded monthly reference price, monthly schedule (close day 1, claims open day 5, 90-day window, no minimum), statement statuses, claiming.
+* [Payouts and claiming](/affiliates/payouts): USDC valuation at a recorded monthly Pyth reference price, monthly schedule (close day 1, manual claims from day 5 for 90 days, unclaimed amounts stay with Cloak, no minimum), statement statuses, payment by Cloak through a Cloak private withdrawal to the payout wallet.
 * [Why your dashboard is aggregated](/affiliates/dashboard-privacy): The 3-person privacy floor, D+1 delay, rounding, and carryover of months below the floor.
 
 ## Integration Tips For Agents
