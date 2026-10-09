@@ -152,10 +152,11 @@ Cloak's fee revenue: it never changes what a user pays.
 * `/affiliates/commission`
   * Purpose: commission is a fixed 20% of the percentage fee only, never the fixed fee; 2 calendar months from the click; first click wins; once per device; new users only; self-referral excluded; swaps included; Cloak web and mobile only.
 * `/affiliates/payouts`
-  * Purpose: USDC valuation at a recorded Pyth reference price, monthly schedule (close day 1, manual claims from day 5 for 90 days, unclaimed amounts stay with Cloak, no minimum), statement statuses, claim flow; Cloak pays each claim through a Cloak private withdrawal to the affiliate's payout wallet.
+  * Purpose: commission is paid in the token that earned it (SOL, USDC or USDT), rounded down once per token, never converted and never priced; monthly schedule (close day 1, manual claims from day 5 for 90 days, unclaimed amounts stay with Cloak, no minimum), statement statuses, claim flow; Cloak pays each token through its own Cloak private withdrawal to the affiliate's payout wallet.
 * `/affiliates/dashboard-privacy`
-  * Purpose: why the dashboard is aggregated: 3 distinct referees minimum, D+1, rounding, carryover below the floor.
-* The affiliate terms are pending legal review and are not published. The binding terms are the version an applicant accepts in the application flow; do not quote any draft as final terms.
+  * Purpose: why the dashboard is aggregated: 3 distinct referees minimum, D+1, a display-only USD estimate in whole dollars at Jupiter prices (never used for money), exact per-token amounts only once a statement is claimable, carryover below the floor.
+* `/affiliates/terms`
+  * Purpose: the binding partner program terms are published at https://cloak.ag/affiliates/terms (version 2026-10, approved October 6, 2026); the page summarizes them and gives the contact, contact@cloak.ag. Quote the published terms, not the summary, as binding.
 
 ---
 

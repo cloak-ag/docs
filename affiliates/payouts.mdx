@@ -1,10 +1,10 @@
 ---
 title: "Payouts and claiming"
-description: "How the month closes, how commission is valued in USDC, what each statement status means, and how to claim"
+description: "How the month closes, how commission is paid in the tokens that earned it, what each statement status means, and how to claim"
 icon: "calendar-check"
 ---
 
-Commission is settled once a month. Each month closes on the first day of the next one, becomes a **statement** in USDC, and opens for claiming on the fifth. You claim it by hand from your dashboard, and Cloak pays it through a Cloak private withdrawal to your payout wallet. There is no minimum.
+Commission is settled once a month. Each month closes on the first day of the next one and becomes a **statement** that lists your commission per token: SOL, USDC and USDT. It opens for claiming on the fifth. You claim it by hand from your dashboard, and Cloak pays each token through its own Cloak private withdrawal to your payout wallet. There is no minimum.
 
 All dates and times in the program are UTC.
 
@@ -12,32 +12,28 @@ All dates and times in the program are UTC.
 
 | When (UTC) | What happens |
 | --- | --- |
-| Last day of the month, 23:00 to 23:59 | Reference prices for SOL and USDT are sampled (see [valuation](#valuation-in-usdc)). |
-| Day 1, 00:00 | The month closes. Your commission for it is calculated and recorded on a statement. |
-| Days 1 to 3 | Cloak reviews the month: two separate finance approvers sign off each statement, and the month's totals are checked against the fees the Cloak program actually collected on-chain. Cloak then sets aside the month's payouts in USDC. |
+| Day 1, from 00:05 | The month closes. Your commission for it is calculated per token and recorded on a statement. |
+| Before day 5 | Cloak reviews the month: the month's totals are checked against the fees the Cloak program actually collected on-chain, and two different finance approvers sign off each statement. Cloak then funds the month's payouts in each token. |
 | Day 5, 00:00 | Funded statements open for claiming. |
 | 90 days after opening | Unclaimed statements expire, and their amounts stay with Cloak. |
 
-If review or funding finishes after day 5, the statement opens as soon as its funding is verified, and the 90 days count from that moment.
+If review or funding finishes after day 5, the statement opens as soon as its funding is verified, and the 90 days count from that moment. A statement opens only when every token it holds is funded.
 
 A month is paid out only once its commission covers at least three different people. A month below that floor is not lost: it carries over and is added to a later month's statement once the floor is met. See [Why your dashboard is aggregated](/affiliates/dashboard-privacy#the-release-floor).
 
-## Valuation in USDC
+## Paid in the tokens that earned it
 
-Every commission is valued and paid in **USDC**, whatever token the fees were paid in.
+Commission is paid **in the token that generated the fee**. Commission on SOL fees is paid in SOL, on USDC fees in USDC, and on USDT fees in USDT. Cloak never converts between tokens, and no price is used anywhere in calculating, approving or paying your commission.
 
-* **USDC fees** count at face value: 1 USDC is 1 USD.
-* **SOL and USDT fees** are valued at the month's **reference price**. Each minute from 23:00 to 23:59 UTC on the last day of the month, Cloak reads the SOL/USD and USDT/USD prices from the Pyth price oracle, discards any reading that is stale or too uncertain, and takes the **median** of the rest. At least 45 good readings are required; if the oracle cannot provide them, the month waits for a manual reference price approved by two finance approvers.
-* The reference price used is recorded with the month, and does not change afterward.
-
-The calculation for a month is:
+For each token, the calculation is:
 
 ```text
-USD value  = USDC fees + (SOL fees × SOL reference price) + (USDT fees × USDT reference price)
-commission = USD value × 20%, rounded down to the smallest USDC unit (0.000001 USDC)
+commission[token] = sum of the percentage fees in that token × 20%, rounded down to the token's smallest unit
 ```
 
-Rounding is applied once per month and token, never per transaction. The reference price is only used to value your commission, and Cloak funds every payout in USDC. Your statement is never recalculated after the fact.
+The smallest unit is 0.000000001 SOL (one lamport), 0.000001 USDC or 0.000001 USDT. Rounding happens once per token per statement, never per transaction. When carried-over months are released together, their fees are added up first and rounded once. A token whose commission rounds down to zero does not appear on the statement.
+
+Your statement is never recalculated after the fact. The USD figures on your dashboard are estimates for display only; see [Why your dashboard is aggregated](/affiliates/dashboard-privacy).
 
 ## Statement statuses
 
@@ -45,30 +41,33 @@ Rounding is applied once per month and token, never per transaction. The referen
 | --- | --- | --- |
 | Closed | The month is calculated and waiting for review. | Not yet |
 | Approved | Reviewed and approved; waiting for funding. | Not yet |
-| Available | Funded and open. The dashboard shows when the claim window opens and closes. | Yes |
-| Payment requested | You claimed it, and the payment is queued. | Already claimed |
-| Sending through Cloak | The Cloak private withdrawal to your payout wallet is being sent. | Already claimed |
-| Paid | The USDC is in your payout wallet. The dashboard links the transaction. | Done |
+| Available | Funded and open. The dashboard shows the exact amount of each token and when the claim window closes. | Yes |
+| Payment requested | You claimed it, and the payments are queued. | Already claimed |
+| Sending through Cloak | At least one token's Cloak private withdrawal to your payout wallet is being sent. | Already claimed |
+| Paid | Every token is in your payout wallet. The dashboard links each transaction. | Done |
 | Expired | Not claimed within 90 days. The claim window is closed and the amount stays with Cloak. | No |
-| Held | Paused while your account is suspended or a payout wallet change is under review. It returns to its previous status when that is resolved. | Not while held |
+| Held | Paused while your account is suspended or a payout wallet change is under review. It returns to its previous status when that is resolved. If you had already claimed it, tokens already paid stay paid, and the rest is sent once the hold ends. | Not while held |
 
-Once a statement is approved, its amounts never change. If Cloak ever needs to correct an amount, the correction appears as a separate adjustment on a later statement.
+While a statement is Closed or Approved, your dashboard counts it in your estimated balance; its exact per-token amounts appear once it is Available.
+
+Once a statement is approved, its amounts never change. If a statement or payment turns out to be wrong, Cloak may correct it as the [terms](/affiliates/terms) allow, for example by offsetting an overpayment against future commission.
 
 ## How to claim
 
 1. **Open your dashboard** at [cloak.ag/affiliates](https://cloak.ag/affiliates) and connect your **payout wallet**.
-2. **Sign in.** Your wallet asks you to sign a sign-in message that begins with `CLOAK_AFFILIATE_SESSION_V1`. Signing costs nothing. The session lasts one hour and ends when you disconnect your wallet.
-3. **Pick an available statement** and press **Claim**.
-4. **Sign the claim.** Your wallet shows a message that begins with `CLOAK_AFFILIATE_CLAIM_V1` and contains the statement, the exact amount in USDC base units, and your wallet address. This is a message, not a transaction: your wallet pays no gas.
-5. **Wait for the payment.** The statement shows **Payment requested**, then **Sending through Cloak** while Cloak pays it. Payments are made one at a time, so yours may wait for others ahead of it.
-6. **Receive the USDC.** Cloak pays you with a Cloak private withdrawal of USDC to your payout wallet. Cloak covers the withdrawal fees, so you receive the exact statement amount. When the withdrawal confirms, the statement shows **Paid** with a link to the transaction.
+2. **Sign in.** Your wallet asks you to sign a sign-in message that begins with `CLOAK_AFFILIATE_SESSION_V1`. Signing costs nothing. The session lasts up to one hour, and ends sooner if you reload the page, disconnect your wallet or switch to another wallet.
+3. **Pick an available statement** and press **Claim**. The dashboard shows the exact amount of each token you are claiming.
+4. **Sign the claim.** Your wallet shows a message that begins with `CLOAK_AFFILIATE_CLAIM_V1` and contains the statement, the exact amount of each token, and your wallet address. The amounts line lists each token as `<mint address>:<amount in base units>`, separated by commas. This is a message, not a transaction: your wallet pays no gas.
+5. **Wait for the payments.** The statement shows **Payment requested**, then **Sending through Cloak** while Cloak pays it. Each token is paid separately, so one token can arrive before another. Payments are made one at a time, so yours may wait for others ahead of it.
+6. **Receive the tokens.** Cloak pays each token with a Cloak private withdrawal to your payout wallet. Cloak covers the withdrawal fees and network costs, so you receive the exact statement amounts. When a token's withdrawal confirms, the dashboard shows it as **Paid** with a link to the transaction, and the statement shows **Paid** once every token has arrived.
 
 ### What to know about claiming
 
 * **The money only goes to your payout wallet.** A claim can never be redirected to another address. To be paid somewhere else, [change your payout wallet](/affiliates/overview#changing-your-payout-wallet) first.
-* **A claim is all or nothing.** You claim a statement's exact amount; partial claims are not possible.
+* **A claim is all or nothing.** One claim covers every token on the statement, at its exact amount; partial claims are not possible.
 * **Each claim is screened.** Your payout wallet is checked against sanctions lists before every claim. A wallet that fails the check cannot claim.
-* **It arrives like any Cloak withdrawal.** The USDC comes out of the Cloak shielded pool to your payout wallet, the same way it does when any user withdraws.
+* **It arrives like any Cloak withdrawal.** Each token comes out of the Cloak shielded pool to your payout wallet, the same way it does when any user withdraws.
+* **If your wallet cannot receive a token yet**, the dashboard says so next to that token. This is rare. Getting any small amount of that token into your payout wallet fixes it, and the payment then goes through on its own within about an hour. You do not need to claim again.
 * **You claim once, and you are never paid twice.** If a payment attempt fails, Cloak retries it only after confirming that the earlier attempt did not land. You do not need to claim again.
 * **If payouts are paused**, your claim stays **Payment requested** and is paid when they resume. A statement whose payment you have already requested does not expire.
 * **Claim within 90 days.** Claiming is always manual; nothing is paid until you claim. An expired statement cannot be claimed, and its amount stays with Cloak.
@@ -77,7 +76,7 @@ Once a statement is approved, its amounts never change. If Cloak ever needs to c
 
 <CardGroup cols={2}>
   <Card title="Why your dashboard is aggregated" icon="eye-slash" href="/affiliates/dashboard-privacy">
-    Grouped, delayed and rounded numbers, and the release floor.
+    The estimated balance, the one-day delay, and the release floor.
   </Card>
   <Card title="How commission works" icon="percent" href="/affiliates/commission">
     What earns, the two-month window, first click, and worked examples.

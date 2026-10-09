@@ -1,12 +1,12 @@
 ---
 title: "Why your dashboard is aggregated"
-description: "Why affiliates see grouped, delayed, rounded numbers, and never an individual person's transactions"
+description: "Why affiliates see grouped, delayed, rounded totals, and never an individual person's transactions"
 icon: "eye-slash"
 ---
 
-Your dashboard never shows what any one person did. It shows daily estimates that cover at least three different people, one day late, rounded down.
+Your dashboard never shows what any one person did. It shows totals that cover at least three different people, one day late, with what you have earned but cannot claim yet shown only as a rounded USD estimate.
 
-**The reason, in one sentence:** if your dashboard showed a day on which only one person used your link, you would know exactly how much that person moved and when, and Cloak exists so that nobody learns that.
+**The reason, in one sentence:** if your dashboard showed a change caused by only one person who used your link, you would know how much that person moved and when, and Cloak exists so that nobody learns that.
 
 The people you refer are Cloak users like any other, and their privacy does not depend on who sent them. The rules on this page are what make that true.
 
@@ -14,29 +14,31 @@ The people you refer are Cloak users like any other, and their privacy does not 
 
 | You see | You never see |
 | --- | --- |
-| Your estimated commission for the current month, in USDC | Individual transactions |
-| Daily estimates, one day late, only for days that cover at least three people | Wallet addresses of the people you referred |
-| Daily clicks and conversions, one day late | Transaction signatures, amounts per person, or times finer than a day |
-| Your monthly statements with exact amounts | How many transactions were made |
-| Your commission rate, a fixed 20% | Anything that isolates a single person |
+| **Available to claim:** the exact amount of each token on statements you can claim now | Individual transactions |
+| **Estimated balance:** one USD estimate of what you have earned but cannot claim yet, in whole dollars | Wallet addresses of the people you referred |
+| **Next claim window:** when your next statement opens, or until when the open one stays open | Transaction signatures, amounts per person, or any daily breakdown of your earnings |
+| **Clicks and first deposits this month**, and the conversion rate between them, one day late | How many transactions were made |
+| **Your statements and payout history**, with each token's payment and its transaction | Anything that isolates a single person |
 
 ## The three rules
 
 ### 1. At least three people
 
-A day's estimate appears only when it covers at least **three different people** who used your link. If a day covers fewer, it is not shown on its own: it is merged with the following days of the same month until the group reaches three people, and the combined estimate is shown on the last day of the group. A day that never reaches the floor within its month is left out of the daily view; its commission is not lost (see [the release floor](#the-release-floor)).
+Commission only counts toward your estimated balance once it comes from at least **three different people**. The dashboard applies the same check the monthly close applies (see [the release floor](#the-release-floor)): a month whose commission comes from fewer than three people is held back, and your estimated balance shows **Accumulating** instead of an amount, or notes that more is accumulating. Nothing held back is lost; it shows up once the floor is met.
 
 ### 2. One day late
 
-A day becomes visible at 00:00 UTC the following day, never while it is still in progress. Clicks and conversions follow the same delay. They are not subject to the three-person floor, because a count of clicks reveals no amounts.
+Today's activity never shows. Your estimated balance, clicks and first deposits all count only up to the end of the previous UTC day. Clicks and first deposits are not subject to the three-person floor, because a count of clicks reveals no amounts.
 
-### 3. Rounded down
+### 3. Rounded down and estimated
 
-Daily estimates are rounded down to steps of 0.10 USDC and valued at the current market price, so they are labeled **estimated**. Exact amounts appear only on closed monthly statements, which use the month's recorded [reference price](/affiliates/payouts#valuation-in-usdc).
+Commission you cannot claim yet is shown only as one figure in US dollars, rounded down to the whole dollar, never per token. It is valued at current market prices from Jupiter, refreshed about every hour, with USDC counted at exactly 1 USD. That is why it is labeled **estimated**: the figure moves with prices, but what you are owed does not. If no recent price is available, the dashboard shows **Estimate unavailable** for a while; nothing you have earned is affected.
+
+The estimate is for display only. You are paid the exact per-token amounts on your statements, which appear when a statement becomes available for claiming. See [Payouts and claiming](/affiliates/payouts#paid-in-the-tokens-that-earned-it).
 
 ## The release floor
 
-The same three-person rule applies when a month closes. A month becomes a statement only if the commission it contains came from at least three different people. If it did not, the month's commission **carries over**: it is kept, and released together with a later month once the combined period covers at least three people. Carried-over commission is never forfeited for this reason, however long it takes. Your dashboard shows when the current month is carrying over.
+The same three-person rule applies when a month closes. A month becomes a statement only if the commission it contains came from at least three different people. If it did not, the month's commission **carries over**: it is kept, and released together with a later month once the combined period covers at least three people. Carried-over commission is never forfeited for this reason, however long it takes. Your dashboard shows when commission is accumulating.
 
 ## How Cloak counts people without keeping a list of them
 
