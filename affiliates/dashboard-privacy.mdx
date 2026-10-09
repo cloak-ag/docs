@@ -1,0 +1,61 @@
+---
+title: "Why your dashboard is aggregated"
+description: "Why affiliates see grouped, delayed, rounded totals, and never an individual person's transactions"
+icon: "eye-slash"
+---
+
+Your dashboard never shows what any one person did. It shows totals that cover at least three different people, one day late, with what you have earned but cannot claim yet shown only as a rounded USD estimate.
+
+**The reason, in one sentence:** if your dashboard showed a change caused by only one person who used your link, you would know how much that person moved and when, and Cloak exists so that nobody learns that.
+
+The people you refer are Cloak users like any other, and their privacy does not depend on who sent them. The rules on this page are what make that true.
+
+## What the dashboard shows
+
+| You see | You never see |
+| --- | --- |
+| **Available to claim:** the exact amount of each token on statements you can claim now | Individual transactions |
+| **Estimated balance:** one USD estimate of what you have earned but cannot claim yet, in whole dollars | Wallet addresses of the people you referred |
+| **Next claim window:** when your next statement opens, or until when the open one stays open | Transaction signatures, amounts per person, or any daily breakdown of your earnings |
+| **Clicks and first deposits this month**, and the conversion rate between them, one day late | How many transactions were made |
+| **Your statements and payout history**, with each token's payment and its transaction | Anything that isolates a single person |
+
+## The three rules
+
+### 1. At least three people
+
+Commission only counts toward your estimated balance once it comes from at least **three different people**. The dashboard applies the same check the monthly close applies (see [the release floor](#the-release-floor)): a month whose commission comes from fewer than three people is held back, and your estimated balance shows **Accumulating** instead of an amount, or notes that more is accumulating. Nothing held back is lost; it shows up once the floor is met.
+
+### 2. One day late
+
+Today's activity never shows. Your estimated balance, clicks and first deposits all count only up to the end of the previous UTC day. Clicks and first deposits are not subject to the three-person floor, because a count of clicks reveals no amounts.
+
+### 3. Rounded down and estimated
+
+Commission you cannot claim yet is shown only as one figure in US dollars, rounded down to the whole dollar, never per token. It is valued at current market prices from Jupiter, refreshed about every hour, with USDC counted at exactly 1 USD. That is why it is labeled **estimated**: the figure moves with prices, but what you are owed does not. If no recent price is available, the dashboard shows **Estimate unavailable** for a while; nothing you have earned is affected.
+
+The estimate is for display only. You are paid the exact per-token amounts on your statements, which appear when a statement becomes available for claiming. See [Payouts and claiming](/affiliates/payouts#paid-in-the-tokens-that-earned-it).
+
+## The release floor
+
+The same three-person rule applies when a month closes. A month becomes a statement only if the commission it contains came from at least three different people. If it did not, the month's commission **carries over**: it is kept, and released together with a later month once the combined period covers at least three people. Carried-over commission is never forfeited for this reason, however long it takes. Your dashboard shows when commission is accumulating.
+
+## How Cloak counts people without keeping a list of them
+
+To apply the three-person rule, Cloak has to tell people apart without keeping a record of who they are:
+
+* Cloak never keeps a permanent record of which wallet came through which link. The referral itself lives only on the referred person's device.
+* To count distinct people, Cloak stores a **pseudonymous mark** per person per month, made with a secret that is unique to that month. The mark is a one-way code: it does not contain the wallet address and cannot be turned back into it, and marks from different months cannot be matched to each other.
+* When a month is paid out, its marks and its secret are deleted. A month that carries over keeps them only until it is paid out.
+* Nothing about affiliates is ever written on-chain.
+
+## Where next
+
+<CardGroup cols={2}>
+  <Card title="Payouts and claiming" icon="calendar-check" href="/affiliates/payouts">
+    The monthly schedule, statement statuses, and how to claim.
+  </Card>
+  <Card title="Privacy is not anonymity" icon="scale-balanced" href="/learn/privacy-is-not-anonymity">
+    Why Cloak treats privacy as accountable, not as hiding.
+  </Card>
+</CardGroup>

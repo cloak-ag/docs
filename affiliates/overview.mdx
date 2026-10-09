@@ -1,0 +1,74 @@
+---
+title: "Affiliate program"
+description: "Share a personal link to Cloak, and earn part of Cloak's percentage fee from the new users it brings in"
+icon: "handshake"
+---
+
+Cloak's affiliate program pays approved affiliates for bringing new people to Cloak. You share a personal link. For two calendar months after someone opens it, you earn a share of the percentage fee Cloak collects when that person sends, withdraws or swaps. Commissions are settled once a month and paid in the token that earned them: SOL, USDC or USDT. When you claim, Cloak pays each token through a Cloak private withdrawal to your payout wallet.
+
+Nobody pays more because of it. Commissions come out of the fee Cloak already collects, so a person who arrives through your link pays exactly the same [fees](/guide/fees) as everyone else.
+
+<Note>
+Registration is closed. Every application is reviewed by hand, and the program starts with a small group of invited affiliates.
+</Note>
+
+## The rules at a glance
+
+| Rule | What it means |
+| --- | --- |
+| Commission | A fixed 20% of the **percentage** fee (the 0.3% part), the same for every affiliate. The fixed fee is never shared. |
+| What earns | Private sends to an address, withdrawals, and private swaps. Shielding and shielded transfers are free, so they earn nothing. |
+| Your link | `https://cloak.ag/r/<your-code>`. It never expires while you are an approved affiliate. |
+| Commission window | 2 calendar months from the moment a person opens your link. |
+| Who counts | New users only, attributed on their device. The first link a device opens wins, and a device is attributed at most once, ever. |
+| Where | Cloak's own web app at [cloak.ag](https://cloak.ag) and the Cloak mobile apps. Activity through third-party apps, sites or SDK integrations earns nothing. |
+| Self-referral | Transactions sent from your own payout wallet earn nothing. |
+| Payment | Once a month, in the token that earned it: commission on SOL fees is paid in SOL, on USDC fees in USDC, and on USDT fees in USDT. No conversion and no price is involved. Cloak pays each token through a Cloak private withdrawal to your payout wallet. |
+| Minimum payout | None. |
+| Claim window | You claim by hand from day 5 of the following month (or later, once funding is verified), for 90 days. Amounts not claimed in time stay with Cloak. |
+| Identity | No KYC. Your payout wallet is screened against sanctions lists. |
+
+The details are in [How commission works](/affiliates/commission), [Payouts and claiming](/affiliates/payouts), and [Why your dashboard is aggregated](/affiliates/dashboard-privacy). The binding rules are the [partner program terms](/affiliates/terms), published at [cloak.ag/affiliates/terms](https://cloak.ag/affiliates/terms). The version you accept when you apply (currently 2026-10) is the one that governs your participation.
+
+## How to apply
+
+1. **Open the affiliate page.** Go to [cloak.ag/affiliates](https://cloak.ag/affiliates). In the mobile app, open **More** and tap **Affiliates**, which opens the same page in your browser.
+2. **Connect your payout wallet.** The wallet you connect becomes your payout wallet: every commission you ever claim is sent to it, and only to it. Use a wallet you control and intend to keep.
+3. **Choose your code.** Your code becomes your link, `https://cloak.ag/r/<your-code>`. It must be 3 to 24 characters of lowercase letters, digits and underscores. Codes that contain "cloak", reserved words such as "support", "official" or "admin", and codes that look like an existing code (for example, the same letters with `0` in place of `o`) are refused, so nobody can pass themselves off as Cloak or as another affiliate.
+4. **Accept the terms and sign.** Add an optional note about where you plan to share your link, and an optional way to contact you. Then sign a message with your wallet. Signing is not a transaction: it costs nothing and moves no funds. The message your wallet shows begins with `CLOAK_AFFILIATE_APPLY_V1` and contains your code, your wallet address and the terms version you accept.
+5. **Wait for review.** Your application shows as **pending** until someone at Cloak reviews it by hand. Once it is approved, your link starts working and your dashboard opens.
+
+One wallet can hold one application and one affiliate account. A code that was rejected stays reserved and cannot be reused.
+
+### No KYC, but sanctions screening
+
+Cloak does not ask for your name, ID documents or address. Your payout wallet is screened against sanctions lists when you apply, again before approval, whenever you change your payout wallet, and before every claim. A wallet that fails screening cannot be approved and cannot claim.
+
+## Your account status
+
+| Status | What it means |
+| --- | --- |
+| Pending | Your application, or a payout wallet change, is waiting for review. |
+| Approved | Your link works and you earn commission. |
+| Rejected | The application was not accepted. The code stays reserved. |
+| Suspended | Your link stops attributing new people and you earn nothing while suspended. Your statements are held, not cancelled, until the suspension is lifted. |
+| Removed | The account is closed for good. Statements already available for claiming stay claimable unless Cloak holds them. Statements not yet open are held while Cloak reviews them, as the [terms](/affiliates/terms) describe. |
+
+## Changing your payout wallet
+
+Your payout wallet can only be changed with signatures from **both** the current and the new wallet. The change puts your account back into review, and your statements are held (not lost) until Cloak approves the new wallet. The new wallet is screened like any other. If you have lost access to your current wallet, contact Cloak at [contact@cloak.ag](mailto:contact@cloak.ag). Recovery is at Cloak's discretion and may require extra verification.
+
+## Your link is the only genuine one
+
+Genuine affiliate links always start with `https://cloak.ag/r/`. A link on any other domain is not a Cloak link, whatever it claims. When someone opens a genuine link, Cloak strips the code from the address bar and takes them to the normal app. The link carries no funds and asks for nothing: if a "referral" page asks for a seed phrase, a private key, or a deposit to unlock something, it is a scam.
+
+## Where next
+
+<CardGroup cols={2}>
+  <Card title="How commission works" icon="percent" href="/affiliates/commission">
+    What earns, the two-month window, first click, and worked examples.
+  </Card>
+  <Card title="Payouts and claiming" icon="calendar-check" href="/affiliates/payouts">
+    Per-token payment, the monthly schedule, statement statuses, and claiming.
+  </Card>
+</CardGroup>
