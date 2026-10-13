@@ -46,8 +46,8 @@ To apply the three-person rule, Cloak has to tell people apart without keeping a
 
 * Cloak never keeps a permanent record of which wallet came through which link. The referral itself lives only on the referred person's device.
 * To count distinct people, Cloak stores a **pseudonymous mark** per person per month, made with a secret that is unique to that month. The mark is a one-way code: it does not contain the wallet address and cannot be turned back into it, and marks from different months cannot be matched to each other.
-* When a month is paid out, its marks and its secret are deleted. A month that carries over keeps them only until it is paid out.
-* Nothing about affiliates is ever written on-chain.
+* When a month is released into a statement, its marks are deleted, and the month's secret is deleted once no carried-over month still needs it. A month below the privacy floor keeps its marks only while it remains in carry-over.
+* Attribution and commission records are not written on-chain. A payout is a normal Cloak withdrawal: nothing in it says it is a commission or which referrals earned it. One exception: if your payout wallet has never held USDC or USDT, Cloak first creates its token account in a separate public transaction, which links Cloak to your wallet. See [Payouts and claiming](/affiliates/payouts#what-to-know-about-claiming).
 
 ## Where next
 

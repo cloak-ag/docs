@@ -1,6 +1,6 @@
 ---
 title: "How commission works"
-description: "What earns commission, how it is calculated, and how a new user is attributed to your link"
+description: "What earns commission, how it is calculated, and how a referral is attributed to your link"
 icon: "percent"
 ---
 
@@ -62,25 +62,25 @@ Attribution happens on the referred person's **device**, not on Cloak's servers.
 
 **Two calendar months from the click.** The window is counted per person, from the moment they opened your link. A click on 15 January at 10:00 UTC stays active until 15 March at 10:00 UTC. When the target month is shorter, the window ends on its last day: a click on 31 December at 10:00 UTC ends on 28 February at 10:00 UTC (29 February in a leap year). After the window ends, that person's transactions stop earning commission.
 
-**Your link never expires.** As long as your account is approved, your link keeps attributing new people. Only each person's own two-month window ends.
+**Your link never expires.** As long as your account is approved, your link keeps attributing new devices. Only each person's own two-month window ends.
 
-**First click wins.** If a device opens your link and later opens another affiliate's link, only the first one counts.
+**First link on the device.** If a device opens your link and later opens another affiliate's link, only the first one is recorded.
 
 **Once per device, ever.** A device is attributed at most once. When its window ends, it is never attributed again, to you or to any other affiliate.
 
-**New users only.** A device that already has Cloak activity (a deposit, a private balance, or transaction history in the Cloak app) is not attributed. Your link works for people who are new to Cloak.
+**New to Cloak on that device.** A device that already has Cloak activity (a deposit, a private balance, or transaction history in the Cloak app) is not attributed. These checks run on the device, which cannot see other devices or browsers: a person who switches device or clears site data can look new to it.
 
-**Self-referral earns nothing.** A transaction sent from your own payout wallet never earns commission, even through your own link. Under the [terms](/affiliates/terms), neither does activity from any other wallet you own or control.
+**No self-referral.** A transaction sent from your registered payout wallet is excluded automatically, even through your own link. The [terms](/affiliates/terms) also forbid commission on any other wallet you own or control. Cloak cannot detect every such wallet automatically, so it reviews accounts for self-referral and other abuse, and may hold or forfeit the commission involved.
 
 **Cloak's own apps only.** Commission is earned only on transactions made in the Cloak web app at [cloak.ag](https://cloak.ag) and in the Cloak mobile apps for iOS and Android. Transactions made through third-party apps, websites, wallets or SDK integrations never earn commission, even when the same person was attributed to you.
 
-**Attribution stays on the device.** It lives in that browser or in the app on that phone. If the person moves to another device or browser, or clears the site data, transactions made there are not attributed.
+**Attribution stays on the device.** It lives in that browser or in the app on that phone. When a fee-bearing transaction carries your code, Cloak's servers briefly hold the code next to the sending wallet until the fee is recorded for commission, then delete that pairing. If the person moves to another device or browser, or clears the site data, transactions made there are not attributed.
 
 **A link never gets in the way.** An unknown, inactive or ineligible code is ignored silently. A transaction never fails, and never costs more, because of an affiliate link.
 
 ### What the referred person sees
 
-The referred person uses Cloak exactly as anyone else would: the same app, the same steps and the [same fees](/guide/fees). Their transactions are as private as anyone else's. Cloak never keeps a permanent record of which wallet came through which link, and nothing about affiliates is ever written on-chain. See [Why your dashboard is aggregated](/affiliates/dashboard-privacy).
+The referred person uses Cloak exactly as anyone else would: the same app, the same steps and the [same fees](/guide/fees). Their transactions are as private as anyone else's. Cloak never keeps a permanent record of which wallet came through which link, and attribution or commission data is not written on-chain. See [Why your dashboard is aggregated](/affiliates/dashboard-privacy).
 
 ## Clicks and first deposits
 

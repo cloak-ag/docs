@@ -4,7 +4,9 @@ description: "How the month closes, how commission is paid in the tokens that ea
 icon: "calendar-check"
 ---
 
-Commission is settled once a month. Each month closes on the first day of the next one and becomes a **statement** that lists your commission per token: SOL, USDC and USDT. It opens for claiming on the fifth. You claim it by hand from your dashboard, and Cloak pays each token through its own Cloak private withdrawal to your payout wallet. There is no minimum.
+import TokenAccount from "/snippets/affiliate-token-account.mdx";
+
+Commission is settled once a month. Each month closes on the first day of the next one and becomes a **statement** that lists your commission per token: SOL, USDC and USDT. It opens for claiming on the fifth, or later if review or funding finishes after that. You claim it by hand from your dashboard, and Cloak pays each token through its own Cloak private withdrawal to your payout wallet. There is no minimum.
 
 All dates and times in the program are UTC.
 
@@ -67,7 +69,7 @@ Once a statement is approved, its amounts never change. If a statement or paymen
 * **A claim is all or nothing.** One claim covers every token on the statement, at its exact amount; partial claims are not possible.
 * **Each claim is screened.** Your payout wallet is checked against sanctions lists before every claim. A wallet that fails the check cannot claim.
 * **It arrives like any Cloak withdrawal.** Each token comes out of the Cloak shielded pool to your payout wallet, the same way it does when any user withdraws.
-* **If your wallet cannot receive a token yet**, the dashboard says so next to that token. This is rare. Getting any small amount of that token into your payout wallet fixes it, and the payment then goes through on its own within about an hour. You do not need to claim again.
+* <TokenAccount />
 * **You claim once, and you are never paid twice.** If a payment attempt fails, Cloak retries it only after confirming that the earlier attempt did not land. You do not need to claim again.
 * **If payouts are paused**, your claim stays **Payment requested** and is paid when they resume. A statement whose payment you have already requested does not expire.
 * **Claim within 90 days.** Claiming is always manual; nothing is paid until you claim. An expired statement cannot be claimed, and its amount stays with Cloak.
