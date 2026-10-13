@@ -72,12 +72,17 @@ Minimum deposit: `10_000_000` lamports (`0.01 SOL`) on the SOL pool; `1_000_000`
 
 - SDK flows enforce viewing-key registration by default before protocol transactions.
 - Registration is a signed wallet challenge bound to a 32-byte viewing key (`nk`).
+- `nk` is view-only: it can find and read your notes, never spend them or sign for funds. The notes
+  themselves are owned by the wallet's UTXO keypair, which the spend flows take as `ownerUtxoKeypair`.
 - Registration is cached in-process to avoid repeat calls.
 
 ## Chain-native scanner and cache model
 
 - `scanTransactions` reads chain transactions directly from RPC.
 - It decrypts compact chain notes with viewing key `nk` and verifies `chainNoteHash` integrity.
+- Pass `ownerUtxoPublicKey` to match the wallet's own deposits; recovered notes carry
+  `legacyExposed`, which flags notes from earlier SDK releases that should be moved under the wallet
+  keypair.
 - It computes per-tx `gross`, `fee`, `netAmount`, and running balance.
 - Client apps can store encrypted report snapshots locally and expose explicit cache clear + rescan.
 

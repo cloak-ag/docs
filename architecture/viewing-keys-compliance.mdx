@@ -7,6 +7,9 @@ icon: "key"
 ## v1 model
 
 - Users derive viewing material client-side (`nk`) and keep private keys local.
+- `nk` is view-only: it can find and read a user's notes, never spend them or sign for funds. Every
+  note the wallet creates for itself is owned by its UTXO keypair, which is derived from the spend
+  key and never leaves the device; `nk` is derived from that keypair one way and cannot produce it.
 - Transactions include compact encrypted chain notes.
 - History scanning decrypts chain data with `nk` and verifies integrity from public inputs.
 - Apps can cache encrypted history snapshots and trigger explicit rescan when needed.
@@ -28,6 +31,8 @@ icon: "key"
 - `scanTransactions` reads Cloak program transactions from RPC.
 - Scanner extracts compact chain-note envelopes from transaction data.
 - Decrypts using `nk` and verifies `chainNoteHash` integrity.
+- Matching a deposit to its owner needs the wallet's UTXO **public** key (`ownerUtxoPublicKey`). A
+  public key cannot spend anything, so the scan stays view-only.
 - Produces per-transaction `gross`, `fee`, `net`, and running balance.
 
 ## Trust model

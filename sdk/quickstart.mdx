@@ -27,11 +27,12 @@ import {
   CLOAK_PROGRAM_ID,
   NATIVE_SOL_MINT,
   createCloakRpc,
-  createUtxo,
+  createRecoverableDepositUtxo,
   createZeroUtxo,
   fullWithdraw,
   generateKeyPairSigner,
   generateUtxoKeypair,
+  getNkFromUtxoPrivateKey,
   partialWithdraw,
   serializeUtxo,
   signerFromSecretKey,
@@ -58,8 +59,18 @@ const secretKeyBytes = Uint8Array.from(
 const signer = await signerFromSecretKey(secretKeyBytes);
 
 const amount = 1_000_000_000n; // 1 SOL
+// Your Cloak keys. `owner` owns and spends your notes; `nk` is view-only: it finds and
+// reads them, never spends them. A real app derives `owner` from a stored spend key with
+// `deriveUtxoKeypairFromSpendKey(skSpend)` so it survives a restart.
 const owner = await generateUtxoKeypair();
-const depositOutput = await createUtxo(amount, owner, NATIVE_SOL_MINT);
+const nk = getNkFromUtxoPrivateKey(owner.privateKey);
+
+const { utxo: depositOutput, noteSalt } = await createRecoverableDepositUtxo({
+  amount,
+  viewingKeyNk: nk,
+  ownerUtxoKeypair: owner,
+  mintAddress: NATIVE_SOL_MINT,
+});
 
 const deposited = await transact(
   {
@@ -74,14 +85,15 @@ const deposited = await transact(
     relayUrl,
     depositorKeypair: signer,
     walletPublicKey: signer.address,
+    chainNoteViewingKeyNk: nk,
+    chainNoteSalt: noteSalt,
+    ownerUtxoKeypair: owner,
   },
 );
 
-// Persist the deposit note before the withdrawal below can run. The deposit is
-// confirmed on chain by this line, but its blinding exists only in this
-// process, so a withdrawal that throws (the 401 in the warning above is the
-// usual one) exits with the SOL shielded and nothing left anywhere that can
-// spend it. Same process is not the same as one atomic step.
+// Persist the deposit note before the withdrawal below can run. A scan with `nk`
+// and `owner.publicKey` could find it again, but the file is the copy you keep, and
+// `owner` must be stored too: it is the only key that can spend the note.
 const depositNotes = deposited.outputUtxos.filter((utxo) => utxo.amount > 0n);
 for (const [i, note] of depositNotes.entries()) {
   writeFileSync(`deposit-${deposited.signature}-${i}.note`, serializeUtxo(note));
@@ -95,6 +107,8 @@ const withdrawOptions = {
   relayUrl,
   depositorKeypair: signer,
   walletPublicKey: signer.address,
+  chainNoteViewingKeyNk: nk,
+  ownerUtxoKeypair: owner, // required on every spend flow; owns the change
   cachedMerkleTree: deposited.merkleTree,
 };
 
@@ -118,8 +132,7 @@ if (withdrawEverything) {
   );
 
   // Persist the change note before anything else can go wrong. This is the 0.8
-  // SOL you did not withdraw, and its blinding lives only in this process, so a
-  // change note you never store is gone for good.
+  // SOL you did not withdraw, owned by `owner`.
   const changeNotes = withdrawal.outputUtxos.filter((utxo) => utxo.amount > 0n);
   for (const [i, note] of changeNotes.entries()) {
     writeFileSync(`change-${withdrawal.signature}-${i}.note`, serializeUtxo(note));

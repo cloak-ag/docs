@@ -70,7 +70,7 @@ When the sender **omits** `recipientViewingPublicKey`, the blinding never reache
 <Warning>
 **Recipient discovery is opt-in.** Bob derives a **viewing public key** from his own `nk` (`deriveViewingKeyFromNk(bobNk).publicKey`, a 32-byte X25519 key) and shares that *public* key along with his Cloak pubkey. Alice passes it as `recipientViewingPublicKey` on the send, and Bob then finds the note himself with `scanRecipientDeliveryNotes({ connection, programId, viewingKeyNk: bobNk, ownerUtxoPublicKey: bob.publicKey })`, holding nothing but his own keys. Omit `recipientViewingPublicKey` and the note stays undiscoverable on chain, so the secrets still have to be handed over out of band.
 
-`nk` itself is derived from the recipient's spending key (`getNkFromUtxoPrivateKey`) and opens every envelope addressed to them, so it must never leave the recipient. The recipient derives; the recipient shares only the public half.
+`nk` itself is derived from the recipient's UTXO private key (`getNkFromUtxoPrivateKey`) and opens every envelope addressed to them. `nk` is view-only: it can find and read notes, never spend them or sign for funds, but it still reveals the recipient's history, so it stays with the recipient. The recipient derives; the recipient shares only the public half.
 </Warning>
 
 **Scope and limits**, all worth knowing before you rely on it:
@@ -78,6 +78,7 @@ When the sender **omits** `recipientViewingPublicKey`, the blinding never reache
 - The envelope is attached only on a **shield-to-shield send** (`externalAmount === 0` with no external `recipient`). Deposits and withdrawals carry none.
 - It always describes **output 0**, and it is skipped when output 0 belongs to the spender (change, or a send-to-self). `transfer()` puts the recipient's note at output 0, so the documented API satisfies this for you.
 - The carrier's declared commitment is **not** covered by the envelope's Poly1305 tag. Pass `ownerUtxoPublicKey` to `scanRecipientDeliveryNotes` and trust the `commitmentVerified` flag on the returned note rather than the memo.
+- The sender's change is output 1 and is owned by the sender's `ownerUtxoKeypair`, which `transfer` requires. The circuit requires a non-zero output 1 to be owned by the key of input 0, so `transfer` puts an input owned by that keypair first. If none of the inputs is owned by it and there is change, `transfer` first moves the inputs into one note owned by the keypair (one extra shielded transaction) and sends from that.
 
 ### The on-chain "chain note" is not a delivery channel
 
@@ -149,7 +150,7 @@ import {
   CLOAK_PRODUCTION_RELAY_URL,
   CLOAK_PROGRAM_ID,
   NATIVE_SOL_MINT,
-  createUtxo,
+  createRecoverableDepositUtxo,
   createZeroUtxo,
   deriveViewingKeyFromNk,
   generateUtxoKeypair,
@@ -196,12 +197,19 @@ const bobViewingPublicKey = deriveViewingKeyFromNk(bobNk).publicKey; // ← hand
 // `aliceWallet` is her Solana wallet, and it is the wallet that authenticates
 // every request she makes. This deposit shields 0.10 SOL to her Cloak key.
 const alice = await generateUtxoKeypair();
-const aliceNk = getNkFromUtxoPrivateKey(alice.privateKey);   // Alice's OWN nk
+const aliceNk = getNkFromUtxoPrivateKey(alice.privateKey);   // Alice's OWN nk (view-only)
 
+// The deposit note is owned by Alice's keypair; only its blinding comes from her nk.
+const { utxo: depositNote, noteSalt } = await createRecoverableDepositUtxo({
+  amount: 100_000_000n,
+  viewingKeyNk: aliceNk,
+  ownerUtxoKeypair: alice,
+  mintAddress: NATIVE_SOL_MINT,
+});
 const deposit = await transact(
   {
     inputUtxos: [await createZeroUtxo(NATIVE_SOL_MINT)],   // 2-in circuit: pad with a zero note
-    outputUtxos: [await createUtxo(100_000_000n, alice, NATIVE_SOL_MINT)],
+    outputUtxos: [depositNote],
     externalAmount: 100_000_000n,           // 0.10 SOL flowing INTO the pool
     depositor: aliceWallet.address,
   },
@@ -210,6 +218,8 @@ const deposit = await transact(
     depositorKeypair: aliceWallet,
     walletPublicKey: aliceWallet.address,
     chainNoteViewingKeyNk: aliceNk,
+    chainNoteSalt: noteSalt,                // the salt must reach the chain note
+    ownerUtxoKeypair: alice,
   },
 );
 const [aliceNote] = deposit.outputUtxos;   // ← the 0.10 note, with its leaf index attached
@@ -228,6 +238,7 @@ const sent = await transfer(
     depositorKeypair: aliceWallet,          // server signer; a browser passes signMessage instead
     walletPublicKey: aliceWallet.address, // the authenticated sender, either way
     chainNoteViewingKeyNk: aliceNk,         // Alice's OWN nk
+    ownerUtxoKeypair: alice,                // owns Alice's change; required on every spend
     recipientViewingPublicKey: bobViewingPublicKey,  // opt in to recipient discovery
     cachedMerkleTree: deposit.merkleTree,   // the deposit already built the tree; reuse it
   },
@@ -235,9 +246,10 @@ const sent = await transfer(
 
 // Bank Alice's 0.04 change BEFORE anything reports success. `transfer` puts Bob's
 // note at output 0 and Alice's change at output 1; a zero amount there means the
-// input was consumed exactly and there is no change. The change note's blinding is
-// fresh randomness that reaches no chain, so these bytes are its only copy and
-// dropping them makes 0.04 SOL unspendable by Alice, by Bob and by anyone else.
+// input was consumed exactly and there is no change. The change is owned by Alice's
+// keypair and its blinding is derived from her nk, but the chain note describes
+// output 0 only, so no scan learns this note's amount: treat these bytes as its only
+// practical copy.
 const aliceChange = sent.outputUtxos[1];
 if (aliceChange && aliceChange.amount > 0n) {
   keepNote(`alice-change-${sent.signature}`, aliceChange);
@@ -265,11 +277,12 @@ await fullWithdraw([claimable], bobWallet.address, {   // ← funds land at bobW
   depositorKeypair: bobWallet,            // Bob's OWN wallet authenticates his withdrawal
   walletPublicKey: bobWallet.address,   // never a service key: this is the screened sender
   chainNoteViewingKeyNk: bobNk,           // Bob's OWN nk
+  ownerUtxoKeypair: bob,                  // Bob's keypair owns the note he is spending
 });
 ```
 
 <Note>
-**Where `aliceNote` comes from in a real app.** The script above funds it in the same run, which is what makes it runnable end to end. A wallet cannot do that: the deposit happened yesterday, and the note has to come back out of storage. The SDK persists nothing for you: `transact` and `transfer` hand you `result.outputUtxos` once and then forget them, and a change note's `blinding` is fresh randomness that exists in no other place, on chain or off. Write the outputs down before you report success. The deposit above is built with `createUtxo`, so a later cold scan cannot rebuild it either; `createRecoverableDepositUtxo` is the shape that can. Both are covered in [where your notes live between sessions](/sdk/wallet-integration#where-your-notes-live-between-sessions).
+**Where `aliceNote` comes from in a real app.** The script above funds it in the same run, which is what makes it runnable end to end. A wallet cannot do that: the deposit happened yesterday, and the note has to come back out of storage. The SDK persists nothing for you: `transact` and `transfer` hand you `result.outputUtxos` once and then forget them. The deposit above is built with `createRecoverableDepositUtxo`, so a later scan with Alice's `nk` and public key can find it again, but a `transfer`'s change cannot be rebuilt by any scan. Write the outputs down before you report success. Both are covered in [where your notes live between sessions](/sdk/wallet-integration#where-your-notes-live-between-sessions).
 </Note>
 
 <Note>
@@ -333,11 +346,12 @@ async function sendToBob(
       // ───────────────────────────────────────────────────────────────────────
 
       chainNoteViewingKeyNk: getNkFromUtxoPrivateKey(alice.privateKey), // Alice's OWN nk
+      ownerUtxoKeypair: alice,      // owns the change; never inherited from an input note
       recipientViewingPublicKey: bobViewingPublicKey, // opt in to recipient discovery
     });
 
-    // Bank the change before you render "sent". This is its only copy: output 0 is
-    // Bob's note, output 1 is Alice's change, and its blinding reaches no chain.
+    // Bank the change before you render "sent". Output 0 is Bob's note, output 1 is
+    // Alice's change, and no scan learns the change's amount.
     for (const spent of inputs) wallet.markSpent(spent, spent.mintAddress);
     for (const utxo of result.outputUtxos) wallet.addUtxo(utxo, utxo.mintAddress);
     window.localStorage.setItem(NOTES_KEY, wallet.serialize());
