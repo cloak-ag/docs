@@ -36,7 +36,7 @@ how many prompts to expect, is [Request authentication](/sdk/request-authenticat
 ## Install
 
 ```bash
-npm install @cloak.dev/sdk@0.2.5 @solana/kit
+npm install @cloak.dev/sdk@0.2.6 @solana/kit
 ```
 
 Browser apps add the wallet adapter and `@solana/web3.js`, which the adapter bridge needs:
@@ -147,9 +147,9 @@ accepts an object that already carries raw secret-key bytes.
 ## Migration history: coming from web3.js
 
 This section is historical, for upgrading an integration written against 0.2.4 or earlier. Every
-example above already uses the current 0.2.5 Kit API; nothing here is a current instruction.
+example above already uses the current Kit API (0.2.5 and later); nothing here is a current instruction.
 
-| Before (≤ 0.2.4) | Now (0.2.5) |
+| Before (≤ 0.2.4) | Since 0.2.5 |
 |---|---|
 | `new Connection(rpcUrl, "confirmed")` | `createCloakRpc(rpcUrl)` |
 | `new PublicKey(value)` | `address(value)` |

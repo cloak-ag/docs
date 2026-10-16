@@ -157,7 +157,8 @@ try {
 ```
 
 Two of the causes are not a bug in your code at all: an approval dialog left waiting, and a wrong
-clock on the user's machine. Both are recoverable by retrying, and nothing was submitted for the
+clock on the user's machine (from 0.2.6 the SDK dates requests with the server clock it observes, so
+this one only shows up before the first response or with a device clock more than 24 hours off). Both are recoverable by retrying, and nothing was submitted for the
 request that was rejected. That is not the same as nothing having been submitted: with three or more
 inputs the rejection can arrive on a round that follows landed consolidation transactions, so
 reconcile with `verifyUtxos` before retrying rather than reusing `inputUtxos`. The full contract,

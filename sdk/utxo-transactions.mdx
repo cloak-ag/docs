@@ -78,7 +78,7 @@ your notes, never spend them or sign for funds.** When you pass `ownerUtxoKeypai
 
 <Note>
 `ownerUtxoKeypair`, `SpendOptions` and the options-object form of `createRecoverableDepositUtxo`
-belong to the SDK release that follows 0.2.5.
+are 0.2.6 signatures. Code written for 0.2.5 throws on 0.2.6 until it passes them.
 </Note>
 
 ## Create UTXOs
@@ -170,7 +170,7 @@ committed to multi-round on-chain work:
 
 ```typescript
 await fullWithdraw(inputUtxos, recipientWallet, {
-  ...options,
+  ...options, // SpendOptions: carries ownerUtxoKeypair
   // "Consolidating notes (4 remaining)..." means merges are landing on chain right now.
   onProgress: (status) => console.log(status),
 });

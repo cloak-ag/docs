@@ -14,10 +14,10 @@ long-running server-side services. Proving, note handling and submission are the
 what changes is who signs. In a browser that is a connected wallet adapter, on a server it is a
 keypair you hold.
 
-Install (current release: `@cloak.dev/sdk` 0.2.5):
+Install (current release: `@cloak.dev/sdk` 0.2.6):
 
 ```bash
-npm install @cloak.dev/sdk@0.2.5 @solana/kit
+npm install @cloak.dev/sdk@0.2.6 @solana/kit
 ```
 
 <Note>
@@ -28,6 +28,15 @@ Kit `Address` strings rather than `PublicKey` instances, and `depositorKeypair` 
 `signerFromWalletAdapter`, which is why `@solana/web3.js` remains a peer dependency. Pages whose
 samples still show the pre-0.2.5 shape are being migrated; [Solana Kit
 integration](/sdk/kit-integration) has the current wiring.
+</Note>
+
+<Note>
+**0.2.6 makes `nk` view-only, and that changes signatures.** Every note the SDK creates for the wallet
+is owned by its UTXO keypair, so `transfer`, `partialWithdraw`, `fullWithdraw`, `swapUtxo` and
+`swapWithChange` require `ownerUtxoKeypair` in their options, and `createRecoverableDepositUtxo`
+takes one options object. Code written for 0.2.5 throws on 0.2.6 until it passes the keypair; see
+[UTXO transactions](/sdk/utxo-transactions). 0.2.6 also restores a wallet's notes with one RPC
+request: [Restore notes from the Note Index](/sdk/note-index).
 </Note>
 
 ## Shared runtime values

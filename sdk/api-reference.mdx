@@ -31,9 +31,8 @@ except a deposit needs an authenticated sender and throws before proof generatio
 see [Request authentication](/sdk/request-authentication).
 
 <Note>
-The signatures below describe the SDK release that follows 0.2.5, in which `nk` is view-only.
-0.2.5 itself still accepts the earlier shapes (positional `createRecoverableDepositUtxo`, no
-`ownerUtxoKeypair`).
+The signatures below are those of 0.2.6, in which `nk` is view-only. 0.2.5 accepted the earlier
+shapes (positional `createRecoverableDepositUtxo`, no `ownerUtxoKeypair`), and they throw on 0.2.6.
 </Note>
 
 **Two keys, two jobs.** Every flow works with two values derived from the wallet's seed:
@@ -243,6 +242,20 @@ that a wallet has no stranded refund.
 The legacy helpers `deriveLegacyDepositNoteSecrets` and `deriveLegacySwapRefundAuthorization` exist
 only so scans keep finding notes built by earlier SDK releases. Never build a new note from them.
 
+### Restore from the Note Index
+
+```typescript
+recoverNotesFromIndex({ relayUrl, connection, programId, poolMints, viewingKeyNk, ownerUtxoKeypair, cursor?, legacyViewingKeyNks?, legacyCutoffLeaf?, concurrency?, onProgress?, signal? })
+  // -> { notes, atRisk, pending, cursor, stats, warnings }
+fetchNoteIndexHead(relayUrl, { signal?, timeoutMs?, maxRetries? })
+  // -> { format, epoch, pageSize, watermark, completePages, chainTip }
+NoteIndexHeadBehindError // retryable: keep the cursor and try again later
+NoteIndexFormatError     // the index did not verify
+```
+
+Restores a wallet's notes with one RPC request instead of a chain walk. Usage, the cursor contract
+and polling: [Restore notes from the Note Index](/sdk/note-index).
+
 ### Notes flagged `legacyExposed`
 
 Every recovered note (`RecoveredDepositNote`, `RecoveredChangeNote`, `RecoveredSwapRefund`, and the
@@ -380,7 +393,7 @@ Detailed usage: [Error Handling](/sdk/error-handling)
 ## Versioned exports
 
 ```typescript
-VERSION; // "0.2.5" -- matches the published package version
+VERSION; // "0.2.6" -- matches the published package version
 CLOAK_PROGRAM_ID; // mainnet program constant
 ```
 

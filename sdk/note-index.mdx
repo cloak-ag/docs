@@ -1,0 +1,156 @@
+---
+title: "Restore notes from the Note Index"
+description: "Find a wallet's notes after a reinstall, pick up received private sends and change made elsewhere, with one RPC request and no chain walk"
+icon: "rotate"
+---
+
+A wallet that loses its local note store (a reinstall, a new device, a cleared browser) needs its
+notes back, and a wallet that receives a private send needs to find it. From SDK 0.2.6 the way to do
+both is `recoverNotesFromIndex`.
+
+## Why not scan the chain
+
+`scanTransactions` walks the program's signature history and fetches every transaction over your
+RPC: thousands of paid requests per wallet, and minutes of work. The Note Index replaces that walk.
+Cloak publishes every confirmed Cloak transaction once, as a bulk, unauthenticated and cacheable
+feed of encrypted notes, leaves and nullifiers. Every wallet downloads the same bytes, so the
+download says nothing about which notes are yours.
+
+`recoverNotesFromIndex` then does everything locally:
+
+- opens each item under the wallet's keys;
+- rebuilds the commitment tree of every pool you list from the index's own leaf stream, and checks
+  it against the chain with **one** RPC request (a `getMultipleAccounts` of the pool tree accounts);
+- computes spent status from the nullifiers in the index, so no nullifier of the wallet is sent
+  anywhere.
+
+The index is served at the same `relayUrl` every flow already takes. A `relayUrl` that does not serve
+it fails the head request with HTTP 404; report that as "restore unavailable" rather than falling
+back to a chain walk.
+
+Keep `scanTransactions` for compliance history, where you need every transaction row.
+
+## Restore
+
+```typescript
+import {
+  address,
+  CLOAK_PROGRAM_ID,
+  NATIVE_SOL_MINT,
+  recoverNotesFromIndex,
+  type NoteIndexCursor,
+} from "@cloak.dev/sdk";
+
+const USDC = address("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
+const USDT = address("Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB");
+
+// Your own private storage, one cursor per wallet and relayUrl. Undefined on a fresh install.
+const savedCursor: NoteIndexCursor | undefined = await loadCursor(walletAddress);
+
+const result = await recoverNotesFromIndex({
+  relayUrl,
+  connection,                                  // a CloakRpc; used for ONE getMultipleAccounts
+  programId: CLOAK_PROGRAM_ID,
+  poolMints: [NATIVE_SOL_MINT, USDC, USDT],    // every pool your app uses, not only the ones with notes
+  viewingKeyNk: nk,
+  ownerUtxoKeypair,                            // the wallet's UTXO keypair, with its private key
+  cursor: savedCursor,                         // omit for a full sync
+  onProgress: ({ pagesDone, pagesTotal }) => setProgress(pagesDone / pagesTotal),
+});
+
+await saveNotes(result.notes.map((n) => n.utxo)); // store the notes first...
+await saveCursor(walletAddress, result.cursor);   // ...then the cursor that covers them
+```
+
+| Field | What it holds |
+|---|---|
+| `notes` | Verified, unspent notes owned by `ownerUtxoKeypair`, ready to spend: amount, blinding, mint, the real keypair, the verified leaf index and the commitment. Each carries a `kind`: `deposit`, `change`, `received` or `swap_refund`. |
+| `atRisk` | Verified, unspent notes that `nk` holders can spend or read (`legacyExposed: true`). See [Notes from older releases](#notes-from-older-releases). They are not balance; move them under the wallet keypair. |
+| `pending` | Candidates that cannot be verified yet (the tree has not caught up). They travel inside the cursor and are checked again on the next run. |
+| `cursor` | The resume point. Persist it and pass it back next time. |
+| `stats` | Pages, items and bytes downloaded, `rpcCalls` (always 1), time taken. |
+| `warnings` | Non-fatal events, such as a re-sync from the first page. Generic text, never a key or a note. |
+
+The change of a private send sits at output 1, which the chain note does not describe. A restore
+still finds it, by conservation, when the wallet's own inputs to that send are found too.
+
+## What you can trust
+
+A note is returned only when it opens under the wallet's keys, its commitment recomputes from the
+opened values and the wallet's owner key, and it sits at its leaf in a tree the chain authenticates.
+Whoever serves the index can hide items, but cannot inject a note, alter one, or point one at the
+wrong leaf.
+
+A hidden nullifier can make a spent note look unspent. Spend restored notes through `transact`,
+`transfer`, `partialWithdraw`, `fullWithdraw` or `swapUtxo`: each runs `preflightNullifiers` before
+it proves, and refuses a note that is already spent.
+
+## Store the cursor like the notes
+
+The cursor is JSON and holds no key material, but it records which index items are the wallet's.
+Store it as privately as the notes themselves:
+
+- one cursor per wallet and per `relayUrl`;
+- never hand one wallet's cursor to another wallet, and start from no cursor when the wallet's
+  `ownerUtxoKeypair` changes;
+- write it only after the notes it covers are stored, so a crash in between finds them again.
+
+An invalid cursor, a new index epoch or a broken hash chain re-syncs from the first page by itself
+and says so in `warnings`.
+
+## Keep it fresh
+
+Fetch the head (tiny and cacheable) and run a restore only when it moved:
+
+```typescript
+import { fetchNoteIndexHead, NoteIndexFormatError, NoteIndexHeadBehindError } from "@cloak.dev/sdk";
+
+const head = await fetchNoteIndexHead(relayUrl);
+const moved =
+  !savedCursor ||
+  savedCursor.epoch !== head.epoch.toString(10) ||
+  savedCursor.watermark !== head.watermark;
+
+if (moved) {
+  try {
+    const result = await recoverNotesFromIndex({ /* as above */ cursor: savedCursor });
+    // store notes, then the cursor
+  } catch (error) {
+    if (error instanceof NoteIndexHeadBehindError) {
+      // A cached head trails the cursor. Keep the cursor and try again later.
+    } else if (error instanceof NoteIndexFormatError) {
+      // The index did not verify. Keep the cursor, report "restore unavailable".
+    } else {
+      throw error;
+    }
+  }
+}
+```
+
+<Warning>
+Decide on the head alone. `pending` depends on what the wallet owns: whoever serves the index can make
+it non-zero for the owner of one item. A client that downloads again while `pending > 0` therefore
+tells the server which wallet owns that item. Pending candidates are retried on the next run the head
+triggers.
+</Warning>
+
+## Notes from older releases
+
+Notes whose owner key an SDK before 0.2.6 derived from `nk` come back in `atRisk`, never in `notes`:
+anyone holding `nk` can spend them. Move them under the wallet keypair by spending them to yourself
+(see [Notes flagged `legacyExposed`](/sdk/api-reference#notes-flagged-legacyexposed)).
+
+If an older version of your app encrypted chain notes under a different viewing key than the
+wallet's current `nk`, pass those keys as `legacyViewingKeyNks` (at most 8). They are tried in the
+same download, at no extra request. Everything found only through one of them is returned in
+`atRisk`, whatever its owner key, because whoever holds that key can read it; a legacy key never
+opens a note someone sent to the wallet. When a wallet has already moved such a note (spent it under
+its current `nk`), the old note shows as spent and its change comes back in `notes`.
+
+`legacyCutoffLeaf` (per mint) ignores legacy-shaped notes at or after a leaf, for example the first
+leaf after your app stopped creating them.
+
+## From a browser
+
+The index is served with the same cross-origin policy as every other request to `relayUrl`. Servers
+and native apps are not affected.

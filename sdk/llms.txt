@@ -20,7 +20,8 @@ Use this file as your primary SDK briefing and only fall back to the friendlier 
 ## 1. Package
 
 - Name: `@cloak.dev/sdk`
-- Version: `0.2.5`. The exported `VERSION` constant now matches the published package version (it lagged before 0.2.5); it is still informational only — confirm the installed version with `npm ls @cloak.dev/sdk`.
+- Version: `0.2.6`. The exported `VERSION` constant matches the published package version (it lagged before 0.2.5); it is still informational only. Confirm the installed version with `npm ls @cloak.dev/sdk`.
+- **0.2.6 makes `nk` view-only and changes signatures**: the spend flows take `SpendOptions` (`ownerUtxoKeypair` required), `createRecoverableDepositUtxo` takes one options object, bridge receivers derive from the keypair. 0.2.6 adds `recoverNotesFromIndex` (§5.5a) to restore notes with one RPC request.
 - **0.2.5 moved the SDK onto `@solana/kit`.** `connection` is a `CloakRpc` from `createCloakRpc(rpcUrl)`; `programId`, mints and recipients are Kit `Address` strings; `depositorKeypair` is a Kit `KeyPairSigner`; `signer` is a Kit transaction signer. `@solana/web3.js` is an optional peer dependency, needed only by `signerFromWalletAdapter` (the browser wallet bridge). `@solana/spl-token` was replaced by `@solana-program/token`. Removed in 0.2.5: `keypairToAdapter` and the `WalletAdapter` type.
 - Runtime: Node `>=18` and modern browsers. ESM and CJS both shipped (`dist/index.js`, `dist/index.cjs`).
 - Types: `dist/index.d.ts`
@@ -37,7 +38,7 @@ Use this file as your primary SDK briefing and only fall back to the friendlier 
 Install:
 
 ```bash
-npm install @cloak.dev/sdk@0.2.5 @solana/kit
+npm install @cloak.dev/sdk@0.2.6 @solana/kit
 # Browser apps using a wallet adapter also need:
 npm install @solana/wallet-adapter-react @solana/web3.js
 ```
@@ -72,14 +73,14 @@ npm install @solana/wallet-adapter-react @solana/web3.js
    - Neither, or only half of the wallet pair: `transact` / `transfer` / `partialWithdraw` / `fullWithdraw` / `swapUtxo` / `swapWithChange` throw `Cloak <flow> requires an authenticated sender ...` before proof generation. Deposits (`externalAmount > 0n`) are exempt.
    - The authenticated `sender` IS the key screened for sanctions and the key a viewing key is registered against. It MUST be the end user's real wallet, never an ephemeral, session or service-held key. Passing a `depositorKeypair` and a different `walletPublicKey` throws.
    - A private send or withdrawal signs EXACTLY ONCE regardless of network retries. Only `swapUtxo` / `swapWithChange` re-prompt, capped by `maxWalletApprovals` (default 5, floored at 1).
-   - Signed requests are valid for `REQUEST_AUTH_MAX_AGE_SECONDS` (300); the SDK holds back 15 seconds for transit, so the usable approval budget is 285 seconds. A machine clock more than `REQUEST_AUTH_MAX_FUTURE_SKEW_SECONDS` (30) ahead cannot authenticate at all. Map rejections through `explainRelayAuthRejection`.
+   - Signed requests are valid for `REQUEST_AUTH_MAX_AGE_SECONDS` (300); the SDK holds back 15 seconds for transit, so the usable approval budget is 285 seconds. From 0.2.6 the SDK stamps `auth_issued_at` (and the chain-note timestamp) with the server clock it observed on its own responses (trusted only within 24 hours of the device clock); without a usable sample it falls back to the device clock, and then a device clock more than `REQUEST_AUTH_MAX_FUTURE_SKEW_SECONDS` (30) ahead cannot authenticate. Map rejections through `explainRelayAuthRejection`.
 14. `nk` is VIEW-ONLY: it can find and read notes, never spend them or sign for funds. Everything that spends or moves funds is owned by the wallet's long-lived UTXO keypair (`ownerUtxoKeypair`, from `deriveUtxoKeypairFromSpendKey(skSpend)`):
    - `transfer` / `partialWithdraw` / `fullWithdraw` / `swapUtxo` / `swapWithChange` take `SpendOptions` and throw without `ownerUtxoKeypair`. It owns change, merges and swap refunds; the SDK never inherits the owner from `inputUtxos[0]`.
    - Deposits: `createRecoverableDepositUtxo({ amount, viewingKeyNk, ownerUtxoKeypair, mintAddress?, noteSalt? })`, with `noteSalt` passed as `chainNoteSalt`.
    - `transact` never infers `nk` from a note's key; pass `chainNoteViewingKeyNk` or `ownerUtxoKeypair` (canonical `nk`).
    - Bridge receivers derive from the keypair: `deriveBridgeReceiver(ownerUtxoKeypair, index)`, `listBridgeDeposits(rpc, ownerUtxoKeypair, opts)`.
    - Scans need `ownerUtxoPublicKey` to match the wallet's own notes; current notes come back with `keypair.privateKey === 0n`. Notes flagged `legacyExposed: true` come from earlier releases; move them under `ownerUtxoKeypair` by spending them to yourself.
-   - These signatures belong to the SDK release that follows 0.2.5.
+   - These are the 0.2.6 signatures; the 0.2.5 shapes throw on 0.2.6.
 
 ---
 
@@ -228,7 +229,7 @@ There is no client class. The transaction entry points are free functions, liste
 
 - `CLOAK_PROGRAM_ID`: `PublicKey`, mainnet program
 - `NATIVE_SOL_MINT`: `PublicKey`, SOL pool mint identity
-- `VERSION`: string, currently `"0.2.5"` -- matches the published package version (it lagged before 0.2.5); informational only, confirm the installed version with `npm ls @cloak.dev/sdk`
+- `VERSION`: string, currently `"0.2.6"` -- matches the published package version (it lagged before 0.2.5); informational only, confirm the installed version with `npm ls @cloak.dev/sdk`
 - `setDebugMode(enabled: boolean)`: global SDK logging switch
 - `LocalStorageAdapter` / `MemoryStorageAdapter`: `StorageAdapter` implementations (see §5.13)
 
@@ -320,7 +321,7 @@ gets that consolidation is running. `partialWithdraw` shares the same loop and t
 function transact(params: TransactParams, options: TransactOptions): Promise<TransactResult>;
 // The spend flows take SpendOptions: TransactOptions with the wallet's long-lived UTXO keypair
 // made mandatory. It OWNS every note the flow creates for the wallet (change, merges, swap refund);
-// the SDK never inherits that owner from inputUtxos[0]. (SDK release after 0.2.5.)
+// the SDK never inherits that owner from inputUtxos[0]. (0.2.6.)
 type SpendOptions = TransactOptions & { ownerUtxoKeypair: UtxoKeypair };
 
 function transfer(inputUtxos: Utxo[], recipientPubkey: bigint, amount: bigint, options: SpendOptions): Promise<TransactResult>;
@@ -758,6 +759,64 @@ refunds whose blinding was DERIVED from an `nk`. A swap whose refund keypair and
 from raw randomness has no derivation to replay, and no key-only scan will ever find it; for those,
 the in-memory `UtxoSwapResult.refund` was the only copy. Never report "no stranded refunds" on the
 strength of an empty return.
+
+### 5.5a Note Index restore (0.2.6)
+
+Restore a wallet's notes (reinstall, new device), received private sends and change made elsewhere
+WITHOUT a per-wallet chain scan. The index of every confirmed Cloak transaction is served at the same
+`relayUrl`; every wallet downloads the same pages, and everything is opened and verified locally.
+Cost: one RPC request (`getMultipleAccounts` of the listed pools' tree accounts). Spent status comes
+from the nullifiers in the index; no nullifier of the wallet leaves the client.
+
+```ts
+function recoverNotesFromIndex(params: {
+  relayUrl: string;                 // allowlisted origin, as on every flow
+  connection: CloakRpc;             // used for ONE getMultipleAccounts
+  programId: Address;
+  poolMints: Address[];             // EVERY pool the app uses (SOL, USDC, USDT), not only those with notes
+  viewingKeyNk: Uint8Array;         // 32 bytes
+  ownerUtxoKeypair: UtxoKeypair;    // with its real private key
+  cursor?: NoteIndexCursor;         // the previous run's cursor; omit for a full sync
+  legacyViewingKeyNks?: Uint8Array[]; // <= 8 viewing keys older app versions used; finds go to atRisk only
+  legacyCutoffLeaf?: Record<string, bigint>; // per mint: ignore legacy-shaped notes at/after this leaf
+  concurrency?: number;             // pages in flight, 1..32, default 6
+  onProgress?: (p: { pagesDone: number; pagesTotal: number; itemsChecked: number; notesFound: number }) => void;
+  signal?: AbortSignal;
+}): Promise<{
+  notes: IndexedRecoveredNote[];    // verified, unspent, owned by ownerUtxoKeypair: spendable
+  atRisk: IndexedRecoveredNote[];   // verified, unspent, legacyExposed: true; NOT balance, migrate
+  pending: number;                  // not verifiable yet; carried in the cursor
+  cursor: NoteIndexCursor;          // persist; pass back next run
+  stats: NoteIndexRecoveryStats;    // pages, items, bytes, rpcCalls, ms, ...
+  warnings: string[];               // e.g. a re-sync from page 0
+}>;
+interface IndexedRecoveredNote {
+  kind: "deposit" | "change" | "received" | "swap_refund";
+  utxo: Utxo;                       // real keypair, blinding, amount, mint, verified leaf index, commitment
+  signature: string;                // metadata only, not proof of payment
+  legacyExposed: boolean;
+}
+function fetchNoteIndexHead(relayUrl: string, options?: { signal?: AbortSignal; timeoutMs?: number; maxRetries?: number }):
+  Promise<{ format: 1; epoch: bigint; pageSize: number; watermark: number; completePages: number; chainTip: string }>;
+class NoteIndexHeadBehindError extends Error { retryable: true }  // keep the cursor, retry later
+class NoteIndexFormatError extends Error {}                       // the index did not verify
+```
+
+Rules:
+- Store notes first, then the cursor. One cursor per wallet and `relayUrl`; it holds no key material
+  but records which items are the wallet's, so store it as privately as notes and never reuse it for
+  another wallet or another `ownerUtxoKeypair`.
+- Poll with `fetchNoteIndexHead`: run a restore only when `head.epoch.toString(10)` or
+  `head.watermark` differs from the cursor's `epoch` / `watermark`. NEVER gate a download on
+  `pending`: it is wallet-dependent, and re-downloading while `pending > 0` tells the server which
+  wallet owns a tampered item.
+- Trust: a note is returned only if it opens under the wallet's keys, its commitment recomputes
+  with the owner key, and it sits in a chain-authenticated tree. The server can hide items, not forge
+  them. A hidden nullifier can make a spent note look unspent, so spend restored notes only through
+  `transact` / `transfer` / `partialWithdraw` / `fullWithdraw` / `swapUtxo` (they run
+  `preflightNullifiers`).
+- A head request answering HTTP 404 means the `relayUrl` does not serve the index: report restore as
+  unavailable; do not fall back to a chain walk.
 
 ### 5.6 Viewing keys + compliance keys
 
@@ -1807,7 +1866,7 @@ import { fullWithdraw, isRootNotFoundError, parseError } from "@cloak.dev/sdk";
 
 for (let attempt = 0; attempt < 3; attempt++) {
   try {
-    await fullWithdraw(inputUtxos, recipient, options);
+    await fullWithdraw(inputUtxos, recipient, options); // options: SpendOptions (ownerUtxoKeypair)
     break;
   } catch (err) {
     if (isRootNotFoundError(err)) {
@@ -1844,6 +1903,7 @@ do not adapt the Node one by hand.
 - SOL -> SPL swap with shielded change: section 6.6, including the two secrets a swap hands back
   that must be persisted (the change note and `UtxoSwapResult.refund`).
 - Recovering a swap refund whose secret was never persisted: `discoverSwapRefunds`, section 5.5.
+- Restoring a wallet's notes or finding received private sends: `recoverNotesFromIndex`, section 5.5a.
 - Compliance scan and CSV export: section 6.7.
 - Viewing-key registration: section 6.8.
 - Fee modeling (SOL + SPL): section 6.9.
@@ -1861,7 +1921,7 @@ do not adapt the Node one by hand.
 4. Never change `externalAmount` semantics; treat deposit/withdraw/transfer as three distinct modes derived from that field.
 5. Never call `transact` with raw `number` amounts. Always `BigInt(...)` at API boundaries.
 6. Use SDK defaults for program and circuits in standard integrations. `relayUrl` has no default and must be passed on every flow, as an allowlisted origin. Never generate `relayUrl: ""` together with `enforceViewingKeyRegistration: false` for a send, withdrawal or swap: that pairing is what makes `""` mean direct submission, and it submits under the user's own key, publicly linking the transaction.
-7. Prefer `scanTransactions` + `toComplianceReport` for user history UX. Do not re-invent compliance endpoints.
+7. Prefer `scanTransactions` + `toComplianceReport` for user history UX. Do not re-invent compliance endpoints. For restore and received notes use `recoverNotesFromIndex` (§5.5a), never a per-wallet chain scan.
 8. For mutating paths in the browser, prefer the wallet adapter (`signTransaction` / `signMessage`). Reserve `depositorKeypair` for Node scripts.
 9. Do not add manual stale-root retry loops by default in app scripts; SDK transaction paths already handle these retries.
 10. Cache `TransactResult.merkleTree` across operations in the same user session to avoid redundant tree rebuilds.

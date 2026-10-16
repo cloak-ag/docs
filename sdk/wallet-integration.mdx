@@ -7,7 +7,7 @@ icon: "wallet"
 ## Install
 
 ```bash
-npm install @cloak.dev/sdk@0.2.5 @solana/kit @solana/wallet-adapter-react @solana/web3.js
+npm install @cloak.dev/sdk@0.2.6 @solana/kit @solana/wallet-adapter-react @solana/web3.js
 ```
 
 The SDK is built on `@solana/kit`. `@solana/web3.js` is still needed here because the wallet-adapter
@@ -88,7 +88,7 @@ throws before touching the network.
 
 <Note>
 `ownerUtxoKeypair`, `SpendOptions` and the options-object form of `createRecoverableDepositUtxo`
-belong to the SDK release that follows 0.2.5.
+are 0.2.6 signatures. Code written for 0.2.5 throws on 0.2.6 until it passes them.
 </Note>
 
 ## Full wallet-adapter SOL send flow (`transact` -> `fullWithdraw`)
@@ -467,7 +467,11 @@ you pass it. `UtxoWallet` is sound for the parts used above: `addUtxo`, `markSpe
 
 ### What happens if that storage is lost
 
-Most of it does not come back. Be precise with yourself about which parts do:
+Most of it does not come back. Be precise with yourself about which parts do. The table describes a
+`scanTransactions` chain scan. From 0.2.6, restore with `recoverNotesFromIndex` instead: it finds
+the same notes with one RPC request rather than a walk over every transaction, and it also restores a
+`transfer`'s change, by conservation over the wallet's own inputs to that send. See
+[Restore notes from the Note Index](/sdk/note-index).
 
 | What was lost | Recoverable from chain | Why |
 |---|---|---|
@@ -598,6 +602,7 @@ after any failure, and drop anything it reports as spent.
 
 ## Related pages
 
+- [Restore notes from the Note Index](/sdk/note-index)
 - [Request authentication](/sdk/request-authentication)
 - [Shielded transfers](/sdk/shielded-transfers)
 - [Quickstart](/sdk/quickstart)

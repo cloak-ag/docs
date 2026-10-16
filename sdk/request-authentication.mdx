@@ -197,7 +197,7 @@ are exported so you can build UI around them:
 | Export | Value | What it means for you |
 |---|---|---|
 | `REQUEST_AUTH_MAX_AGE_SECONDS` | `300` | a request is valid for 300 seconds from the moment it is signed |
-| `REQUEST_AUTH_MAX_FUTURE_SKEW_SECONDS` | `30` | a machine clock more than 30 seconds **fast** cannot authenticate at all |
+| `REQUEST_AUTH_MAX_FUTURE_SKEW_SECONDS` | `30` | a request stamped more than 30 seconds **ahead** of the server clock is refused |
 
 The SDK holds 15 of those 300 seconds back for serializing the body and getting the request onto the
 network, so **the real budget a user has to approve a prompt is 285 seconds**. Past that the SDK
@@ -209,9 +209,10 @@ Two consequences worth designing for:
 - **An approval dialog left sitting fails.** A hardware wallet prompt that waits five minutes on a
   desk comes back to a request that has expired. Nothing moved and no funds are at risk, but the
   user has to start the operation again, including the proof. Keep the prompt in front of them.
-- **A wrong machine clock fails everything.** In a browser the timestamp comes from the user's own
-  laptop. If it runs fast, every request is refused before anything else is even looked at, and the
-  fix is on their machine, not in your code.
+- **A wrong machine clock no longer fails everything.** From 0.2.6 the SDK dates each signed request
+  with the server clock it observed on its own previous responses, so a laptop that runs fast still
+  authenticates. Before the first response, or when the device clock is more than 24 hours off, the
+  SDK falls back to the device clock, and a device clock more than 30 seconds fast is refused again.
 
 `explainRelayAuthRejection(responseText)` turns those into something a person can act on. It returns
 `null` for anything that is not an authentication rejection, so it is safe to append unconditionally:
@@ -223,6 +224,7 @@ try {
   // fullWithdraw over one or two notes is used here because that shape is the one
   // that returns no change note to bank. Every other flow on this page, and
   // fullWithdraw over three or more notes, produces secrets you must persist first.
+  // options: SpendOptions, so it carries the wallet's ownerUtxoKeypair.
   await fullWithdraw(notes, recipient, options);
 } catch (error) {
   const hint = explainRelayAuthRejection(String(error));
