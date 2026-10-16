@@ -48,6 +48,7 @@ const result = await transact(params, {
   signMessage, // wallet adapter message signer, authenticates submitted requests
   depositorPublicKey, // wallet public key
   walletPublicKey: depositorPublicKey, // same key; becomes the authenticated sender
+  ownerUtxoKeypair, // the wallet's long-lived UTXO keypair; owns its notes and supplies nk
   riskOracleQueue, // if required by deployment
   riskQuoteUrl, // absolute URL on this build's allowlist (if needed)
   addressLookupTableAccounts,
@@ -66,6 +67,30 @@ await persistNotes(
 Check `signMessage` is present before you offer a send or withdraw action. Not every adapter
 implements it, and finding out after a Groth16 proof has already been computed is a poor experience.
 
+### The wallet's two keys
+
+Derive both from the wallet's spend key once, and pass them on every flow:
+
+```typescript
+import { deriveUtxoKeypairFromSpendKey, getNkFromUtxoPrivateKey } from "@cloak.dev/sdk";
+
+const ownerUtxoKeypair = await deriveUtxoKeypairFromSpendKey(skSpend); // owns and spends notes
+const nk = getNkFromUtxoPrivateKey(ownerUtxoKeypair.privateKey);       // finds and reads notes
+```
+
+`ownerUtxoKeypair` owns every note the wallet creates for itself (deposits, change, merges, swap
+refunds), and it is required by `transfer`, `partialWithdraw`, `fullWithdraw`, `swapUtxo` and
+`swapWithChange`. **`nk` is view-only: it can find and read your notes, never spend them or sign for
+funds.** It is the value registered as your viewing key and the value you can share with someone who
+should see your history. When you pass `ownerUtxoKeypair` without `chainNoteViewingKeyNk`, the SDK
+uses this canonical `nk`. The SDK never infers `nk` from a note's own key, so a flow with neither
+throws before touching the network.
+
+<Note>
+`ownerUtxoKeypair`, `SpendOptions` and the options-object form of `createRecoverableDepositUtxo`
+belong to the SDK release that follows 0.2.5.
+</Note>
+
 ## Full wallet-adapter SOL send flow (`transact` -> `fullWithdraw`)
 
 ```typescript
@@ -73,16 +98,16 @@ import {
   CLOAK_PRODUCTION_RELAY_URL,
   CLOAK_PROGRAM_ID,
   NATIVE_SOL_MINT,
-  createUtxo,
+  createRecoverableDepositUtxo,
   createZeroUtxo,
   fullWithdraw,
-  generateUtxoKeypair,
   isRootNotFoundError,
   serializeUtxo,
   address,
   createCloakRpc,
   transact,
   type Address,
+  type UtxoKeypair,
 } from "@cloak.dev/sdk";
 
 // Your own durable store. The SDK ships nothing that plays this role.
@@ -96,6 +121,8 @@ async function sendWithWalletAdapter({
   walletPublicKey,
   signTransaction,
   signMessage,
+  ownerUtxoKeypair,
+  nk,
   recipientAddress,
   amountLamports,
 }: {
@@ -103,11 +130,19 @@ async function sendWithWalletAdapter({
   walletPublicKey: Address;
   signTransaction: (tx: any) => Promise<any>;
   signMessage: (msg: Uint8Array) => Promise<Uint8Array>;
+  // The wallet's two keys, derived once from its spend key (see "The wallet's two keys").
+  ownerUtxoKeypair: UtxoKeypair;
+  nk: Uint8Array;
   recipientAddress: string;
   amountLamports: bigint;
 }) {
-  const owner = await generateUtxoKeypair();
-  const output = await createUtxo(amountLamports, owner, NATIVE_SOL_MINT);
+  // Owned by the wallet keypair; only the blinding comes from nk and the salt.
+  const { utxo: output, noteSalt } = await createRecoverableDepositUtxo({
+    amount: amountLamports,
+    viewingKeyNk: nk,
+    ownerUtxoKeypair,
+    mintAddress: NATIVE_SOL_MINT,
+  });
 
   const deposited = await transact(
     {
@@ -124,6 +159,9 @@ async function sendWithWalletAdapter({
       signMessage,
       depositorPublicKey: walletPublicKey,
       walletPublicKey,
+      chainNoteViewingKeyNk: nk,
+      chainNoteSalt: noteSalt,
+      ownerUtxoKeypair,
       onProgress: (status) => console.log("deposit", status),
       onProofProgress: (percent) => console.log("deposit proof", percent),
     },
@@ -145,6 +183,8 @@ async function sendWithWalletAdapter({
         relayUrl,
         walletPublicKey,
         signMessage,
+        chainNoteViewingKeyNk: nk,
+        ownerUtxoKeypair, // required on every spend flow
         cachedMerkleTree: deposited.merkleTree,
         onProgress: (status) => console.log("withdraw", status),
         onProofProgress: (percent) => console.log("withdraw proof", percent),
@@ -204,10 +244,13 @@ times out before it settles; persist those two alongside the notes.
 
 <Warning>
 Write `result.outputUtxos` to durable storage before you report success to the user. A note is
-spendable only with its full secrets, `(amount, owner pubkey, blinding, mint)`, and the `blinding`
-of a change note is fresh randomness generated inside `createUtxo`. It is never published anywhere
-that can be replayed. If your only copy is lost, that value is unspendable by anyone, permanently.
-No rescan, no seed phrase and no support path brings it back.
+spendable only with its full secrets, `(amount, owner pubkey, blinding, mint)`, plus the owner's
+private key. The SDK derives the `blinding` of deposits and change from your `nk` and a salt the
+chain note carries, so a scan can rebuild some of them (see
+[what happens if that storage is lost](#what-happens-if-that-storage-is-lost)), but not all: a
+`transfer`'s change and consolidation merges are not surfaced by any scan, and a note built with
+`createUtxo` has a random blinding that is published nowhere. Treat recovery as a repair tool, not as
+storage.
 </Warning>
 
 ### A withdrawal of three or more notes is not exempt
@@ -220,44 +263,51 @@ builds the withdrawal itself. For `n` input notes that is `n - 2` settled merges
 withdrawal.
 
 Each round is a real transaction. It nullifies two of your notes on chain and publishes the merged
-commitment, whose `blinding` is fresh `randomFieldElement()` randomness living in a local variable
-inside a call that has not returned yet. You are never handed it, because the merge is an
-implementation detail of the withdrawal.
+commitment, owned by `ownerUtxoKeypair`, living in a local variable inside a call that has not
+returned yet. You are never handed it, because the merge is an implementation detail of the
+withdrawal.
 
 <Warning>
-**If a withdrawal of three or more notes throws part way through, the merged value is gone.** The
-consumed inputs are spent, the merged note sits on chain, and its `blinding` died with the call that
-threw. There is nothing to persist, because the call produced no result at all. Exhausted stale-root
-retries, a rejected wallet prompt, a failed submission or a closed tab all reach that state. No
-rescan recovers it: a merged note is built with `createUtxo`, which puts it in the first row of
+**If a withdrawal of three or more notes throws part way through, you are not handed the merged
+note.** The consumed inputs are spent and the merged note sits on chain. There is nothing to
+persist, because the call produced no result at all. Exhausted stale-root retries, a rejected wallet
+prompt, a failed submission or a closed tab all reach that state. The merged note's blinding is
+derived from your `nk` and the salt in that merge's chain note, but `scanTransactions` does not
+surface merge outputs, so your app has no ready-made path back to it. See
 [what happens if that storage is lost](#what-happens-if-that-storage-is-lost).
 </Warning>
 
 You avoid that window rather than recover from it. Keep withdrawal inputs at two notes or fewer, and
-when they are not, merge deliberately: build the merged output yourself so you hold its `blinding`
+when they are not, merge deliberately: build the merged output yourself so you hold its secrets
 before anything is submitted.
 
 ```typescript
 import {
-  createUtxo,
+  createRecoverableChangeUtxo,
+  randomChangeNoteSalt,
   serializeUtxo,
   transact,
-  type TransactOptions,
+  type SpendOptions,
   type Utxo,
 } from "@cloak.dev/sdk";
 
 // One deliberate merge round, in place of one round the withdrawal would have run
 // for you. The difference is that the secret exists in your storage first.
-async function mergeTwo(a: Utxo, b: Utxo, options: TransactOptions) {
-  const merged = await createUtxo(a.amount + b.amount, a.keypair, a.mintAddress);
+async function mergeTwo(a: Utxo, b: Utxo, nk: Uint8Array, options: SpendOptions) {
+  // The merged note is owned by the wallet keypair, never by an input's own key, and
+  // its blinding is anchored to a fresh salt that must reach the chain note.
+  const salt = randomChangeNoteSalt();
+  const { utxo: merged } = await createRecoverableChangeUtxo(
+    a.amount + b.amount, options.ownerUtxoKeypair, nk, a.mintAddress, salt, 0,
+  );
 
   // Write it down before submitting. Only `index` is still missing at this point,
-  // and `index` is recoverable from chain state; `blinding` is not.
+  // and `index` is recoverable from chain state.
   await persistNotes([serializeUtxo(merged)]);
 
   const result = await transact(
     { inputUtxos: [a, b], outputUtxos: [merged], externalAmount: 0n },
-    options,
+    { ...options, chainNoteViewingKeyNk: nk, chainNoteSalt: salt },
   );
 
   // On success, replace the provisional copy with the one carrying the leaf index.
@@ -376,6 +426,7 @@ const selected = selectUtxos(available, 30_000_000n);
 if (!selected) throw new Error("insufficient shielded balance");
 if (selected.length > 2) throw new Error("consolidate before sending");
 
+// `walletOptions` is SpendOptions: it must carry `ownerUtxoKeypair`, which owns the change.
 const sent = await transfer(selected, recipientUtxoPublicKey, 30_000_000n, walletOptions);
 
 // The inputs are spent and your change is in `sent.outputUtxos`. Record both, and save,
@@ -420,18 +471,24 @@ Most of it does not come back. Be precise with yourself about which parts do:
 
 | What was lost | Recoverable from chain | Why |
 |---|---|---|
-| Change from your own send, withdrawal or swap | **No** | `transfer`, `partialWithdraw`, `swapUtxo` and `swapWithChange` all build change with `createUtxo`, whose `blinding` is `randomFieldElement()` and is written nowhere on chain |
-| A deposit built with `createUtxo` | **No** | Same missing `blinding`. It appears in history as an amount, which is not a spendable note |
-| A deposit built with `createRecoverableDepositUtxo` | Yes | Secrets are a PRF of your `nk` and the salt the chain note already carries, so a cold scan can replay the derivation |
+| Change from `partialWithdraw` or `swapWithChange` | Yes, with `nk` plus your UTXO public key | The change is output 0 and owned by `ownerUtxoKeypair`; its blinding is derived from `nk` and the salt the chain note carries, and the chain note describes output 0. It comes back on `recoveredChangeNotes` |
+| Change from a `transfer` | **No** | The blinding is derivable, but the change is output 1 and the chain note describes output 0 only, so no scan learns its amount. A sender who knows what they sent can rebuild it |
+| A consolidation merge | **No ready-made path** | Its blinding is derivable, but no scan surfaces merge outputs |
+| A deposit built with `createUtxo` | **No** | Its `blinding` is random and written nowhere. It appears in history as an amount, which is not a spendable note |
+| A deposit built with `createRecoverableDepositUtxo` | Yes, with `nk` plus your UTXO public key | The note is owned by `ownerUtxoKeypair` and its blinding is derived from `nk` and the salt the chain note carries. It comes back on `recoveredDepositNotes` |
 | A note someone sent you, when the sender passed `recipientViewingPublicKey` | Yes | The sender sealed `amount` and `blinding` into an on-chain envelope addressed to your viewing key |
-| A swap input stranded by a timeout | Yes, if the swap was built with an `nk` | `discoverSwapRefunds` replays the same PRF shape over refund leaves. Older swaps, and any swap built without an `nk`, exist only in the `refund` field of the `UtxoSwapResult` you were handed |
+| A swap input stranded by a timeout | Yes, if the refund was derived | `discoverSwapRefunds(connection, programId, nk, { ownerUtxoKeypair })` replays the blinding over refund leaves. Swaps whose refund was drawn from raw randomness exist only in the `refund` field of the `UtxoSwapResult` you were handed |
+
+In every "Yes" row the scan finds the note with key material that cannot spend it. Recovered current
+notes come back with `keypair.privateKey === 0n`; substitute the wallet's own `ownerUtxoKeypair`
+before spending.
 
 **`scanTransactions` is not note recovery.** It decrypts your own chain notes with `nk` and produces
 the history rows the site documents elsewhere: gross, fee, `netAmount` and a running balance, ready
 for `toComplianceReport`. Two of its fields are the deliberate exception and are kept out of
 `transactions` and `summary` precisely because they are secrets rather than history:
-`deliveredNotes` (inbound notes whose sender opted in) and `recoveredDepositNotes` (your own
-deposits, but only the ones built recoverably). Everything else it returns tells you a deposit of
+`deliveredNotes` (inbound notes whose sender opted in), and `recoveredDepositNotes` and
+`recoveredChangeNotes` (your own deposits and withdrawal or swap change, built recoverably). Everything else it returns tells you a deposit of
 0.02 SOL happened. It does not give you something you can spend.
 
 The reason sits in the chain note. Every transaction posts one, sealed under the writer's own
@@ -446,21 +503,26 @@ shape exists. See
 the sender omitted that option.
 
 An empty scan is not proof that nothing is stranded. It means nothing in the scanned window was
-derivable from this `nk`.
+derivable from this `nk` and UTXO public key.
 
 ### Making deposits recoverable
 
-If you want a deposit that a `(rpc, programId, nk)` scan can rebuild later, build the output note
-with `createRecoverableDepositUtxo` and hand the same salt to `transact`:
+If you want a deposit that a scan can rebuild later, build the output note with
+`createRecoverableDepositUtxo` and hand the same salt to `transact`:
 
 ```typescript
-import { createRecoverableDepositUtxo, transact } from "@cloak.dev/sdk";
+import { createRecoverableDepositUtxo, createZeroUtxo, NATIVE_SOL_MINT, transact } from "@cloak.dev/sdk";
 
-const { utxo, noteSalt } = await createRecoverableDepositUtxo(20_000_000n, nk);
+const { utxo, noteSalt } = await createRecoverableDepositUtxo({
+  amount: 20_000_000n,
+  viewingKeyNk: nk,
+  ownerUtxoKeypair,
+  mintAddress: NATIVE_SOL_MINT,
+});
 
 const deposit = await transact(
-  { inputUtxos: [], outputUtxos: [utxo], externalAmount: 20_000_000n },
-  { ...options, chainNoteViewingKeyNk: nk, chainNoteSalt: noteSalt },
+  { inputUtxos: [await createZeroUtxo(NATIVE_SOL_MINT)], outputUtxos: [utxo], externalAmount: 20_000_000n },
+  { ...options, chainNoteViewingKeyNk: nk, chainNoteSalt: noteSalt, ownerUtxoKeypair },
 );
 
 // Recoverable is the fallback, not the plan. `deposit.outputUtxos` comes back with the leaf
@@ -471,16 +533,44 @@ for (const out of deposit.outputUtxos) {
 saveWallet(wallet);
 ```
 
-The salt has to reach the chain note, which is what `chainNoteSalt` does, and `transact` refuses a
-`chainNoteSalt` that comes without an explicit `chainNoteViewingKeyNk`. Recovered notes then appear
-on `scanTransactions(...).recoveredDepositNotes`, in spendable form, authenticated by recomputing a
-commitment the deposit actually published.
+The note is owned by `ownerUtxoKeypair`; only its blinding comes from `(nk, noteSalt)`. The salt has
+to reach the chain note, which is what `chainNoteSalt` does, and `transact` refuses a `chainNoteSalt`
+without the wallet's `nk` (explicit, or the canonical `nk` of `ownerUtxoKeypair`).
 
-Pick one `nk` per wallet and use the same value in both places, at deposit time as
-`chainNoteViewingKeyNk` and at scan time as `viewingKeyNk`. `getNkFromUtxoPrivateKey(privateKey)`
-derives it from a UTXO private key, and `expandSpendKey(skSpend).nsk` derives it from a spend key.
-`deriveUtxoKeypairFromSpendKey(skSpend)` makes the UTXO keypair itself reproducible, so the keys
-need never be the thing you lose. The note set still has to be written down.
+To find it again, scan with the wallet's `nk` and its UTXO public key:
+
+```typescript
+import { scanTransactions } from "@cloak.dev/sdk";
+
+const scan = await scanTransactions({
+  connection,
+  programId,
+  viewingKeyNk: nk,
+  ownerUtxoPublicKey: ownerUtxoKeypair.publicKey, // public; the scan stays view-only
+});
+
+for (const note of [...scan.recoveredDepositNotes, ...scan.recoveredChangeNotes]) {
+  // Current notes: privateKey is 0n, because nk cannot produce it. Spend with your own keypair.
+  const keypair = note.legacyExposed ? note.keypair : ownerUtxoKeypair;
+  // ...rebuild { amount, blinding, keypair, mintAddress, commitment }, look up the leaf index,
+  // then run verifyUtxos before treating it as spendable.
+}
+```
+
+Recovered notes are authenticated by recomputing a commitment the transaction actually published.
+Without `ownerUtxoPublicKey` the scan can still decrypt your chain notes, but it cannot match a
+current deposit, because the note's owner is not derivable from `nk`.
+
+Notes flagged `legacyExposed` were built by an earlier SDK release whose note key was derived from
+`nk`. They come back complete and spendable. Move them under the wallet keypair at the first
+opportunity by spending them to yourself (for example `transfer(notes, ownerUtxoKeypair.publicKey,
+amount, options)`), and treat the result as an ordinary note.
+
+Pick one key pair per wallet and use it everywhere: `ownerUtxoKeypair =
+deriveUtxoKeypairFromSpendKey(skSpend)`, and `nk = getNkFromUtxoPrivateKey(ownerUtxoKeypair.privateKey)`
+at deposit time (`chainNoteViewingKeyNk`) and at scan time (`viewingKeyNk`). Deriving both from the
+spend key makes them reproducible, so the keys need never be the thing you lose. The note set still
+has to be written down.
 
 <Note>
 Two devices sharing one note set will each believe a spent note is unspent, and the second spend
@@ -493,6 +583,10 @@ after any failure, and drop anything it reports as spent.
 
 - Persist `result.outputUtxos` before you report a flow as successful. A lost change note is
   unspendable value, not a resyncable cache.
+- Pass `ownerUtxoKeypair` on every spend flow, and keep it out of anything you share. Share `nk`
+  only with someone who should see your history: it can find and read notes, never spend them.
+- When a scan returns notes flagged `legacyExposed`, offer the user a one-step move of those funds
+  into a note owned by the wallet keypair.
 - Cap withdrawal inputs at two notes, and merge deliberately above that. A withdrawal handed three
   or more notes consolidates on chain first, and a failure part way through loses the merged value
   outright, with no result to persist.

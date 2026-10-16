@@ -73,13 +73,16 @@ import {
   addressFromPublicKey,
   type CloakRpc,
   type Utxo,
+  type UtxoKeypair,
 } from "@cloak.dev/sdk";
 import { useWallet } from "@solana/wallet-adapter-react";
 
 // `persistNotes` is your own storage, not the SDK's: it has none. It must have
-// committed the bytes before it resolves.
+// committed the bytes before it resolves. `ownerUtxoKeypair` is the user's Cloak
+// keypair (deriveUtxoKeypairFromSpendKey), loaded by your app.
 export function usePrivateSend(
   connection: CloakRpc, // from createCloakRpc(rpcUrl)
+  ownerUtxoKeypair: UtxoKeypair,
   persistNotes: (noteBytes: Uint8Array[]) => Promise<void>,
 ) {
   const { publicKey, signMessage } = useWallet();
@@ -103,12 +106,13 @@ export function usePrivateSend(
         signMessage,               // signs the request preimage
         // ──────────────────────────────────────────────────
 
+        ownerUtxoKeypair,          // the user's Cloak keypair: owns the change (required)
         onProgress: (status) => console.log(status),
         onProofProgress: (percent) => console.log(`proof ${percent}%`),
       });
 
       // Bank the outputs BEFORE you return, and before any UI says "sent". The
-      // sender's change note is in here and these bytes are its only copy.
+      // sender's change note is in here, and no scan can rebuild a transfer's change.
       // Zero-amount outputs are circuit padding, so drop them.
       await persistNotes(
         result.outputUtxos.filter((utxo) => utxo.amount > 0n).map(serializeUtxo),
@@ -147,6 +151,7 @@ await fullWithdraw(notes, recipient, {
   relayUrl: CLOAK_PRODUCTION_RELAY_URL,
   depositorKeypair: signer,
   walletPublicKey: signer.address,
+  ownerUtxoKeypair, // the Cloak keypair that owns `notes`; required on every spend flow
 });
 ```
 
@@ -256,6 +261,7 @@ const swap = await swapWithChange(inputUtxos, amount, outputMint, recipientAta, 
   walletPublicKey: addressFromPublicKey(publicKey),
   signMessage,
   chainNoteViewingKeyNk: nk,  // the user's own nk; see the refund note below
+  ownerUtxoKeypair,           // owns the change and the timeout refund (required)
   maxWalletApprovals: 3,      // default 5, floored at 1
 });
 
@@ -272,14 +278,14 @@ await persistSwapRefund(swap.swapStatePda, swap.refund); // reclaims a timed-out
 - A `depositorKeypair` never prompts and stays bounded by `maxRootRetries` as before.
 
 <Warning>
-**A swap has a second secret, and it is not a note.** Alongside the change note on `outputUtxos`,
-`swapUtxo` and `swapWithChange` return `refund`: the key material that reclaims the swap principal
-if the swap times out before it executes. Persist it beside the change note, keyed by
-`swap.swapStatePda`. Persisting it is the **fast** path always, and the **only** path when no
-`chainNoteViewingKeyNk` was passed to the swap, because that is the case where `refund` is the only
-copy that will ever exist. When an `nk` **was** passed, `refund.derivedFromNk` comes back `true` and
-`discoverSwapRefunds` / `matchSwapRefundLeaf` can rebuild the same secret from the `nk` plus the
-swap's public input nullifier, so losing the object is recoverable rather than terminal.
+**A swap has a second thing to keep, and it is not a note.** Alongside the change note on
+`outputUtxos`, `swapUtxo` and `swapWithChange` return `refund`: the public key and blinding of the
+note that returns the swap principal if the swap times out before it executes. That note is owned by
+`ownerUtxoKeypair`, so the wallet spends it with its own keypair. Persist `refund` beside the change
+note, keyed by `swap.swapStatePda`; it is the fast path. The blinding is derived from the `nk` plus
+the swap's public input nullifier (`refund.derivedFromNk` is `true`), so
+`discoverSwapRefunds(connection, programId, nk, { ownerUtxoKeypair })` finds the note again if the
+object is lost.
 </Warning>
 
 ## Driving submission yourself

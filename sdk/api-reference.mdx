@@ -30,6 +30,46 @@ no default and is not read from the environment, so pass it explicitly on every 
 except a deposit needs an authenticated sender and throws before proof generation without one:
 see [Request authentication](/sdk/request-authentication).
 
+<Note>
+The signatures below describe the SDK release that follows 0.2.5, in which `nk` is view-only.
+0.2.5 itself still accepts the earlier shapes (positional `createRecoverableDepositUtxo`, no
+`ownerUtxoKeypair`).
+</Note>
+
+**Two keys, two jobs.** Every flow works with two values derived from the wallet's seed:
+
+- `ownerUtxoKeypair`, the wallet's long-lived UTXO keypair (`deriveUtxoKeypairFromSpendKey(skSpend)`).
+  It **owns** every note the wallet creates for itself: deposits, change, consolidation merges and
+  swap refunds. Only its private key can spend them.
+- `nk`, the viewing key (`getNkFromUtxoPrivateKey(ownerUtxoKeypair.privateKey)`). **`nk` is
+  view-only: it can find and read your notes, never spend them or sign for funds.** It encrypts the
+  chain notes and derives the per-note blinding a scan uses to rebuild a commitment.
+
+`transfer`, `partialWithdraw`, `fullWithdraw`, `swapUtxo` and `swapWithChange` take `SpendOptions`,
+which is `TransactOptions` with `ownerUtxoKeypair` required:
+
+```typescript
+type SpendOptions = TransactOptions & { ownerUtxoKeypair: UtxoKeypair };
+```
+
+The owner is never inherited from `inputUtxos[0]`. Each flow validates the keypair (non-zero private
+key, public key derived from it) and throws before touching the network if it is missing. When
+`chainNoteViewingKeyNk` / `getChainNoteViewingKeyNk` is not given, the flow uses the canonical `nk`
+of `ownerUtxoKeypair`.
+
+`transact` keeps `ownerUtxoKeypair` optional, but it no longer infers `nk` from a note's own key.
+It needs the wallet's `nk` (explicit, or the canonical `nk` of `ownerUtxoKeypair`) whenever it writes
+a chain note or registers the viewing key, which is every call unless both `disableChainNotes` and
+`enforceViewingKeyRegistration: false` are set. It throws `transact requires the wallet's viewing
+key` otherwise.
+
+`transfer` places the recipient's note at output 0 and change at output 1, and the circuit requires a
+non-zero output 1 to be owned by the key of input 0. So `transfer` puts a wallet-owned input first.
+When none of the inputs is owned by `ownerUtxoKeypair` and there is change, it first moves the
+inputs into one note owned by the wallet keypair (an extra shielded transaction, reported through
+`onProgress`) and then sends from that note. That extra step cannot run inside a single
+`transactBatch` item, so a batched transfer from such inputs throws instead.
+
 UTXO primitives:
 
 ```typescript
@@ -96,8 +136,9 @@ getNkFromUtxoPrivateKey(utxoPrivateKey: bigint): Uint8Array
   when storage lives entirely on your side.
 - `importWalletKeys` / `exportWalletKeys` move a `CloakKeyPair` in and out of a JSON string.
 - `expandSpendKey` derives `(ask, nsk, ovk)` from a spend key; `getNkFromUtxoPrivateKey` returns the
-  32-byte `nk` for a note's private key. `nk` is the incoming viewing base: it is what decrypts chain
-  notes and what the recovery helpers below scan with.
+  32-byte `nk` for the wallet's UTXO private key. `nk` is the incoming viewing base: it decrypts
+  chain notes and is what the recovery helpers below scan with. It is view-only and never derives a
+  key that can spend.
 
 The two halves do not connect. `UtxoWallet` does not take a `StorageAdapter`, and a `StorageAdapter`
 does not store `Utxo` objects. The note set is the half that decides solvency.
@@ -152,42 +193,70 @@ interface UtxoSwapResult extends TransactResult {
   nullifier: string;
   requestId?: string;
   refund: {
-    privateKey: string;
-    publicKey: string;
+    publicKey: string;     // the wallet's UTXO public key (ownerUtxoKeypair)
     blinding: string;
-    derivedFromNk: boolean;
+    derivedFromNk: boolean; // always true: the blinding is derived from nk and the swap's nullifier
   };
 }
 ```
 
-Persist `refund`. It is the recovery secret for reclaiming the input if the swap times out
-before its second transaction lands.
+`refund` describes the note that returns the swap input to the pool if the swap times out before
+its second transaction lands. It is owned by `ownerUtxoKeypair`, so you spend it with the wallet's
+own keypair; the private key is deliberately not repeated in the result. Persisting `refund` is the
+fast path; `discoverSwapRefunds` finds the same note again from key material if you lose it.
 
 ## Recovery helpers
 
-Two exports let a wallet rebuild notes from key material alone, with no local note store.
+These exports let a wallet rebuild its notes from key material, with no local note store. Matching
+always needs the wallet's UTXO public key, because every note is owned by `ownerUtxoKeypair`; `nk`
+alone only finds the note, and spending it always needs the owner's private key.
 
 ```typescript
-createRecoverableDepositUtxo(amount, viewingKeyNk, mintAddress?, noteSalt?)
-discoverSwapRefunds(connection, programId, viewingKeyNk, options?)
+createRecoverableDepositUtxo({ amount, viewingKeyNk, ownerUtxoKeypair, mintAddress?, noteSalt? })
+createRecoverableChangeUtxo(amount, ownerUtxoKeypair, viewingKeyNk, mintAddress?, noteSalt?, outputIndex?)
+matchDepositNote({ viewingKeyNk, noteSalt, amount, mintAddress, outputCommitments, ownerUtxoKeypair? })
+matchChangeNote({ viewingKeyNk, noteSalt, amount, keypair, mintAddress, outputIndex, outputCommitments, ownerUtxoPublicKey? })
+discoverSwapRefunds(connection, programId, viewingKeyNk, { ownerUtxoKeypair, limit?, untilSignature?, batchSize?, onStatus? })
+matchSwapRefundLeaf({ viewingKeyNk, inputNullifier, amountAfterFee, commitment, ownerUtxoKeypair? })
+deriveSwapRefundAuthorization(viewingKeyNk, inputNullifier, ownerUtxoKeypair)
 ```
 
-`createRecoverableDepositUtxo` builds a deposit output whose keypair and blinding are derived from
-`(nk, noteSalt)` instead of raw randomness, which is what makes a later cold scan able to rebuild it.
-It resolves to `{ utxo, noteSalt }`, and the same salt must reach `transact` as
-`options.chainNoteSalt` alongside `options.chainNoteViewingKeyNk`. A salt that never reaches the
-chain note leaves the deposit exactly as undiscoverable as before.
+`createRecoverableDepositUtxo` takes one options object and cannot be called without
+`ownerUtxoKeypair`. The note it builds is owned by that keypair, and only its blinding is derived
+from `(nk, noteSalt)`, which is what lets a later scan rebuild the commitment. It resolves to
+`{ utxo, noteSalt }`; pass the same salt to `transact` as `options.chainNoteSalt`, together with
+`chainNoteViewingKeyNk` (or `ownerUtxoKeypair`). A salt that never reaches the chain note leaves the
+deposit undiscoverable.
 
-`discoverSwapRefunds` walks program history for swap timeout-refund leaves that belong to the holder
-of `viewingKeyNk` and returns each in spendable form. It is forward-looking only: it finds refunds
-whose keys were derived from `nk`, so a swap built without an `nk` has no derivation to replay and no
-key-only scan can recover it. An empty result is not proof that a wallet has no stranded refund.
+`createRecoverableChangeUtxo` is the change-note counterpart, used by `partialWithdraw`, `transfer`
+and `swapWithChange` for you. Its owner must be the wallet keypair (it refuses a `privateKey: 0n`
+placeholder or a public key that does not match). Call it yourself only when you build outputs for
+`transact` directly; `transact` refuses a self-owned output whose blinding is not derivable from the
+wallet's `nk` and the transaction's salt.
+
+`discoverSwapRefunds` walks program history for swap timeout-refund leaves that belong to the wallet
+and returns them. `ownerUtxoKeypair` is required: pass the real keypair to get spendable results, or
+`{ privateKey: 0n, publicKey }` for a view-only scan. It is forward-looking only: a refund whose
+blinding was drawn from raw randomness has no derivation to replay, so an empty result is not proof
+that a wallet has no stranded refund.
+
+The legacy helpers `deriveLegacyDepositNoteSecrets` and `deriveLegacySwapRefundAuthorization` exist
+only so scans keep finding notes built by earlier SDK releases. Never build a new note from them.
+
+### Notes flagged `legacyExposed`
+
+Every recovered note (`RecoveredDepositNote`, `RecoveredChangeNote`, `RecoveredSwapRefund`, and the
+scan records built on them) carries `legacyExposed: boolean`. `true` marks a note built by an earlier
+SDK release whose owner key was derived from `nk` rather than from the wallet's spend key. These come
+back complete and spendable. Move them under the wallet keypair by spending them to yourself (a
+`transfer` to `ownerUtxoKeypair.publicKey`, or a `partialWithdraw` whose change lands under the wallet
+keypair), and treat the result as an ordinary note.
 
 <Warning>
-Change notes are outside both helpers. `createUtxo` draws each change note's `blinding` from fresh
-randomness and publishes it nowhere, so a change note whose secrets you lost is unspendable by
-anyone, permanently. Persist `result.outputUtxos` before you report success:
+Recovery is a backstop, not storage. Persist `result.outputUtxos` before you report success:
 [where your notes live between sessions](/sdk/wallet-integration#where-your-notes-live-between-sessions).
+A `transfer`'s change sits at output 1, which the chain note does not describe, so a scan recovers its
+blinding but not its amount.
 </Warning>
 
 ## Proof and Merkle utilities
