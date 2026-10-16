@@ -56,6 +56,7 @@ We use `@cloak.dev/sdk`.
 ## Guardrails
 
 - Never log secrets (private keys, viewing keys (`nk`), raw note payloads, seed material).
+- Pass `ownerUtxoKeypair` (the wallet's Cloak keypair, `deriveUtxoKeypairFromSpendKey(skSpend)`) on every `transfer`, `partialWithdraw`, `fullWithdraw`, `swapUtxo` and `swapWithChange` call, and build deposits with `createRecoverableDepositUtxo({ amount, viewingKeyNk, ownerUtxoKeypair, mintAddress })`. The keypair owns change, deposits and swap refunds. `nk` is view-only: it can find and read notes, never spend them or sign for funds.
 - Transaction signatures are public and can be logged for support/debugging.
 - Use SDK defaults for program and circuits. Do not expose those as user-facing config. The relay has no SDK default: pass `relayUrl` explicitly on every call. The SDK reads no environment variable for it; if the value should be configurable, read `CLOAK_RELAY_URL` in your own code and pass it as `relayUrl`. Omitting `relayUrl` throws `Viewing key registration is mandatory: relayUrl is required.` before any network call, deposits included.
 - Never pass `relayUrl: ""` to "skip the relay". Under the default `enforceViewingKeyRegistration` it throws the same error as omitting it, and it only signals caller-signed direct submission when `enforceViewingKeyRegistration: false` is set as well, which submits a send or withdrawal under the user's own key and publicly links it.

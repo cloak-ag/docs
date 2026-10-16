@@ -1,0 +1,11 @@
+{/*
+  How a USDC or USDT payout reaches a wallet that has never held that token.
+  Decided by the product owner on 2026-10-12: production keeps the payout worker default,
+  CLOAK_AFFILIATE_PAYOUT_REQUIRE_RECIPIENT_ATA=false, so Cloak creates the token account.
+  Keep this in step with the web terms (app/affiliates/terms/terms-meta.ts, PAYOUT_TOKEN_ACCOUNT_MODE).
+
+  If production ever switches to strict mode (REQUIRE_RECIPIENT_ATA=true), replace the paragraph with:
+  **If your payout wallet has never held USDC or USDT**, that token cannot be paid until the wallet has a token account for it. The dashboard tells you next to that token. Receiving any amount of the token in your payout wallet creates the account, and the payment then goes through on its own, without another claim.
+*/}
+
+**If your payout wallet has never held USDC or USDT**, Cloak creates its token account for that token in a separate public transaction before paying you. The commission itself is paid privately through Cloak, but that account creation is visible on chain and links Cloak to your wallet. To avoid it, receive any amount of that token in your wallet before claiming. SOL payouts are not affected.

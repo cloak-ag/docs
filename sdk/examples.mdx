@@ -40,7 +40,7 @@ import {
   CLOAK_PRODUCTION_RELAY_URL,
   CLOAK_PROGRAM_ID,
   NATIVE_SOL_MINT,
-  createUtxo,
+  createRecoverableDepositUtxo,
   createZeroUtxo,
   fullWithdraw,
   generateUtxoKeypair,
@@ -70,8 +70,13 @@ const connection = createCloakRpc("https://api.mainnet-beta.solana.com");
 const signer = await signerFromSecretKey(
   Uint8Array.from(JSON.parse(readFileSync(process.env.KEYPAIR_PATH!, "utf8"))),
 );
-const scanKeypair = await generateUtxoKeypair();
-const viewingKeyNk = getNkFromUtxoPrivateKey(scanKeypair.privateKey);
+// The wallet's two Cloak keys. `ownerUtxoKeypair` owns every note this service creates
+// for itself (deposits, change, swap refunds) and is the only key that can spend them.
+// `viewingKeyNk` is view-only: it finds and reads those notes, never spends them.
+// A real service derives the keypair from its stored spend key with
+// `deriveUtxoKeypairFromSpendKey(skSpend)` so it is reproducible; this example draws one.
+const ownerUtxoKeypair = await generateUtxoKeypair();
+const viewingKeyNk = getNkFromUtxoPrivateKey(ownerUtxoKeypair.privateKey);
 
 // Server keypair path: `depositorKeypair` signs both the deposit transaction and
 // every submitted request, without prompting.
@@ -82,7 +87,19 @@ const baseOptions = {
   depositorKeypair: signer,
   walletPublicKey: signer.address,
   chainNoteViewingKeyNk: viewingKeyNk,
+  ownerUtxoKeypair, // required on every spend flow; owns change and swap refunds
 };
+
+// A deposit note owned by `ownerUtxoKeypair`, whose blinding a later scan can rebuild
+// from `viewingKeyNk`. The salt has to reach `transact` as `chainNoteSalt`.
+async function depositNote(amount: bigint, mint: Address) {
+  return createRecoverableDepositUtxo({
+    amount,
+    viewingKeyNk,
+    ownerUtxoKeypair,
+    mintAddress: mint,
+  });
+}
 
 // The SDK stores nothing for you. `serializeUtxo` is the 128-byte encoding that
 // carries everything a note needs to stay spendable: amount, private key,
@@ -131,10 +148,10 @@ pair: it is a privacy hazard on a transfer or a withdrawal, not a configuration 
 
 <Warning>
 **Write `result.outputUtxos` down before you report success.** Every call on this page returns the
-notes it just created and then forgets them. A change note is your own money coming back, and its
-`blinding` is fresh randomness that `createUtxo` generates in memory and publishes nowhere, on chain
-or off. A note you did not store is unspendable by anyone, permanently: no rescan, no seed phrase and
-no support path brings it back. That is why every example below captures its result and calls
+notes it just created and then forgets them. A change note is your own money coming back. A scan
+with your `nk` and UTXO public key can rebuild some of these notes, but not a `transfer`'s change or
+a consolidation merge, so treat recovery as a repair tool rather than as storage. That is why every
+example below captures its result and calls
 `saveNotes` at the point where your service would commit to its own database. The browser version of
 `saveNotes` is in [the wallet-adapter example](#the-same-send-from-a-browser-wallet-adapter) below;
 for the two storage exports the SDK ships, read
@@ -150,8 +167,7 @@ async function sendSameMint(args: {
   recipientWallet: Address;
   partialWithdrawAmount?: bigint; // use for partial withdrawal example
 }) {
-  const owner = await generateUtxoKeypair();
-  const output = await createUtxo(args.amount, owner, args.mint);
+  const { utxo: output, noteSalt } = await depositNote(args.amount, args.mint);
 
   const deposited = await transact(
     {
@@ -160,7 +176,7 @@ async function sendSameMint(args: {
       externalAmount: args.amount,
       depositor: signer.address,
     },
-    baseOptions,
+    { ...baseOptions, chainNoteSalt: noteSalt },
   );
 
   // Store the deposit note first. If the withdrawal below throws, this file is the
@@ -241,11 +257,10 @@ authenticated by `signMessage` over the request, with `walletPublicKey` as the s
 import {
   CLOAK_PRODUCTION_RELAY_URL,
   CLOAK_PROGRAM_ID,
-  createUtxo,
+  createRecoverableDepositUtxo,
   createZeroUtxo,
   explainRelayAuthRejection,
   fullWithdraw,
-  generateUtxoKeypair,
   addressFromPublicKey,
   createCloakRpc,
   serializeUtxo,
@@ -253,6 +268,7 @@ import {
   type Address,
   type CloakRpc,
   type Utxo,
+  type UtxoKeypair,
 } from "@cloak.dev/sdk";
 import { useWallet } from "@solana/wallet-adapter-react";
 
@@ -277,7 +293,13 @@ function saveNotes(utxos: Utxo[]): void {
   window.localStorage.setItem(NOTES_KEY, JSON.stringify(stored));
 }
 
-export function useSendSameMint(connection: CloakRpc, viewingKeyNk: Uint8Array) {
+// `ownerUtxoKeypair` and `viewingKeyNk` are the user's two Cloak keys, derived from their
+// spend key and loaded by your app; neither comes from the wallet adapter.
+export function useSendSameMint(
+  connection: CloakRpc,
+  ownerUtxoKeypair: UtxoKeypair,
+  viewingKeyNk: Uint8Array,
+) {
   const { publicKey, signTransaction, signMessage } = useWallet();
 
   return async function sendSameMint(args: {
@@ -305,12 +327,17 @@ export function useSendSameMint(connection: CloakRpc, viewingKeyNk: Uint8Array) 
       // ──────────────────────────────────────────────────────────
 
       chainNoteViewingKeyNk: viewingKeyNk,
+      ownerUtxoKeypair, // owns the notes; required on every spend flow
       onProgress: (status: string) => console.log(status),
       onProofProgress: (percent: number) => console.log(`proof ${percent}%`),
     };
 
-    const owner = await generateUtxoKeypair();
-    const output = await createUtxo(args.amount, owner, args.mint);
+    const { utxo: output, noteSalt } = await createRecoverableDepositUtxo({
+      amount: args.amount,
+      viewingKeyNk,
+      ownerUtxoKeypair,
+      mintAddress: args.mint,
+    });
 
     // Deposit: signed by the wallet, submitted directly. No authenticated sender.
     const deposited = await transact(
@@ -318,9 +345,9 @@ export function useSendSameMint(connection: CloakRpc, viewingKeyNk: Uint8Array) 
         inputUtxos: [await createZeroUtxo(args.mint)],
         outputUtxos: [output],
         externalAmount: args.amount,
-        depositor: publicKey,
+        depositor: addressFromPublicKey(publicKey),
       },
-      walletOptions,
+      { ...walletOptions, chainNoteSalt: noteSalt },
     );
 
     // Store the deposit note before going any further. If the send below fails, or
@@ -367,8 +394,7 @@ another.
 ## SOL swap flow (SOL -> token)
 
 ```typescript
-const swapOwner = await generateUtxoKeypair();
-const swapInput = await createUtxo(600_000_000n, swapOwner, NATIVE_SOL_MINT);
+const { utxo: swapInput, noteSalt: swapSalt } = await depositNote(600_000_000n, NATIVE_SOL_MINT);
 
 const swapDeposit = await transact(
   {
@@ -377,7 +403,7 @@ const swapDeposit = await transact(
     externalAmount: 600_000_000n,
     depositor: signer.address,
   },
-  baseOptions,
+  { ...baseOptions, chainNoteSalt: swapSalt },
 );
 
 const recipientWallet = (await generateKeyPairSigner()).address;
@@ -408,13 +434,13 @@ saveSwapRefund(swapped.swapStatePda, swapped.refund); // reclaims the input on a
 ```
 
 <Warning>
-**`result.refund` is the other secret a swap produces, and dropping it is how a timed-out swap
-becomes unrecoverable.** If the swap does not settle, the program locks the principal behind an
-amount-bound refund note, and the values in `refund` are what spend it. Because `baseOptions` passes
-`chainNoteViewingKeyNk`, the secret here is derived from your `nk` and comes back with
-`derivedFromNk: true`, so `matchSwapRefundLeaf` can rebuild it from that key plus the swap's first
-input nullifier. Storing it is still the fast path, and when no `nk` was supplied the returned object
-is the only copy that will ever exist.
+**`result.refund` is the other thing a swap produces worth keeping.** If the swap does not settle,
+the program returns the principal to the pool as an amount-bound refund note. That note is owned by
+`ownerUtxoKeypair`, so the wallet spends it with its own keypair; `refund` carries the note's public
+key and blinding, not a private key. The blinding is derived from your `nk` and the swap's first
+input nullifier (`derivedFromNk: true`), so `discoverSwapRefunds(connection, programId, nk,
+{ ownerUtxoKeypair })` can find the note again if you lose `refund`. Storing it is still the fast
+path.
 Field-by-field detail is in the [API reference](/sdk/api-reference).
 </Warning>
 
@@ -473,6 +499,8 @@ const scan = await scanTransactions({
   connection,
   programId: CLOAK_PROGRAM_ID,
   viewingKeyNk,
+  // Public, so the scan stays view-only. Needed to match this wallet's own deposits.
+  ownerUtxoPublicKey: ownerUtxoKeypair.publicKey,
   limit: 250,
 });
 

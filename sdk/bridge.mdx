@@ -9,7 +9,13 @@ does not give are in [Bridge routes](/guide/bridge-routes). This page is the SDK
 
 The shape is always the same: derive a one-time receiving address from the user's own keys, get a
 quote, let the user send on the origin chain, then shield what arrives. Nothing here is stored for
-you — every address is re-derivable from `nk`, which is why a closed tab loses nothing.
+you. Every address is re-derivable from the wallet's UTXO keypair, which is why a closed tab loses
+nothing.
+
+<Note>
+The signatures on this page are those of 0.2.6, in which `nk` is view-only. In 0.2.5,
+`deriveBridgeReceiver` and `listBridgeDeposits` took `nk` in place of the keypair.
+</Note>
 
 <Warning>
 **Shielding runs on the client.** Funds that arrive while nothing is running wait at the receiving
@@ -20,15 +26,27 @@ integration needs a resume path rather than a single happy-path call.
 ## Deriving the receiving address
 
 ```typescript
-deriveBridgeReceiver(nk: Uint8Array | Buffer, index: number): Promise<KeyPairSigner>
+deriveBridgeReceiver(ownerUtxoKeypair: UtxoKeypair, index: number): Promise<KeyPairSigner>
+deriveLegacyBridgeReceiver(nk: Uint8Array | Buffer, index: number): Promise<KeyPairSigner>
 
-MAX_RECEIVER_INDEX; // upper bound on index
-BRIDGE_ESCROW_LABEL;
+MAX_RECEIVER_INDEX;     // upper bound on index
+BRIDGE_ESCROW_LABEL_V2; // derivation label for current receivers
+BRIDGE_ESCROW_LABEL;    // derivation label for legacy receivers
 ```
+
+A receiving address is a full Solana signer and the bridged funds sit at it in transit, so it is
+derived from the wallet's spend-level key material, the long-lived UTXO keypair
+(`deriveUtxoKeypairFromSpendKey(skSpend)`), and never from the viewing key `nk`. **`nk` is
+view-only: it can find and read your notes, never spend them or sign for funds.** Passing `nk` (or
+any byte array) to `deriveBridgeReceiver` throws.
 
 `index` is a **small sequential counter**, not a timestamp. Discovery derives `0…N` and reads each
 one on chain, so a sparse index space makes the user's own deposits undiscoverable. `deriveBridgeReceiver`
 throws on a non-integer, a negative value, or anything above `MAX_RECEIVER_INDEX`.
+
+`deriveLegacyBridgeReceiver` re-derives a receiving address created by an earlier SDK release from
+`nk`. Use it only to finish or clean up a deposit that discovery reports as `legacyExposed`; never
+quote or route a new deposit to it.
 
 ## Quoting, and refusing a bad one
 
@@ -73,17 +91,33 @@ an error to swallow.
 ## Finding what already arrived
 
 ```typescript
-listBridgeDeposits(rpc: CloakRpc, nk, opts: DiscoverOptions): Promise<BridgeDeposit[]>
+listBridgeDeposits(
+  rpc: CloakRpc,
+  ownerUtxoKeypair: UtxoKeypair,
+  opts: DiscoverOptions,
+): Promise<BridgeDeposit[]>
 
-DiscoverOptions; // { scanDepth?, stopAfterUnused?, ... }
-BridgeDeposit;
+DiscoverOptions; // { programId, mint, scanDepth?, stopAfterUnused?,
+                 //   includeLegacy?, legacyViewingKeyNks? }
+BridgeDeposit;   // { index, receiver, tokenAccount, state, tokenBalance, lamports,
+                 //   shieldSignature?, indexReused?, shieldSignatures?, error?,
+                 //   legacyExposed, legacyViewingKeyNk? }
 BridgeDepositState;
 ```
 
-Discovery derives receiving addresses from `nk` and reads each on chain, stopping after
-`stopAfterUnused` consecutive empty ones (default 5) or at `scanDepth` (default 20, capped at
-`MAX_RECEIVER_INDEX + 1`). This is the resume path: the user reopens the app with the same wallet and
-anything unshielded is found again from their keys alone.
+Discovery derives receiving addresses from the wallet's UTXO keypair and reads each on chain,
+stopping after `stopAfterUnused` consecutive empty ones (default 5) or at `scanDepth` (default 20,
+capped at `MAX_RECEIVER_INDEX + 1`). This is the resume path: the user reopens the app with the same
+wallet and anything unshielded is found again from their keys alone.
+
+By default (`includeLegacy` unset or `true`) it also scans the receiving addresses earlier SDK
+releases derived from `nk`: the canonical `nk` of `ownerUtxoKeypair` is always included, and
+`legacyViewingKeyNks` adds any other viewing keys the wallet has used. Those entries come back with
+`legacyExposed: true` and the `legacyViewingKeyNk` they were derived from, so the app can rebuild the
+signer with `deriveLegacyBridgeReceiver(legacyViewingKeyNk, index)` and shield what is there. Legacy
+indices are a separate address space, so they never count toward the next free index for a new
+deposit: compute that from the entries where `legacyExposed` is `false`. Shield funds found at a
+legacy address promptly, and do not reuse that address.
 
 ## Completing and cleaning up
 
@@ -108,6 +142,11 @@ FEE_BUDGET; CLEANUP_FEE_BUDGET; MAINNET_RENT_0; MAINNET_RENT_1;
 A receiving address arrives holding no SOL, so it cannot pay for its own shield. The paymaster
 helpers cover that, and `cleanupReceivingAddress` closes the token account afterwards and sweeps the
 remainder. `validatePaymasterTopUpTransaction` checks a top-up is what it claims before it is signed.
+
+`depositFromDerivedKey` takes the wallet's spend key as `opts.noteSpendKey` and shields into a note
+owned by the UTXO keypair derived from it, with a blinding derived from that keypair's `nk`. A scan
+with the wallet's `nk` and UTXO public key finds the note again (see
+[recovering from key material](/sdk/wallet-integration#making-deposits-recoverable)).
 
 ## Retrying without double-spending
 
