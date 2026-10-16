@@ -69,9 +69,13 @@ Open the preview URL `mint dev` prints. Nothing else to build or install.
   keypair file/path as if it were an app-facing flow.
 - Do not name the audit firm publicly in any page. Describe remediations
   and findings without attribution.
-- Use the SDK's actual published version numbers: `0.2.5` is the current
-  live release (published 2026-09-17), referenced in `sdk/introduction.mdx`,
-  `sdk/api-reference.mdx`, and `sdk/llms.txt`. The exported `VERSION`
+- Use the SDK's actual published version numbers: `0.2.6` is the release
+  this branch documents (it ships with the docs release; `0.2.5` was
+  published 2026-09-17), referenced in `sdk/introduction.mdx`,
+  `sdk/api-reference.mdx`, `releases/latest.mdx` and `sdk/llms.txt`. 0.2.6
+  makes `nk` view-only and changes signatures (`ownerUtxoKeypair` on every
+  spend flow, the options-object `createRecoverableDepositUtxo`); never show
+  the 0.2.5 shapes as current. The exported `VERSION`
   constant matches the package version again as of 0.2.5 (it lagged at
   `"0.2.1"` through 0.2.2); it is still informational only. The circuits
   bundle version (`circuits/0.2.0`, ceremony `cloak-transaction-0.2.0`) is a

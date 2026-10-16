@@ -73,10 +73,29 @@ fees only). Full breakdown: [Fee model](/protocol/fee-model).
 - Viewing keys let a user disclose their own history to an auditor. See
   [Compliance](/guide/compliance).
 
-## SDK — current release `0.2.5`
+## SDK: current release `0.2.6`
 
-Published 2026-09-17. The program, the verifying key and the `circuits/0.2.0` bundle did **not**
-change with it; 0.2.5 is a client-side release.
+The program, the verifying key and the `circuits/0.2.0` bundle did **not** change with it; 0.2.6
+is a client-side release. It changes public signatures, so code written for 0.2.5 needs the
+changes below before it runs.
+
+- **`nk` is view-only for notes created from 0.2.6 on.** Every note the SDK creates for the wallet
+  (deposits, change, merges, swap refunds, bridge receivers) is owned by the wallet's UTXO keypair.
+  `transfer`, `partialWithdraw`, `fullWithdraw`, `swapUtxo` and `swapWithChange` take
+  `SpendOptions`, which require `ownerUtxoKeypair`; `createRecoverableDepositUtxo` takes one options
+  object; `deriveBridgeReceiver` and `listBridgeDeposits` take the keypair. Notes from earlier
+  releases come back flagged `legacyExposed: true`. Details:
+  [UTXO transactions](/sdk/utxo-transactions) and [API reference](/sdk/api-reference).
+- **Restore without walking the chain.** `recoverNotesFromIndex` finds a wallet's notes, received
+  private sends and change made elsewhere with one RPC request instead of a per-wallet chain scan.
+  See [Restore notes from the Note Index](/sdk/note-index).
+- **Server clock for signed requests.** Request signatures and chain-note timestamps are dated by the
+  server clock the SDK observes on its own responses, within 24 hours of the device clock, so a
+  device clock that runs fast no longer fails every request.
+
+### `0.2.5`
+
+Published 2026-09-17, also a client-side release.
 
 - **Built on `@solana/kit`.** `connection` is a `CloakRpc` from `createCloakRpc(rpcUrl)`, addresses
   are Kit `Address` strings, and `depositorKeypair` is a `KeyPairSigner`. `@solana/web3.js` is an
@@ -95,5 +114,5 @@ Supported mainnet flows: shield, private send, unshield and private swap on SOL,
 swaps routed through Jupiter.
 
 ```bash
-npm install @cloak.dev/sdk@0.2.5 @solana/kit
+npm install @cloak.dev/sdk@0.2.6 @solana/kit
 ```

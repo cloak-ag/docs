@@ -94,6 +94,7 @@
               "sdk/shielded-transfers",
               "sdk/bridge",
               "sdk/wallet-integration",
+              "sdk/note-index",
               "sdk/error-handling",
               "sdk/api-reference"
             ]

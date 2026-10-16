@@ -28,9 +28,18 @@ const { results, approvals } = await transactBatch(
     },
     options: { chainNoteSalt: row.changeSalt }, // per-item overrides
   })),
-  { connection, programId, relayUrl, walletPublicKey, signMessage, chainNoteViewingKeyNk: nk },
+  {
+    connection, programId, relayUrl, walletPublicKey, signMessage,
+    chainNoteViewingKeyNk: nk,
+    ownerUtxoKeypair, // the wallet's Cloak keypair; owns each row's change
+  },
 );
 ```
+
+Each `row.change` is built with `createRecoverableChangeUtxo(amount, ownerUtxoKeypair, nk, mint,
+row.changeSalt, 0)`: owned by the wallet keypair, with the salt passed as that item's
+`chainNoteSalt`. `transact` refuses change whose blinding is not derivable from the wallet's `nk` and
+the item's salt.
 
 `results[i]` is `{ status: "fulfilled", value: TransactResult }` or `{ status: "rejected", reason }`,
 in input order — a failed row leaves the others untouched. `approvals` is how many times the wallet
@@ -81,7 +90,7 @@ await Promise.all(
     const handle = coordinator.item();
     try {
       return await partialWithdraw([row.note], row.to, row.amount, {
-        ...options,
+        ...options, // SpendOptions: includes ownerUtxoKeypair
         relayAuthBatch: handle,
       });
     } finally {

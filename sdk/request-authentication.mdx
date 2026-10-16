@@ -73,13 +73,16 @@ import {
   addressFromPublicKey,
   type CloakRpc,
   type Utxo,
+  type UtxoKeypair,
 } from "@cloak.dev/sdk";
 import { useWallet } from "@solana/wallet-adapter-react";
 
 // `persistNotes` is your own storage, not the SDK's: it has none. It must have
-// committed the bytes before it resolves.
+// committed the bytes before it resolves. `ownerUtxoKeypair` is the user's Cloak
+// keypair (deriveUtxoKeypairFromSpendKey), loaded by your app.
 export function usePrivateSend(
   connection: CloakRpc, // from createCloakRpc(rpcUrl)
+  ownerUtxoKeypair: UtxoKeypair,
   persistNotes: (noteBytes: Uint8Array[]) => Promise<void>,
 ) {
   const { publicKey, signMessage } = useWallet();
@@ -103,12 +106,13 @@ export function usePrivateSend(
         signMessage,               // signs the request preimage
         // ──────────────────────────────────────────────────
 
+        ownerUtxoKeypair,          // the user's Cloak keypair: owns the change (required)
         onProgress: (status) => console.log(status),
         onProofProgress: (percent) => console.log(`proof ${percent}%`),
       });
 
       // Bank the outputs BEFORE you return, and before any UI says "sent". The
-      // sender's change note is in here and these bytes are its only copy.
+      // sender's change note is in here, and no scan can rebuild a transfer's change.
       // Zero-amount outputs are circuit padding, so drop them.
       await persistNotes(
         result.outputUtxos.filter((utxo) => utxo.amount > 0n).map(serializeUtxo),
@@ -147,6 +151,7 @@ await fullWithdraw(notes, recipient, {
   relayUrl: CLOAK_PRODUCTION_RELAY_URL,
   depositorKeypair: signer,
   walletPublicKey: signer.address,
+  ownerUtxoKeypair, // the Cloak keypair that owns `notes`; required on every spend flow
 });
 ```
 
@@ -192,7 +197,7 @@ are exported so you can build UI around them:
 | Export | Value | What it means for you |
 |---|---|---|
 | `REQUEST_AUTH_MAX_AGE_SECONDS` | `300` | a request is valid for 300 seconds from the moment it is signed |
-| `REQUEST_AUTH_MAX_FUTURE_SKEW_SECONDS` | `30` | a machine clock more than 30 seconds **fast** cannot authenticate at all |
+| `REQUEST_AUTH_MAX_FUTURE_SKEW_SECONDS` | `30` | a request stamped more than 30 seconds **ahead** of the server clock is refused |
 
 The SDK holds 15 of those 300 seconds back for serializing the body and getting the request onto the
 network, so **the real budget a user has to approve a prompt is 285 seconds**. Past that the SDK
@@ -204,9 +209,10 @@ Two consequences worth designing for:
 - **An approval dialog left sitting fails.** A hardware wallet prompt that waits five minutes on a
   desk comes back to a request that has expired. Nothing moved and no funds are at risk, but the
   user has to start the operation again, including the proof. Keep the prompt in front of them.
-- **A wrong machine clock fails everything.** In a browser the timestamp comes from the user's own
-  laptop. If it runs fast, every request is refused before anything else is even looked at, and the
-  fix is on their machine, not in your code.
+- **A wrong machine clock no longer fails everything.** From 0.2.6 the SDK dates each signed request
+  with the server clock it observed on its own previous responses, so a laptop that runs fast still
+  authenticates. Before the first response, or when the device clock is more than 24 hours off, the
+  SDK falls back to the device clock, and a device clock more than 30 seconds fast is refused again.
 
 `explainRelayAuthRejection(responseText)` turns those into something a person can act on. It returns
 `null` for anything that is not an authentication rejection, so it is safe to append unconditionally:
@@ -218,6 +224,7 @@ try {
   // fullWithdraw over one or two notes is used here because that shape is the one
   // that returns no change note to bank. Every other flow on this page, and
   // fullWithdraw over three or more notes, produces secrets you must persist first.
+  // options: SpendOptions, so it carries the wallet's ownerUtxoKeypair.
   await fullWithdraw(notes, recipient, options);
 } catch (error) {
   const hint = explainRelayAuthRejection(String(error));
@@ -256,6 +263,7 @@ const swap = await swapWithChange(inputUtxos, amount, outputMint, recipientAta, 
   walletPublicKey: addressFromPublicKey(publicKey),
   signMessage,
   chainNoteViewingKeyNk: nk,  // the user's own nk; see the refund note below
+  ownerUtxoKeypair,           // owns the change and the timeout refund (required)
   maxWalletApprovals: 3,      // default 5, floored at 1
 });
 
@@ -272,14 +280,14 @@ await persistSwapRefund(swap.swapStatePda, swap.refund); // reclaims a timed-out
 - A `depositorKeypair` never prompts and stays bounded by `maxRootRetries` as before.
 
 <Warning>
-**A swap has a second secret, and it is not a note.** Alongside the change note on `outputUtxos`,
-`swapUtxo` and `swapWithChange` return `refund`: the key material that reclaims the swap principal
-if the swap times out before it executes. Persist it beside the change note, keyed by
-`swap.swapStatePda`. Persisting it is the **fast** path always, and the **only** path when no
-`chainNoteViewingKeyNk` was passed to the swap, because that is the case where `refund` is the only
-copy that will ever exist. When an `nk` **was** passed, `refund.derivedFromNk` comes back `true` and
-`discoverSwapRefunds` / `matchSwapRefundLeaf` can rebuild the same secret from the `nk` plus the
-swap's public input nullifier, so losing the object is recoverable rather than terminal.
+**A swap has a second thing to keep, and it is not a note.** Alongside the change note on
+`outputUtxos`, `swapUtxo` and `swapWithChange` return `refund`: the public key and blinding of the
+note that returns the swap principal if the swap times out before it executes. That note is owned by
+`ownerUtxoKeypair`, so the wallet spends it with its own keypair. Persist `refund` beside the change
+note, keyed by `swap.swapStatePda`; it is the fast path. The blinding is derived from the `nk` plus
+the swap's public input nullifier (`refund.derivedFromNk` is `true`), so
+`discoverSwapRefunds(connection, programId, nk, { ownerUtxoKeypair })` finds the note again if the
+object is lost.
 </Warning>
 
 ## Driving submission yourself
