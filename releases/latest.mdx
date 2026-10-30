@@ -11,12 +11,12 @@ What is live on Solana mainnet today, and the hashes you can check yourself.
 | | |
 |---|---|
 | Program ID | `zh1eLd6rSphLejbFfJEneUwzHRfMKxgzrgkfwA6qRkW` |
-| Deployed artifact | SBF ELF, sha256 `d0f68613a08d7e0913aea67d95f04598bc070911a0e84fedd43cc6bfa18e6cf6`, 239,032 bytes |
-| Live since | 2026-08-24 |
+| Deployed artifact | SBF ELF, sha256 `8b37f6be71469737ad516913fa7c23631112b3a47ccb70d8ca4231a7ad1b22dd`, 238,824 bytes |
+| Live since | Program ID since 2026-08-24; this build since 2026-10-15 |
 | Upgrade authority | Squads multisig vault `F6HWeX5i2KjYQag6wCtxzQXeGewv6vXZihZR3EWdRL7s` (3-of-4, 1-hour time lock) |
 
-The program has undergone an independent security audit, and the deployed bytecode is built from
-the audited release.
+The program has undergone an independent security audit. The deployed bytecode is built from the
+audited release plus one post-audit change, which lets a new pool open for any classic SPL mint.
 
 ## Verifying key and circuits
 
@@ -37,10 +37,11 @@ The older `circuits/0.1.0` artifacts are **no longer accepted**; proofs built fr
 ## Verify it yourself
 
 ```bash
-# 1. Hash the deployed program (the ProgramData account is padded; hash the first 239,032 bytes)
+# 1. Hash the deployed program (the ProgramData account is 239,032 bytes, zero-padded past the
+#    238,824-byte ELF; hash the ELF only)
 solana program dump -u m zh1eLd6rSphLejbFfJEneUwzHRfMKxgzrgkfwA6qRkW /tmp/cloak.so \
-  && head -c 239032 /tmp/cloak.so | shasum -a 256
-# expect d0f68613a08d7e0913aea67d95f04598bc070911a0e84fedd43cc6bfa18e6cf6
+  && head -c 238824 /tmp/cloak.so | shasum -a 256
+# expect 8b37f6be71469737ad516913fa7c23631112b3a47ccb70d8ca4231a7ad1b22dd
 
 # 2. Hash the proving artifacts
 B=https://storage.googleapis.com/cloak-circuits/circuits/0.2.0

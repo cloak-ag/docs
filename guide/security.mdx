@@ -8,7 +8,7 @@ Security claims are cheap. This page sticks to what is verified: how the pool pr
 
 ## The audit
 
-Cloak's shield-pool program has been independently audited. The program live on mainnet since 2026-08-24 is built from the audited source, its proofs are checked against a verifying key produced by a public multi-party trusted-setup ceremony, and upgrades sit behind a multisig with a time lock. The full report is being prepared for publication and will be linked here.
+Cloak's shield-pool program has been independently audited. The program live on mainnet is built from the audited source plus one post-audit change (new pools can open for any classic SPL mint), its proofs are checked against a verifying key produced by a public multi-party trusted-setup ceremony, and upgrades sit behind a multisig with a time lock. The full report is being prepared for publication and will be linked here.
 
 {/* TODO(audit-url): link the published audit report */}
 
@@ -19,7 +19,7 @@ That is the whole claim. Everything below it that can be checked, you can check 
 | | |
 |---|---|
 | Program ID | `zh1eLd6rSphLejbFfJEneUwzHRfMKxgzrgkfwA6qRkW` (unchanged since launch) |
-| Deployed bytecode | sha256 `d0f68613a08d7e0913aea67d95f04598bc070911a0e84fedd43cc6bfa18e6cf6` (239,032 bytes) |
+| Deployed bytecode | sha256 `8b37f6be71469737ad516913fa7c23631112b3a47ccb70d8ca4231a7ad1b22dd` (238,824 bytes, live since 2026-10-15) |
 | Verifying key | ceremony `cloak-transaction-0.2.0` (6 contributors plus a public final beacon); sha256 `d65073d44064ed3be10d79e52d60a06d6be6d6c01afcd5ce52cdfcfc97c5585d` (`transaction.vkey.bin`), `deb40e7b94eae17db2975d23dcf26c26db2a36a4f02d14a25830dee3e88fb93c` (`transaction.vkey.json`) |
 | Proving artifacts | `https://storage.googleapis.com/cloak-circuits/circuits/0.2.0/` — zkey `9da7db8cb1370fc497d36a0365f1f107ab0b0c13ca66fa9f0287e5f96ee68d25`, wasm `02ec02e954ae3932827ad9de51afa597ca95569aa97fec8410879c937a58aa2b` |
 | Upgrade authority | Squads multisig `F6HWeX5i2KjYQag6wCtxzQXeGewv6vXZihZR3EWdRL7s` (3-of-4, 1-hour time lock) |
@@ -27,7 +27,7 @@ That is the whole claim. Everything below it that can be checked, you can check 
 ```bash
 # 1. Hash the deployed program
 solana program dump -u m zh1eLd6rSphLejbFfJEneUwzHRfMKxgzrgkfwA6qRkW /tmp/cloak.so \
-  && head -c 239032 /tmp/cloak.so | shasum -a 256
+  && head -c 238824 /tmp/cloak.so | shasum -a 256
 
 # 2. Hash the proving artifacts
 B=https://storage.googleapis.com/cloak-circuits/circuits/0.2.0
