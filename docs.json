@@ -144,9 +144,9 @@
           "icon": "npm"
         },
         {
-          "anchor": "Discord",
-          "href": "https://discord.gg/hdkrhrgfER",
-          "icon": "discord"
+          "anchor": "Telegram",
+          "href": "https://t.me/cloak_community",
+          "icon": "telegram"
         }
       ]
     }
@@ -182,7 +182,7 @@
     "socials": {
       "x": "https://x.com/cloak_ag",
       "github": "https://github.com/cloak-ag",
-      "discord": "https://discord.gg/hdkrhrgfER"
+      "telegram": "https://t.me/cloak_community"
     }
   },
   "redirects": [
