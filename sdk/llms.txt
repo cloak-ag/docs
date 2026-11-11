@@ -21,7 +21,7 @@ Use this file as your primary SDK briefing and only fall back to the friendlier 
 
 - Name: `@cloak.dev/sdk`
 - Version: `0.2.11` (npm `latest`). The exported `VERSION` constant matches the published package version; it is still informational only — confirm the installed version with `npm ls @cloak.dev/sdk`.
-- Mainnet is the only target. Cloak has no devnet and never will; test with small amounts on mainnet (minimum deposit 0.01 SOL). Never instruct a reader to use a devnet or localnet.
+- Mainnet is the only target. Cloak runs on mainnet only; test with small amounts on mainnet (minimum deposit 0.01 SOL). Never instruct a reader to use any other network.
 - **0.2.5 moved the SDK onto `@solana/kit`.** `connection` is a `CloakRpc` from `createCloakRpc(rpcUrl)`; `programId`, mints and recipients are Kit `Address` strings (`address("...")`, no `.toBase58()`, no `PublicKey`); `depositorKeypair` is a Kit `KeyPairSigner`; `signer` is a Kit transaction signer. `@solana/web3.js` is an optional peer dependency, needed only by `signerFromWalletAdapter` (the browser wallet bridge). `@solana/spl-token` was replaced by `@solana-program/token`. Removed in 0.2.5: `keypairToAdapter` and the `WalletAdapter` type.
 - **Since 0.2.6**: `signTransaction` is NOT a `TransactOptions` field any more; a wallet signs through `signer` (from `signerFromWalletAdapter(wallet)`), and `signMessage` signs the auth/registration challenge. Every spend flow (`transfer`, `partialWithdraw`, `fullWithdraw`, `swapUtxo`, `swapWithChange`, `sweepToWalletKey`) REQUIRES `ownerUtxoKeypair` (the wallet's long-lived UTXO keypair, which owns all change) and the wallet's `nk` as `chainNoteViewingKeyNk`, at runtime and in the types (`SpendOptions`). Pass both on deposits too. Deposits use `createRecoverableDepositUtxo`; change notes are derived from `nk`, so a scan can rebuild them.
 - Key material, the canonical shape (use this, not `generateUtxoKeypair()`, in anything that holds real funds; a random key that is lost loses the notes):
@@ -114,10 +114,6 @@ import {
 Core note/transaction types (from `core/types`):
 
 ```ts
-// Exported union. Mainnet is the only target this package supports; Cloak has no devnet. The other
-// members are historical and nothing in the published surface is configured for them.
-type Network = "localnet" | "devnet" | "mainnet" | "testnet";
-
 // The `WalletAdapter` type was REMOVED in 0.2.5. Its replacement is `LegacyWalletAdapter`, wrapped
 // with `signerFromWalletAdapter(adapter, { web3: { VersionedTransaction } })` to get a Kit signer.
 interface LegacyWalletAdapter {

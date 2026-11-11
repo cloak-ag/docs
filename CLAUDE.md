@@ -82,8 +82,8 @@ Open the preview URL `mint dev` prints. Nothing else to build or install.
   (`.github/workflows/snippets.yml`). Run it locally from a directory with
   the SDK installed: `npx tsx <docs>/scripts/check-snippets.ts <docs>`.
   Mark genuine pseudo-code ```ts nocheck, rarely.
-- **Mainnet only.** Cloak has no devnet and will not have one. Never
-  document a devnet, a devnet host, or a devnet SDK build.
+- **Mainnet only.** Document mainnet only; never document another network,
+  host, or SDK build for one.
 - **Since 0.2.6 every spend flow requires `ownerUtxoKeypair`** (the wallet's
   seed-derived UTXO keypair) plus the viewing base `nk`
   (`chainNoteViewingKeyNk`). Examples derive the keypair from a stored seed
