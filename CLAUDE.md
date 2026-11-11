@@ -69,14 +69,27 @@ Open the preview URL `mint dev` prints. Nothing else to build or install.
   keypair file/path as if it were an app-facing flow.
 - Do not name the audit firm publicly in any page. Describe remediations
   and findings without attribution.
-- Use the SDK's actual published version numbers: `0.2.5` is the current
-  live release (published 2026-09-17), referenced in `sdk/introduction.mdx`,
-  `sdk/api-reference.mdx`, and `sdk/llms.txt`. The exported `VERSION`
-  constant matches the package version again as of 0.2.5 (it lagged at
-  `"0.2.1"` through 0.2.2); it is still informational only. The circuits
+- Use the SDK's actual published version numbers: `0.2.11` is the current
+  live release (published 2026-11-02), referenced in `sdk/introduction.mdx`,
+  `sdk/quickstart.mdx`, `sdk/api-reference.mdx` and `releases/latest.mdx`.
+  The exported `VERSION` constant is informational only. The circuits
   bundle version (`circuits/0.2.0`, ceremony `cloak-transaction-0.2.0`) is a
-  separate number and did not change in 0.2.3–0.2.5 — don't bump those.
-- **SDK 0.2.5 is `@solana/kit`-native.** `connection` is a `CloakRpc` from
+  separate number and has not changed since — don't bump it.
+- **Every SDK code block must compile against the published package.**
+  `scripts/check-snippets.ts` type-checks each ```ts block in `sdk/` and
+  `releases/latest.mdx` against `@cloak.dev/sdk@latest` and flags install
+  lines pinned to another version; CI runs it on PRs and weekly
+  (`.github/workflows/snippets.yml`). Run it locally from a directory with
+  the SDK installed: `npx tsx <docs>/scripts/check-snippets.ts <docs>`.
+  Mark genuine pseudo-code ```ts nocheck, rarely.
+- **Mainnet only.** Cloak has no devnet and will not have one. Never
+  document a devnet, a devnet host, or a devnet SDK build.
+- **Since 0.2.6 every spend flow requires `ownerUtxoKeypair`** (the wallet's
+  seed-derived UTXO keypair) plus the viewing base `nk`
+  (`chainNoteViewingKeyNk`). Examples derive the keypair from a stored seed
+  (`deriveSpendKey` → `deriveUtxoKeypairFromSpendKey`), not
+  `generateUtxoKeypair()`, unless they say it is throwaway.
+- **The SDK is `@solana/kit`-native (since 0.2.5).** `connection` is a `CloakRpc` from
   `createCloakRpc()`, addresses are Kit `Address` strings, `depositorKeypair`
   is a `KeyPairSigner`, and `@solana/web3.js` is only a peer dependency used
   by `signerFromWalletAdapter`. `keypairToAdapter` and the `WalletAdapter`

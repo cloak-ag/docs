@@ -68,7 +68,6 @@ not a gate and nothing deploys from it; ignore it.
 - `protocol/` on-chain architecture and Shield Pool docs
 - `architecture/` viewing-key and compliance model docs
 - `packages/` circuit pipeline docs
-- `development/` devnet integration guide
 - `operations/` runtime trust boundaries and security controls for integrators
 - `ai-tools/` IDE/assistant setup pages
 - `llms.txt` top-level AI index and route map

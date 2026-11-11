@@ -23,8 +23,12 @@ the end user's own wallet.
 
 | Your Kit app runs in | Signer you have | Cloak options you pass |
 |---|---|---|
-| A browser, with `@solana/wallet-adapter-react` | no secret key, only `signTransaction` and `signMessage` | `signTransaction` + `depositorPublicKey` for the deposit, `signMessage` + `walletPublicKey` for everything after |
+| A browser, with `@solana/wallet-adapter-react` | no secret key, only a wallet that signs transactions and (usually) messages | `signer` from `signerFromWalletAdapter(wallet)`, which covers the deposit and authenticates every later request |
 | A server, a script or a CLI | a local secret key | `depositorKeypair` (a `KeyPairSigner`) |
+
+Both shapes also pass `ownerUtxoKeypair` and the wallet's `nk` (as `chainNoteViewingKeyNk`). Every
+spend flow (`transfer`, `partialWithdraw`, `fullWithdraw`, `swapUtxo`, `swapWithChange`) requires
+`ownerUtxoKeypair`, and deposits should carry both. They come from one seed, shown below.
 
 <Warning>
 **Most Kit stacks are frontends, and a frontend cannot use `depositorKeypair`.** It takes a secret
@@ -36,7 +40,7 @@ how many prompts to expect, is [Request authentication](/sdk/request-authenticat
 ## Install
 
 ```bash
-npm install @cloak.dev/sdk@0.2.5 @solana/kit
+npm install @cloak.dev/sdk@0.2.11 @solana/kit
 ```
 
 Browser apps add the wallet adapter and `@solana/web3.js`, which the adapter bridge needs:
@@ -51,10 +55,10 @@ The submission endpoint is pinned when the SDK is built, and **the SDK reads no 
 variable for it**. Pass the exported constant rather than a host you typed or a value you read from
 the environment:
 
-```typescript
+```ts
 import { CLOAK_PRODUCTION_RELAY_URL } from "@cloak.dev/sdk";
 
-const relayUrl = CLOAK_PRODUCTION_RELAY_URL;
+const relayUrl = CLOAK_PRODUCTION_RELAY_URL; // "https://api.cloak.ag"
 ```
 
 `CLOAK_RELAY_URL` is a convention that the SDK's own examples and scripts read themselves and pass
@@ -78,13 +82,22 @@ endpoint](/sdk/request-authentication#pointing-at-a-non-production-endpoint).
 ## Wiring a browser Kit app
 
 Wrap the connected wallet adapter with `signerFromWalletAdapter` and pass the result as `signer`.
-No secret key ever exists in your app.
+No secret key ever exists in your app for the wallet itself. `signMessage` is the wallet's own
+message signer: the SDK uses it for the sign-in challenge and request authentication, and
+`signerFromWalletAdapter` already wires it when the adapter exposes one.
+
+The wallet's `ownerUtxoKeypair` and `nk` are derived from a 32-byte seed that your app generates once
+and stores like a private key. A random key that is lost loses the notes, so do not use
+`generateUtxoKeypair()` for anything that holds real funds.
 
 ```tsx
 import {
   CLOAK_PRODUCTION_RELAY_URL,
   CLOAK_PROGRAM_ID,
   createCloakRpc,
+  deriveSpendKey,
+  deriveUtxoKeypairFromSpendKey,
+  getNkFromUtxoPrivateKey,
   signerFromWalletAdapter,
 } from "@cloak.dev/sdk";
 import { useWallet } from "@solana/wallet-adapter-react";
@@ -92,7 +105,15 @@ import { VersionedTransaction } from "@solana/web3.js";
 
 const connection = createCloakRpc(process.env.NEXT_PUBLIC_SOLANA_RPC_URL!);
 
-function useCloakOptions() {
+// `seed`: 32 bytes generated once (generateMasterSeed()) and stored like a private key.
+export async function deriveCloakKeys(seed: Uint8Array) {
+  const { sk_spend } = deriveSpendKey(seed);
+  const ownerUtxoKeypair = await deriveUtxoKeypairFromSpendKey(sk_spend);
+  const nk = getNkFromUtxoPrivateKey(ownerUtxoKeypair.privateKey); // view-only: finds notes, never spends them
+  return { ownerUtxoKeypair, nk };
+}
+
+export function useCloakOptions() {
   const wallet = useWallet();
   if (!wallet.publicKey) return null;
 
@@ -108,6 +129,9 @@ function useCloakOptions() {
 }
 ```
 
+Spread the result of `useCloakOptions()` into each call, plus `ownerUtxoKeypair` and
+`chainNoteViewingKeyNk: nk` from `deriveCloakKeys`.
+
 `signerFromWalletAdapter` throws if the adapter has no `publicKey` (not connected). It always
 provides transaction signing; it adds message signing only when the adapter exposes `signMessage`.
 That matters because a wallet without `signMessage` authenticates requests by signing a
@@ -118,13 +142,17 @@ authenticated sender must be the end user's own wallet, never an ephemeral or se
 
 Load the secret key into a `KeyPairSigner` and pass it as `depositorKeypair`.
 
-```typescript
+```ts
 import { readFileSync } from "node:fs";
 import {
   CLOAK_PRODUCTION_RELAY_URL,
   CLOAK_PROGRAM_ID,
   createCloakRpc,
+  deriveSpendKey,
+  deriveUtxoKeypairFromSpendKey,
+  getNkFromUtxoPrivateKey,
   signerFromSecretKey,
+  type SpendOptions,
 } from "@cloak.dev/sdk";
 
 const connection = createCloakRpc(process.env.SOLANA_RPC_URL!);
@@ -133,11 +161,19 @@ const depositorKeypair = await signerFromSecretKey(
   Uint8Array.from(JSON.parse(readFileSync(process.env.KEY_FILE!, "utf8"))),
 );
 
-const options = {
+// `seed`: 32 bytes generated once (generateMasterSeed()) and stored like a private key.
+const seed = Uint8Array.from(JSON.parse(readFileSync(process.env.SEED_FILE!, "utf8")));
+const { sk_spend } = deriveSpendKey(seed);
+const ownerUtxoKeypair = await deriveUtxoKeypairFromSpendKey(sk_spend);
+const nk = getNkFromUtxoPrivateKey(ownerUtxoKeypair.privateKey);
+
+const options: SpendOptions = {
   connection,
   programId: CLOAK_PROGRAM_ID,
   relayUrl: CLOAK_PRODUCTION_RELAY_URL,
   depositorKeypair,
+  ownerUtxoKeypair,
+  chainNoteViewingKeyNk: nk,
 };
 ```
 
@@ -147,9 +183,9 @@ accepts an object that already carries raw secret-key bytes.
 ## Migration history: coming from web3.js
 
 This section is historical, for upgrading an integration written against 0.2.4 or earlier. Every
-example above already uses the current 0.2.5 Kit API; nothing here is a current instruction.
+example above already uses the current 0.2.11 Kit API; nothing here is a current instruction.
 
-| Before (≤ 0.2.4) | Now (0.2.5) |
+| Before (≤ 0.2.4) | Now (0.2.5 and later) |
 |---|---|
 | `new Connection(rpcUrl, "confirmed")` | `createCloakRpc(rpcUrl)` |
 | `new PublicKey(value)` | `address(value)` |
@@ -157,6 +193,8 @@ example above already uses the current 0.2.5 Kit API; nothing here is a current 
 | `Keypair.fromSecretKey(bytes)` | `await signerFromSecretKey(bytes)` |
 | `keypairToAdapter(keypair)` | removed — use a `KeyPairSigner` directly |
 | `WalletAdapter` type | removed — use `LegacyWalletAdapter` with `signerFromWalletAdapter` |
+| `signTransaction` option (wallet callback) | no longer an option — pass `signer` from `signerFromWalletAdapter(wallet)` |
+| spend flows without `ownerUtxoKeypair` | `ownerUtxoKeypair` is now required on every spend flow |
 
 ## Related pages
 

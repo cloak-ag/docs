@@ -1,0 +1,35 @@
+name: SDK snippets
+
+# Type-checks every code block in the SDK pages against the published @cloak.dev/sdk, and fails when
+# an install line pins a different release. The weekly run installs whatever npm `latest` is at the
+# time, so an SDK release that changes the API turns this red until the docs follow it.
+
+on:
+  pull_request:
+    paths: ["sdk/**", "releases/**", "scripts/check-snippets.ts", ".github/workflows/snippets.yml"]
+  push:
+    branches: [main]
+    paths: ["sdk/**", "releases/**", "scripts/check-snippets.ts", ".github/workflows/snippets.yml"]
+  schedule:
+    - cron: "0 12 * * 1"
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: docs
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Install the published SDK
+        run: |
+          mkdir harness && cd harness
+          npm init -y >/dev/null
+          npm install --no-audit --no-fund @cloak.dev/sdk@latest @solana/kit @solana/web3.js typescript@5 @types/node tsx
+      - name: Check snippets
+        working-directory: harness
+        run: npx tsx ../docs/scripts/check-snippets.ts ../docs

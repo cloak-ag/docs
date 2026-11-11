@@ -6,7 +6,7 @@ icon: "shield-halved"
 
 `@cloak.dev/sdk` is the first-party SDK for the Cloak protocol. It is built on free functions
 (`transact`, `transfer`, `partialWithdraw`, `fullWithdraw`, `swapWithChange`), with wallet-adapter
-integration, a built-in scanner and note storage. Since 0.2.5 it is built on `@solana/kit`;
+integration, a built-in scanner and note storage. It is built on `@solana/kit`;
 `@solana/web3.js` is an optional peer dependency used only by the wallet-adapter bridge.
 
 One package covers every host: a web frontend or browser wallet, a Next.js or Node.js backend, and
@@ -14,20 +14,27 @@ long-running server-side services. Proving, note handling and submission are the
 what changes is who signs. In a browser that is a connected wallet adapter, on a server it is a
 keypair you hold.
 
-Install (current release: `@cloak.dev/sdk` 0.2.5):
+Install (current release: `@cloak.dev/sdk` 0.2.11, Node 22 or later):
 
 ```bash
-npm install @cloak.dev/sdk@0.2.5 @solana/kit
+npm install @cloak.dev/sdk@^0.2.11 @solana/kit
 ```
 
+Cloak runs on Solana mainnet only. There is no devnet, so test with small amounts (the smallest SOL
+deposit is 0.01 SOL). For a first run, follow the [Quickstart](/sdk/quickstart).
+
 <Note>
-**0.2.5 moved the SDK onto `@solana/kit`.** `connection` is now a `CloakRpc` from
-`createCloakRpc(rpcUrl)` rather than a web3.js `Connection`, `programId` and other addresses are
-Kit `Address` strings rather than `PublicKey` instances, and `depositorKeypair` is a Kit
-`KeyPairSigner`. Browser apps on `@solana/wallet-adapter` keep working through
-`signerFromWalletAdapter`, which is why `@solana/web3.js` remains a peer dependency. Pages whose
-samples still show the pre-0.2.5 shape are being migrated; [Solana Kit
-integration](/sdk/kit-integration) has the current wiring.
+**The SDK is built on `@solana/kit`.** `connection` is a `CloakRpc` from `createCloakRpc(rpcUrl)`
+rather than a web3.js `Connection`, `programId` and other addresses are Kit `Address` strings rather
+than `PublicKey` instances, and `depositorKeypair` is a Kit `KeyPairSigner`. Browser apps on
+`@solana/wallet-adapter` keep working through `signerFromWalletAdapter`, which is why
+`@solana/web3.js` remains a peer dependency. [Solana Kit integration](/sdk/kit-integration) has the
+wiring.
+
+**Every spend needs the wallet's owner key.** `transfer`, `partialWithdraw`, `fullWithdraw`,
+`swapUtxo` and `swapWithChange` require `ownerUtxoKeypair` and the wallet's view-only key `nk`,
+derived from one persistent seed. See [Core concepts](/sdk/core-concepts#keys) and the
+[Quickstart](/sdk/quickstart).
 </Note>
 
 ## Shared runtime values
@@ -54,7 +61,7 @@ The requirement is identical in a browser bundle and on Node: `relayUrl` is an o
 privacy hazard. `""` is the caller-signed direct-submission signal, and it only takes effect once
 enforcement is off, because the viewing-key gate fires first. With enforcement off and no
 `relayUrl`, omitted or passed as `""`, a transfer or withdrawal that carries a
-signer (`depositorKeypair`, or `signTransaction` plus `depositorPublicKey`) is signed and submitted
+signer (`depositorKeypair`, or `signer` plus `depositorPublicKey`) is signed and submitted
 by that signer instead of throwing: your own wallet broadcasts it, which publicly links the
 transfer or withdrawal to you. Leave the option at its default of `true` unless you have deliberately
 accepted that trade for a specific call. Deposits are the exception that is not a hazard: a deposit
@@ -74,7 +81,7 @@ Before you write code, skim the protocol primer:
 
 ## Start building
 
-- [Quickstart](/sdk/quickstart): minimal end-to-end SOL send.
+- [Quickstart](/sdk/quickstart): one runnable script, deposit then private send then withdraw.
 - [Request authentication](/sdk/request-authentication) covers the signed sender that every flow except deposit carries, wired from a browser wallet adapter or from a server keypair. Read it before your first private send.
 - [Code examples](/sdk/examples): send, swap, payroll, history. The snippets sign with a server keypair; a browser wallet signs the way request authentication describes.
 - [API reference](/sdk/api-reference): the full exported surface, functions, classes and constants.

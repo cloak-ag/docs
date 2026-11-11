@@ -85,6 +85,7 @@
               "sdk/bridge",
               "sdk/wallet-integration",
               "sdk/error-handling",
+              "sdk/troubleshooting",
               "sdk/api-reference"
             ]
           },

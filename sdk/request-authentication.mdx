@@ -28,7 +28,8 @@ If you are in a browser and your call fails with `Unauthorized` or a bare `401`,
 
 <Warning>
 **Deposits are why this bites people late.** A deposit is signed by the funding wallet and posted
-directly, so it works with `signTransaction` alone and never touches request authentication. The
+directly, so the wallet `signer` is enough to land it and it never touches request authentication
+(it does still sign a one-time viewing-key registration challenge). The
 [Quickstart](/sdk/quickstart) deposit succeeds, the integration feels wired up, and then the very
 next call, the send, is the first one that needs a signed sender. Nothing was misconfigured at
 deposit time; that step simply does not use this mechanism.
@@ -36,12 +37,18 @@ deposit time; that step simply does not use this mechanism.
 
 ## Wiring it up
 
-You supply one of two things in `TransactOptions`. The SDK builds and signs the request either way.
+You supply one of three things in `TransactOptions`. The SDK builds and signs the request in every case.
 
 | Caller | Pass | Prompts the user |
 |---|---|---|
 | Browser, wallet adapter | `signMessage` **and** `walletPublicKey` (or `depositorPublicKey`) | yes, once per request |
+| Hardware wallet without `signMessage` | `signer` (from `signerFromWalletAdapter`), which signs a no-op transaction instead | yes, once per request |
 | Node, server, CLI | `depositorKeypair` | no |
+
+Every spend flow also requires the user's `ownerUtxoKeypair` and `nk` (as `chainNoteViewingKeyNk`),
+derived from their seed: see
+[where the user's keys live](/sdk/wallet-integration#where-the-users-keys-live). The samples below
+take them as arguments.
 
 <Warning>
 **One rule applies to every sample below.** Authentication decides whether a request is accepted;
@@ -63,7 +70,7 @@ and
 This is the complete browser path. It holds no secret key, and it is what a wallet adapter can
 actually supply.
 
-```tsx
+```ts
 import {
   CLOAK_PROGRAM_ID,
   CLOAK_PRODUCTION_RELAY_URL,
@@ -73,6 +80,7 @@ import {
   addressFromPublicKey,
   type CloakRpc,
   type Utxo,
+  type UtxoKeypair,
 } from "@cloak.dev/sdk";
 import { useWallet } from "@solana/wallet-adapter-react";
 
@@ -81,6 +89,8 @@ import { useWallet } from "@solana/wallet-adapter-react";
 export function usePrivateSend(
   connection: CloakRpc, // from createCloakRpc(rpcUrl)
   persistNotes: (noteBytes: Uint8Array[]) => Promise<void>,
+  ownerUtxoKeypair: UtxoKeypair, // derived from the user's seed
+  nk: Uint8Array, // view-only, derived from the same seed
 ) {
   const { publicKey, signMessage } = useWallet();
 
@@ -102,6 +112,9 @@ export function usePrivateSend(
         walletPublicKey: addressFromPublicKey(publicKey), // the request's `sender`
         signMessage,               // signs the request preimage
         // ──────────────────────────────────────────────────
+
+        ownerUtxoKeypair,
+        chainNoteViewingKeyNk: nk,
 
         onProgress: (status) => console.log(status),
         onProofProgress: (percent) => console.log(`proof ${percent}%`),
@@ -136,31 +149,95 @@ would authenticate one person and screen another.
 
 ### Server: a local keypair
 
-```typescript
-import { CLOAK_PROGRAM_ID, CLOAK_PRODUCTION_RELAY_URL, fullWithdraw } from "@cloak.dev/sdk";
+```ts
+import {
+  CLOAK_PROGRAM_ID,
+  CLOAK_PRODUCTION_RELAY_URL,
+  fullWithdraw,
+  signerFromSecretKey,
+  type CloakRpc,
+  type Utxo,
+  type UtxoKeypair,
+} from "@cloak.dev/sdk";
+import type { Address } from "@solana/kit";
 
 // `notes` is one or two notes here, which is the shape that returns nothing to store.
 // Three or more makes this call merge on chain first; merge those yourself instead.
-await fullWithdraw(notes, recipient, {
-  connection,
-  programId: CLOAK_PROGRAM_ID,
-  relayUrl: CLOAK_PRODUCTION_RELAY_URL,
-  depositorKeypair: signer,
-  walletPublicKey: signer.address,
-});
+export async function withdrawFromServer(
+  connection: CloakRpc,
+  secretKey: Uint8Array, // the server wallet's 64-byte secret key, from your secret store
+  ownerUtxoKeypair: UtxoKeypair,
+  nk: Uint8Array,
+  notes: Utxo[],
+  recipient: Address,
+) {
+  const signer = await signerFromSecretKey(secretKey);
+  return fullWithdraw(notes, recipient, {
+    connection,
+    programId: CLOAK_PROGRAM_ID,
+    relayUrl: CLOAK_PRODUCTION_RELAY_URL,
+    depositorKeypair: signer,
+    walletPublicKey: signer.address,
+    ownerUtxoKeypair,
+    chainNoteViewingKeyNk: nk,
+  });
+}
 ```
 
 A keypair signs in microseconds and never prompts.
+
+### Hardware wallet: `signer` instead of `signMessage`
+
+A wallet that cannot sign messages (Ledger, Trezor) passes `signer`. The SDK then authenticates the
+sender by asking the wallet to sign a deterministic 0-lamport self-transfer whose blockhash slot
+carries the request digest (`auth_mode: "transaction"`). It cannot land on chain and names no Cloak
+program, but the wallet displays it as a 0 SOL transfer to yourself, so tell the user to expect it.
+The approval window below applies to this prompt as well.
+
+```ts
+import {
+  CLOAK_PROGRAM_ID,
+  CLOAK_PRODUCTION_RELAY_URL,
+  transfer,
+  type CloakRpc,
+  type Utxo,
+  type UtxoKeypair,
+} from "@cloak.dev/sdk";
+import type { TransactionSigner } from "@solana/kit";
+
+export function sendFromHardwareWallet(
+  connection: CloakRpc,
+  signer: TransactionSigner, // signerFromWalletAdapter(adapter): no signMessage on the adapter
+  ownerUtxoKeypair: UtxoKeypair,
+  nk: Uint8Array,
+  notes: Utxo[],
+  recipientPubkey: bigint,
+  amount: bigint,
+) {
+  return transfer(notes, recipientPubkey, amount, {
+    connection,
+    programId: CLOAK_PROGRAM_ID,
+    relayUrl: CLOAK_PRODUCTION_RELAY_URL,
+    signer, // no signMessage: the SDK signs the no-op transaction instead
+    walletPublicKey: signer.address,
+    ownerUtxoKeypair,
+    chainNoteViewingKeyNk: nk,
+  });
+}
+```
+
+When both `signMessage` and `signer` are present, `signMessage` is used.
 
 ### Neither: the call throws before it proves anything
 
 If a relay-submitted flow has no usable signer, the SDK refuses at the top of the call:
 
 ```
-Cloak private send requires an authenticated sender, and no signer was provided. Pass either
-`depositorKeypair` (a local Keypair) or `signMessage` together with `walletPublicKey` (a browser
-wallet adapter). The sender must be the end user's own wallet. Checked before proof generation, so
-nothing has been computed or submitted yet.
+Cloak private send requires an authenticated sender, and <cause>. Pass either `depositorKeypair`
+(a local key pair), or `signMessage` (a browser wallet adapter) together with `walletPublicKey`, or
+`signer` (the wallet as a kit signer; a hardware wallet that cannot sign messages authenticates by
+transaction). The sender must be the end user's own wallet. Checked up front, so nothing has been
+computed or submitted yet.
 ```
 
 That check is deliberate and it is placed ahead of every `await` in the flow. The alternative, which
@@ -246,25 +323,56 @@ before you offer that shape, because a prompt declined mid-merge is exactly wher
 Swaps are the other exception, because a swap re-proves on every retry and each new proof is a new request
 that needs a fresh approval. `maxWalletApprovals` caps how many times one swap may ask:
 
-```typescript
-import { serializeUtxo, swapWithChange } from "@cloak.dev/sdk";
+```ts
+import {
+  CLOAK_PROGRAM_ID,
+  CLOAK_PRODUCTION_RELAY_URL,
+  serializeUtxo,
+  swapWithChange,
+  type Address,
+  type CloakRpc,
+  type Utxo,
+  type UtxoKeypair,
+} from "@cloak.dev/sdk";
 
-const swap = await swapWithChange(inputUtxos, amount, outputMint, recipientAta, minOutput, {
-  connection,
-  programId,
-  relayUrl,
-  walletPublicKey: addressFromPublicKey(publicKey),
-  signMessage,
-  chainNoteViewingKeyNk: nk,  // the user's own nk; see the refund note below
-  maxWalletApprovals: 3,      // default 5, floored at 1
-});
+// Your own storage; the SDK keeps neither the notes nor the refund.
+declare function persistNotes(noteBytes: Uint8Array[]): Promise<void>;
+declare function persistSwapRefund(
+  swapStatePda: string,
+  refund: { publicKey: string; blinding: string; derivedFromNk: boolean },
+): Promise<void>;
 
-// A swap returns TWO things you must keep, and this call is the last moment
-// either exists. Store both before you report success.
-await persistNotes(
-  swap.outputUtxos.filter((utxo) => utxo.amount > 0n).map(serializeUtxo), // the change note
-);
-await persistSwapRefund(swap.swapStatePda, swap.refund); // reclaims a timed-out swap
+export async function swapWithWallet(
+  connection: CloakRpc,
+  walletPublicKey: Address, // the end user's wallet, e.g. signer.address
+  signMessage: (message: Uint8Array) => Promise<Uint8Array>,
+  ownerUtxoKeypair: UtxoKeypair,
+  nk: Uint8Array, // the user's own nk; see the refund note below
+  inputUtxos: Utxo[],
+  amount: bigint,
+  outputMint: Address,
+  recipientAta: Address,
+  minOutput: bigint,
+) {
+  const swap = await swapWithChange(inputUtxos, amount, outputMint, recipientAta, minOutput, {
+    connection,
+    programId: CLOAK_PROGRAM_ID,
+    relayUrl: CLOAK_PRODUCTION_RELAY_URL,
+    walletPublicKey,
+    signMessage,
+    ownerUtxoKeypair,
+    chainNoteViewingKeyNk: nk,
+    maxWalletApprovals: 3, // default 5, floored at 1
+  });
+
+  // A swap returns TWO things you must keep, and this call is the last moment
+  // either exists. Store both before you report success.
+  await persistNotes(
+    swap.outputUtxos.filter((utxo) => utxo.amount > 0n).map(serializeUtxo), // the change note
+  );
+  await persistSwapRefund(swap.swapStatePda, swap.refund); // reclaims a timed-out swap
+  return swap;
+}
 ```
 
 - Applies **only** to the wallet-adapter path and **only** to `swapUtxo` / `swapWithChange`.
@@ -275,11 +383,10 @@ await persistSwapRefund(swap.swapStatePda, swap.refund); // reclaims a timed-out
 **A swap has a second secret, and it is not a note.** Alongside the change note on `outputUtxos`,
 `swapUtxo` and `swapWithChange` return `refund`: the key material that reclaims the swap principal
 if the swap times out before it executes. Persist it beside the change note, keyed by
-`swap.swapStatePda`. Persisting it is the **fast** path always, and the **only** path when no
-`chainNoteViewingKeyNk` was passed to the swap, because that is the case where `refund` is the only
-copy that will ever exist. When an `nk` **was** passed, `refund.derivedFromNk` comes back `true` and
-`discoverSwapRefunds` / `matchSwapRefundLeaf` can rebuild the same secret from the `nk` plus the
-swap's public input nullifier, so losing the object is recoverable rather than terminal.
+`swap.swapStatePda`. Persisting it is the **fast** path. Because every swap now takes the user's
+`nk`, `refund.derivedFromNk` comes back `true` and `discoverSwapRefunds` / `matchSwapRefundLeaf` can
+rebuild the same secret from the `nk` plus the swap's public input nullifier, so losing the object is
+recoverable rather than terminal. Older swaps made without an `nk` have only the object.
 </Warning>
 
 ## Driving submission yourself
@@ -291,30 +398,43 @@ layer around submission.
 `depositorKeypair` or a `relayAuthSigner`, and handles the signing, the wire fields and the on-chain
 settlement check for you:
 
-```typescript
+```ts
 import {
-  addressFromPublicKey,
+  CLOAK_PROGRAM_ID,
+  CLOAK_PRODUCTION_RELAY_URL,
   messageSignerFromCallback,
   submitTransactToRelay,
+  type Address,
+  type CloakRpc,
   type RelayAuthSigner,
+  type SettlementConnection,
 } from "@cloak.dev/sdk";
 
-// Since 0.2.5 `RelayAuthSigner` is a Kit signer (`MessageSigner | TransactionSigner`),
-// not a `{ walletPublicKey, signMessage }` pair. Build one from the adapter:
-const relayAuthSigner: RelayAuthSigner = messageSignerFromCallback(
-  addressFromPublicKey(publicKey), // the end user's real wallet, never an ephemeral key
-  signMessage,
-);
+export async function submitYourself(
+  // Any reader exposing `getSignatureStatuses` and `getMultipleAccounts`; the on-chain
+  // settlement check uses it to confirm the request landed.
+  connection: SettlementConnection,
+  walletPublicKey: Address, // the end user's real wallet, never an ephemeral key
+  signMessage: (message: Uint8Array) => Promise<Uint8Array>,
+  requestBody: Record<string, unknown>, // the exact body you will POST
+  mint: Address,
+  inputNullifiers: bigint[],
+) {
+  // `RelayAuthSigner` is a Kit signer (`MessageSigner | TransactionSigner`),
+  // not a `{ walletPublicKey, signMessage }` pair. Build one from the adapter's callback:
+  const relayAuthSigner: RelayAuthSigner = messageSignerFromCallback(walletPublicKey, signMessage);
 
-const result = await submitTransactToRelay({
-  relayUrl,
-  requestBody, // the exact body you will POST
-  programId,
-  relayAuthSigner,
-  settlement: { connection, programId, mint, inputNullifiers },
-  canRetryStaleRoot: false,
-});
-// result.kind: "submitted" | "stale-root" | "failed"
+  const result = await submitTransactToRelay({
+    relayUrl: CLOAK_PRODUCTION_RELAY_URL,
+    requestBody,
+    programId: CLOAK_PROGRAM_ID,
+    relayAuthSigner,
+    settlement: { connection, programId: CLOAK_PROGRAM_ID, mint, inputNullifiers },
+    canRetryStaleRoot: false,
+  });
+  // result.kind: "submitted" | "stale-root" | "failed"
+  return result;
+}
 ```
 
 ### Signing a body by hand
@@ -322,8 +442,14 @@ const result = await submitTransactToRelay({
 Below that, `buildRelayAuthPreimage` gives you the bytes to sign without signing them, which is the
 only shape a wallet adapter can work with:
 
-```typescript
-import { TRANSACT_AUTH_FIELDS, buildRelayAuthPreimage } from "@cloak.dev/sdk";
+```ts
+import {
+  CLOAK_PROGRAM_ID,
+  CLOAK_PRODUCTION_RELAY_URL,
+  TRANSACT_AUTH_FIELDS,
+  buildRelayAuthPreimage,
+  type Address,
+} from "@cloak.dev/sdk";
 
 // `auth_signature` is base64. Do this without `Buffer`: it is a Node global, so a
 // browser bundle fails to compile against it and throws `Buffer is not defined` at
@@ -331,28 +457,34 @@ import { TRANSACT_AUTH_FIELDS, buildRelayAuthPreimage } from "@cloak.dev/sdk";
 const toBase64 = (bytes: Uint8Array) =>
   btoa(String.fromCharCode(...Array.from(bytes)));
 
-const preimage = buildRelayAuthPreimage(
-  "/transact",          // the exact path you POST to
-  programId,
-  requestBody,
-  publicKey,            // the end user's wallet, becomes `sender`
-  undefined,            // issued-at seconds; omit to stamp now
-  TRANSACT_AUTH_FIELDS, // use TRANSACT_SWAP_AUTH_FIELDS for a swap body
-);
+export async function postSignedTransact(
+  walletPublicKey: Address, // the end user's wallet, becomes `sender`
+  signMessage: (message: Uint8Array) => Promise<Uint8Array>,
+  requestBody: Record<string, unknown>,
+) {
+  const preimage = buildRelayAuthPreimage(
+    "/transact",          // the exact path you POST to
+    CLOAK_PROGRAM_ID,
+    requestBody,
+    walletPublicKey,
+    undefined,            // issued-at seconds; omit to stamp now
+    TRANSACT_AUTH_FIELDS, // use TRANSACT_SWAP_AUTH_FIELDS for a swap body
+  );
 
-const signature = await signMessage(preimage.message);
+  const signature = await signMessage(preimage.message);
 
-await fetch(`${relayUrl}/transact`, {
-  method: "POST",
-  headers: { "content-type": "application/json" },
-  body: JSON.stringify({
-    ...requestBody,
-    sender: preimage.sender,
-    auth_issued_at: preimage.auth_issued_at,
-    auth_nonce: preimage.auth_nonce,
-    auth_signature: toBase64(signature),
-  }),
-});
+  return fetch(`${CLOAK_PRODUCTION_RELAY_URL}/transact`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      ...requestBody,
+      sender: preimage.sender,
+      auth_issued_at: preimage.auth_issued_at,
+      auth_nonce: preimage.auth_nonce,
+      auth_signature: toBase64(signature),
+    }),
+  });
+}
 ```
 
 `preimage.message` is a plain ed25519 detached-signature preimage, newline separated:

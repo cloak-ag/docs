@@ -20,8 +20,22 @@ Use this file as your primary SDK briefing and only fall back to the friendlier 
 ## 1. Package
 
 - Name: `@cloak.dev/sdk`
-- Version: `0.2.5`. The exported `VERSION` constant now matches the published package version (it lagged before 0.2.5); it is still informational only — confirm the installed version with `npm ls @cloak.dev/sdk`.
-- **0.2.5 moved the SDK onto `@solana/kit`.** `connection` is a `CloakRpc` from `createCloakRpc(rpcUrl)`; `programId`, mints and recipients are Kit `Address` strings; `depositorKeypair` is a Kit `KeyPairSigner`; `signer` is a Kit transaction signer. `@solana/web3.js` is an optional peer dependency, needed only by `signerFromWalletAdapter` (the browser wallet bridge). `@solana/spl-token` was replaced by `@solana-program/token`. Removed in 0.2.5: `keypairToAdapter` and the `WalletAdapter` type.
+- Version: `0.2.11` (npm `latest`). The exported `VERSION` constant matches the published package version; it is still informational only — confirm the installed version with `npm ls @cloak.dev/sdk`.
+- Mainnet is the only target. Cloak has no devnet and never will; test with small amounts on mainnet (minimum deposit 0.01 SOL). Never instruct a reader to use a devnet or localnet.
+- **0.2.5 moved the SDK onto `@solana/kit`.** `connection` is a `CloakRpc` from `createCloakRpc(rpcUrl)`; `programId`, mints and recipients are Kit `Address` strings (`address("...")`, no `.toBase58()`, no `PublicKey`); `depositorKeypair` is a Kit `KeyPairSigner`; `signer` is a Kit transaction signer. `@solana/web3.js` is an optional peer dependency, needed only by `signerFromWalletAdapter` (the browser wallet bridge). `@solana/spl-token` was replaced by `@solana-program/token`. Removed in 0.2.5: `keypairToAdapter` and the `WalletAdapter` type.
+- **Since 0.2.6**: `signTransaction` is NOT a `TransactOptions` field any more; a wallet signs through `signer` (from `signerFromWalletAdapter(wallet)`), and `signMessage` signs the auth/registration challenge. Every spend flow (`transfer`, `partialWithdraw`, `fullWithdraw`, `swapUtxo`, `swapWithChange`, `sweepToWalletKey`) REQUIRES `ownerUtxoKeypair` (the wallet's long-lived UTXO keypair, which owns all change) and the wallet's `nk` as `chainNoteViewingKeyNk`, at runtime and in the types (`SpendOptions`). Pass both on deposits too. Deposits use `createRecoverableDepositUtxo`; change notes are derived from `nk`, so a scan can rebuild them.
+- Key material, the canonical shape (use this, not `generateUtxoKeypair()`, in anything that holds real funds; a random key that is lost loses the notes):
+
+```ts
+import { deriveSpendKey, deriveUtxoKeypairFromSpendKey, generateMasterSeed, getNkFromUtxoPrivateKey } from "@cloak.dev/sdk";
+
+// `seed`: 32 bytes generated once (generateMasterSeed() returns { seed, seedHex }) and stored like a private key.
+const seed = generateMasterSeed().seed;
+const { sk_spend } = deriveSpendKey(seed);
+const ownerUtxoKeypair = await deriveUtxoKeypairFromSpendKey(sk_spend);
+const nk = getNkFromUtxoPrivateKey(ownerUtxoKeypair.privateKey); // view-only: can find notes, never spend them
+```
+
 - Runtime: Node `>=18` and modern browsers. ESM and CJS both shipped (`dist/index.js`, `dist/index.cjs`).
 - Types: `dist/index.d.ts`
 - Program ID (default, mainnet): `zh1eLd6rSphLejbFfJEneUwzHRfMKxgzrgkfwA6qRkW`
@@ -37,7 +51,7 @@ Use this file as your primary SDK briefing and only fall back to the friendlier 
 Install:
 
 ```bash
-npm install @cloak.dev/sdk@0.2.5 @solana/kit
+npm install @cloak.dev/sdk@^0.2.11 @solana/kit
 # Browser apps using a wallet adapter also need:
 npm install @solana/wallet-adapter-react @solana/web3.js
 ```
@@ -60,16 +74,16 @@ npm install @solana/wallet-adapter-react @solana/web3.js
    - SPL (USDC/USDT, 6 decimals): `450_000` base units fixed (`0.45` token) + `0.3 %` variable, charged in the withdrawn token. The SDK does not compute SPL fees; there is no SPL fee helper.
    - Fees only apply on withdrawal/swap paths. Deposits and shield-to-shield transfers pay zero protocol fee.
    - Minimum deposit: `10_000_000` lamports for SOL, `1_000_000` base units for USDC/USDT.
-7. Viewing-key registration is required before scanner/compliance flows can decrypt chain notes. `enforceViewingKeyRegistration: false` in `TransactOptions` is the only thing that turns that check off, and it defaults to enabled. It is also the flag that gates `relayUrl: ""`: with the check on (the default) an empty or omitted `relayUrl` throws before any network call, and only with the check off does `""` act as the caller-signed direct-submission signal described in §1. Do NOT combine it with an omitted or empty `relayUrl`: with the check off and a signer present (`depositorKeypair`, or `signTransaction` + `depositorPublicKey`), `transact` / `transfer` / `partialWithdraw` / `fullWithdraw` submit directly, signed and paid by the user's own key, which links the transaction to that key and loses the privacy the flow exists for. With the check off, no relay and no signer, the call does not fail cleanly either: it reports the problem through `onProgress` and then throws a misleading `commitment indices missing: [-1, -1]` error. Deposits are the one flow where direct submission is correct: they always submit under the depositor's key by design, and require `depositorKeypair` or `signTransaction` + `depositorPublicKey`.
+7. Viewing-key registration is required before scanner/compliance flows can decrypt chain notes. `enforceViewingKeyRegistration: false` in `TransactOptions` is the only thing that turns that check off, and it defaults to enabled. It is also the flag that gates `relayUrl: ""`: with the check on (the default) an empty or omitted `relayUrl` throws before any network call, and only with the check off does `""` act as the caller-signed direct-submission signal described in §1. Do NOT combine it with an omitted or empty `relayUrl`: with the check off and a signer present (`depositorKeypair` or `signer`), `transact` / `transfer` / `partialWithdraw` / `fullWithdraw` submit directly, signed and paid by the user's own key, which links the transaction to that key and loses the privacy the flow exists for. With the check off, no relay and no signer, the call does not fail cleanly either: it reports the problem through `onProgress` and then throws a misleading `commitment indices missing: [-1, -1]` error. Deposits are the one flow where direct submission is correct: they always submit under the depositor's key by design, and require `depositorKeypair` or `signer`.
 8. Merkle root freshness: treat `RootNotFound` / stale-root errors as retryable. SDK transaction paths already retry these by default; use `preflightCheck` / `waitForRoot` only for advanced/operator flows.
 9. Never log secrets: spend keys, viewing keys (`nk`), UTXO private keys, blindings, signed messages, note payloads.
 10. Standard integrations should use SDK defaults for program and circuits. Only override for custom/operator deployments. There is no submission-endpoint default: `relayUrl` is required on every flow, and for a standard integration the value is always an allowlisted origin. The other value the pin accepts, `""`, is inert unless invariant 7's check is turned off, and turning it off is not a recipe for a send, withdrawal or swap.
 11. In low-level UTXO calls, keep `programId` fixed to `CLOAK_PROGRAM_ID` in one place and do not expose it as user configuration.
 12. Minimal scripts should use `KEYPAIR_PATH` + `<lamports>` input; do not use raw secret env vars or float amount parsing.
 13. Relay-submitted flows require an authenticated sender, checked BEFORE any proof work:
-   - Browser: pass `signMessage` AND `walletPublicKey` (or `depositorPublicKey`) in `TransactOptions`. A wallet adapter cannot supply `depositorKeypair`; never generate browser code that asks for one.
+   - Browser: pass `signer` (`signerFromWalletAdapter(wallet)`), which signs deposits and authenticates requests through the wallet's `signMessage` (or a no-op-transaction signature for a wallet without one). The relay-only alternative is `signMessage` AND `walletPublicKey` (or `depositorPublicKey`). A wallet adapter cannot supply `depositorKeypair`; never generate browser code that asks for one.
    - Node/server: pass `depositorKeypair`.
-   - Neither, or only half of the wallet pair: `transact` / `transfer` / `partialWithdraw` / `fullWithdraw` / `swapUtxo` / `swapWithChange` throw `Cloak <flow> requires an authenticated sender ...` before proof generation. Deposits (`externalAmount > 0n`) are exempt.
+   - Neither a signer nor a complete wallet pair: `transact` / `transfer` / `partialWithdraw` / `fullWithdraw` / `swapUtxo` / `swapWithChange` throw `Cloak <flow> requires an authenticated sender ...` before proof generation. Deposits (`externalAmount > 0n`) are exempt.
    - The authenticated `sender` IS the key screened for sanctions and the key a viewing key is registered against. It MUST be the end user's real wallet, never an ephemeral, session or service-held key. Passing a `depositorKeypair` and a different `walletPublicKey` throws.
    - A private send or withdrawal signs EXACTLY ONCE regardless of network retries. Only `swapUtxo` / `swapWithChange` re-prompt, capped by `maxWalletApprovals` (default 5, floored at 1).
    - Signed requests are valid for `REQUEST_AUTH_MAX_AGE_SECONDS` (300); the SDK holds back 15 seconds for transit, so the usable approval budget is 285 seconds. A machine clock more than `REQUEST_AUTH_MAX_FUTURE_SKEW_SECONDS` (30) ahead cannot authenticate at all. Map rejections through `explainRelayAuthRejection`.
@@ -81,7 +95,7 @@ npm install @solana/wallet-adapter-react @solana/web3.js
 ```ts
 import {
   CLOAK_PROGRAM_ID,           // Address, the deployed mainnet program
-  NATIVE_SOL_MINT,            // PublicKey, So111...112
+  NATIVE_SOL_MINT,            // Address, So111...112
   DEFAULT_TRANSACTION_CIRCUITS_URL, // ".../cloak-circuits/circuits/0.2.0" (ceremony bundle)
   TRANSACTION_CIRCUITS_VERSION,     // "0.2.0"
   resolveCircuitsBase,              // explicit arg → CLOAK_CIRCUITS_PATH / CLOAK_CIRCUITS env → pinned default
@@ -100,20 +114,19 @@ import {
 Core note/transaction types (from `core/types`):
 
 ```ts
-// Exported union. Mainnet is the only target this package supports; the other members are
-// historical and nothing in the published surface is configured for them.
+// Exported union. Mainnet is the only target this package supports; Cloak has no devnet. The other
+// members are historical and nothing in the published surface is configured for them.
 type Network = "localnet" | "devnet" | "mainnet" | "testnet";
 
-// The `WalletAdapter` type was REMOVED in 0.2.5. The equivalent is `LegacyWalletAdapter`, wrapped
+// The `WalletAdapter` type was REMOVED in 0.2.5. Its replacement is `LegacyWalletAdapter`, wrapped
 // with `signerFromWalletAdapter(adapter, { web3: { VersionedTransaction } })` to get a Kit signer.
-interface WalletAdapter {
-  publicKey: PublicKey | null;
-  signTransaction?<T extends Transaction>(tx: T): Promise<T>;
-  signAllTransactions?<T extends Transaction>(txs: T[]): Promise<T[]>;
-  sendTransaction?(tx: Transaction, connection: Connection, options?: SendOptions): Promise<string>;
+interface LegacyWalletAdapter {
+  publicKey: { toBase58(): string } | null;
+  signTransaction?: (transaction: any) => Promise<any>;
+  signMessage?: (message: Uint8Array) => Promise<Uint8Array>;
 }
 
-class CloakError extends Error {
+declare class CloakError extends Error {
   category: "network" | "indexer" | "prover" | "relay" | "validation" | "wallet" | "environment" | "service";
   retryable: boolean;
   originalError?: Error;
@@ -124,27 +137,44 @@ class CloakError extends Error {
 
 ## 4. Initialization patterns
 
-### 4a. Node.js with a Keypair (server / script)
+### 4a. Node.js with a KeyPairSigner (server / script)
 
 ```ts
-import { CLOAK_PROGRAM_ID, CLOAK_PRODUCTION_RELAY_URL, setDebugMode } from "@cloak.dev/sdk";
-import { createCloakRpc, signerFromSecretKey } from "@cloak.dev/sdk";
+import {
+  CLOAK_PROGRAM_ID,
+  CLOAK_PRODUCTION_RELAY_URL,
+  createCloakRpc,
+  deriveSpendKey,
+  deriveUtxoKeypairFromSpendKey,
+  getNkFromUtxoPrivateKey,
+  setDebugMode,
+  signerFromSecretKey,
+  type SpendOptions,
+} from "@cloak.dev/sdk";
 import { readFileSync } from "fs";
 
 const signer = await signerFromSecretKey(
   Uint8Array.from(JSON.parse(readFileSync(process.env.KEYPAIR_PATH!, "utf8"))),
 );
 
+// `seed`: 32 bytes generated once (generateMasterSeed()) and stored like a private key.
+const seed = Uint8Array.from(JSON.parse(readFileSync(process.env.SEED_PATH!, "utf8")));
+const { sk_spend } = deriveSpendKey(seed);
+const ownerUtxoKeypair = await deriveUtxoKeypairFromSpendKey(sk_spend);
+const nk = getNkFromUtxoPrivateKey(ownerUtxoKeypair.privateKey);
+
 const connection = createCloakRpc(process.env.SOLANA_RPC_URL!);
 setDebugMode(true);
 
-// There is no client object. The signer travels per call, in TransactOptions.
-const options = {
+// There is no client object. The signer travels per call, in the options.
+const options: SpendOptions = {
   connection,
   programId: CLOAK_PROGRAM_ID,
   relayUrl: CLOAK_PRODUCTION_RELAY_URL,
   depositorKeypair: signer,
-  walletPublicKey: signer.publicKey,
+  walletPublicKey: signer.address,
+  ownerUtxoKeypair,
+  chainNoteViewingKeyNk: nk,
 };
 ```
 
@@ -154,26 +184,33 @@ const options = {
 import {
   CLOAK_PROGRAM_ID,
   CLOAK_PRODUCTION_RELAY_URL,
-  LocalStorageAdapter,
-  getPublicKey,
-  validateWalletConnected,
+  createCloakRpc,
+  signerFromWalletAdapter,
+  type LegacyWalletAdapter,
+  type UtxoKeypair,
 } from "@cloak.dev/sdk";
-import { useWallet } from "@solana/wallet-adapter-react";
+import { VersionedTransaction } from "@solana/web3.js";
 
-const wallet = useWallet();
-validateWalletConnected(wallet);
+// `wallet` is the connected wallet-adapter object (`useWallet()` in React).
+declare const wallet: LegacyWalletAdapter;
+// ownerUtxoKeypair and nk come from the seed-derived shape in §1.
+declare const ownerUtxoKeypair: UtxoKeypair;
+declare const nk: Uint8Array;
 
-// Persist notes and key material through an explicit storage boundary.
-const storage = new LocalStorageAdapter();
+const connection = createCloakRpc(process.env.NEXT_PUBLIC_SOLANA_RPC_URL!);
+
+// The wallet is the signer. Pass your own VersionedTransaction: a bundler cannot resolve the
+// bridge's on-demand import. `signer` signs the deposit AND authenticates send/withdraw/swap
+// requests and viewing-key registration (through the wallet's signMessage when it has one).
+const signer = signerFromWalletAdapter(wallet, { web3: { VersionedTransaction } });
 
 const options = {
   connection,
   programId: CLOAK_PROGRAM_ID,
   relayUrl: CLOAK_PRODUCTION_RELAY_URL,
-  signTransaction: wallet.signTransaction!, // signs the DEPOSIT transaction
-  signMessage: wallet.signMessage!, // authenticates send/withdraw/swap requests + viewing-key registration
-  depositorPublicKey: getPublicKey(wallet),
-  walletPublicKey: getPublicKey(wallet),
+  signer,
+  ownerUtxoKeypair,
+  chainNoteViewingKeyNk: nk,
 };
 ```
 
@@ -186,11 +223,12 @@ import {
   fullWithdraw,
   swapWithChange,
   CLOAK_PROGRAM_ID,
+  createCloakRpc,
 } from "@cloak.dev/sdk";
-import { createCloakRpc } from "@cloak.dev/sdk";
 
 const connection = createCloakRpc(process.env.SOLANA_RPC_URL!);
 const programId = CLOAK_PROGRAM_ID;
+console.log(transact, partialWithdraw, fullWithdraw, swapWithChange, connection, programId);
 ```
 
 ### 4d. Kit-flavored reads alongside SDK
@@ -203,8 +241,9 @@ const kitRpc = createSolanaRpc(process.env.SOLANA_RPC_URL!);
 const connection = createCloakRpc(process.env.SOLANA_RPC_URL!);
 
 // Reads via Kit:
-const balance = await kitRpc.getBalance(address(signer.publicKey.toBase58())).send();
-// Writes via SDK (still uses web3.js Connection):
+const balance = await kitRpc.getBalance(address("11111111111111111111111111111111")).send();
+// Writes via SDK: pass `connection` (a CloakRpc) in the options of every flow.
+console.log(balance, connection);
 ```
 
 For an end-to-end Kit-flavored integration shape, combine the read/write split in this section with the transaction recipes in section 6.
@@ -219,15 +258,16 @@ Group exports by responsibility. Every symbol below is a real named export of `@
 
 There is no client class. The transaction entry points are free functions, listed in §5.3.
 
-- `CLOAK_PROGRAM_ID`: `PublicKey`, mainnet program
-- `NATIVE_SOL_MINT`: `PublicKey`, SOL pool mint identity
-- `VERSION`: string, currently `"0.2.5"` -- matches the published package version (it lagged before 0.2.5); informational only, confirm the installed version with `npm ls @cloak.dev/sdk`
+- `CLOAK_PROGRAM_ID`: `Address`, mainnet program
+- `NATIVE_SOL_MINT`: `Address`, SOL pool mint identity
+- `VERSION`: string, currently `"0.2.11"` -- matches the published package version; informational only, confirm the installed version with `npm ls @cloak.dev/sdk`
 - `setDebugMode(enabled: boolean)`: global SDK logging switch
 - `LocalStorageAdapter` / `MemoryStorageAdapter`: `StorageAdapter` implementations (see §5.13)
 
 ### 5.2 UTXO primitives (primary data model)
 
-```ts
+```ts nocheck
+// Signature listing: declarations only, not runnable code (the block has no function bodies).
 interface UtxoKeypair {
   privateKey: bigint;   // ~252-bit field element
   publicKey: bigint;    // Poseidon(privateKey, 0)
@@ -248,11 +288,13 @@ interface Utxo {
 const NATIVE_SOL_MINT: Address;
 
 function randomFieldElement(): bigint;
-function generateUtxoKeypair(): Promise<UtxoKeypair>;
-function deriveUtxoKeypairFromSpendKey(skSpend: Uint8Array): Promise<UtxoKeypair>;
+function generateMasterSeed(): { seed: Uint8Array; seedHex: string };
+function deriveSpendKey(masterSeed: Uint8Array): { sk_spend: Uint8Array; pk_spend: Uint8Array; sk_spend_hex: string; pk_spend_hex: string };
+function deriveUtxoKeypairFromSpendKey(skSpend: Uint8Array): Promise<UtxoKeypair>; // the wallet's long-lived keypair (§1)
+function generateUtxoKeypair(): Promise<UtxoKeypair>; // random: tests only, a lost key loses the notes
 function derivePublicKey(privateKey: bigint): Promise<bigint>;
 
-function createUtxo(amount: bigint, keypair: UtxoKeypair, mint?: Address): Promise<Utxo>;
+function createUtxo(amount: bigint, keypair: UtxoKeypair, mint?: Address): Promise<Utxo>; // random blinding: not for deposits that hold funds, use createRecoverableDepositUtxo (§5.5)
 function createZeroUtxo(mint?: Address, salt?: bigint): Promise<Utxo>;
 
 function pubkeyToFieldElement(pubkey: Address): bigint;
@@ -285,44 +327,50 @@ function preflightNullifiers(                      // throws UtxoAlreadySpentErr
 ): Promise<void>;
 ```
 
-`serializeUtxo` is the persistence primitive and it is the ONLY one: 128 bytes carrying amount,
-private key, blinding, mint and index. Every flow hands back a note the SDK then forgets, with one
-conditional exception below (a full withdrawal of one or two input notes), and `createUtxo` draws
-that note's `blinding` from `randomFieldElement()` and writes it nowhere on chain, so a note that
-is not serialized to durable storage before you report success is permanently unspendable by
-anyone. `StorageAdapter` (§5.13) is a DIFFERENT boundary: its methods are typed on `CloakNote`, and
-it does not accept these bytes.
+`serializeUtxo` is the persistence primitive for notes you hold: 128 bytes carrying amount,
+private key, blinding, mint and index. Persist every output note a flow hands back
+(`result.outputUtxos`) before you report success. Since 0.2.6 the SDK derives a spend's change
+note, a deposit note built with `createRecoverableDepositUtxo`, and a swap's timeout-refund note from
+the wallet's `nk` (blinding) and `ownerUtxoKeypair` (owner), so a scan holding `nk` can rebuild them
+(§5.5). A note built with plain `createUtxo` is different: its `blinding` comes from
+`randomFieldElement()` and is written nowhere on chain, so if you lose it the note is permanently
+unspendable by anyone. `StorageAdapter` (§5.13) is a DIFFERENT boundary: its methods are typed on
+`CloakNote`, and it does not accept these bytes.
 
-**The full-withdrawal exemption is CONDITIONAL: it holds for one or two input notes only.**
-`fullWithdraw` sums the inputs and calls `partialWithdraw`, and `partialWithdraw` runs
-`while (utxos.length > 2)` first: it sorts the notes, merges the two smallest on chain into a fresh
-note from `createUtxo`, and repeats until two remain. Each round nullifies its two inputs on chain
-and the merged note's blinding exists only in that call's local variable. If a later round or the
-final withdrawal throws (stale-root retries exhausted, a relay 5xx, a closed tab, a rejected wallet
-approval), the spent inputs are gone, the merged commitment is on chain, and the call returns no
-result to persist, so the balance is unrecoverable by anyone. There is no API that hands you the
-intermediate note. Mitigations, in order: withdraw from at most two notes (consolidate deliberately
-with your own `transact` calls, persisting each merged output, before calling `fullWithdraw`), and
-watch `onProgress` for `Consolidating notes (n remaining)...`, which is the ONLY signal the caller
-gets that consolidation is running. `partialWithdraw` shares the same loop and the same exposure.
+**Consolidation.** `fullWithdraw` sums the inputs and calls `partialWithdraw`, and `partialWithdraw`
+runs `while (utxos.length > 2)` first: it sorts the notes, merges the two smallest on chain into an
+intermediate note, and repeats until two remain, so `n` inputs cost `n - 2` extra shielded
+transactions, each separately proved, signed and submitted. The intermediate note is derived with
+`createRecoverableChangeUtxo` (owner `ownerUtxoKeypair`, blinding from `nk`), but the call never
+hands it back. If a later round or the final withdrawal throws (stale-root retries exhausted, a relay
+5xx, a closed tab, a rejected wallet approval), the spent inputs are gone and the merged note is on
+chain: it is recoverable only by a scan (§5.5), not by the call. Mitigations, in order: withdraw from
+at most two notes (consolidate deliberately with your own `transact` calls, persisting each merged
+output, before calling `fullWithdraw`), and watch `onProgress` for `Consolidating notes (n
+remaining)...`, which is the ONLY signal the caller gets that consolidation is running.
+`partialWithdraw` shares the same loop and the same exposure.
 
 ### 5.3 UTXO transaction API (primary runtime path)
 
-```ts
+```ts nocheck
+// Signature listing: declarations only, not runnable code (the block has no function bodies).
+// SpendOptions = TransactOptions & { ownerUtxoKeypair: UtxoKeypair }: required on every spend flow.
 function transact(params: TransactParams, options: TransactOptions): Promise<TransactResult>;
-function transfer(inputUtxos: Utxo[], recipientPubkey: bigint, amount: bigint, options: TransactOptions): Promise<TransactResult>;
-function partialWithdraw(inputUtxos: Utxo[], recipient: Address, withdrawAmount: bigint, options: TransactOptions): Promise<TransactResult>;
-function fullWithdraw(inputUtxos: Utxo[], recipient: Address, options: TransactOptions): Promise<TransactResult>;
-function swapUtxo(params: UtxoSwapParams, options: TransactOptions): Promise<UtxoSwapResult>;
+function transfer(inputUtxos: Utxo[], recipientPubkey: bigint, amount: bigint, options: SpendOptions): Promise<TransactResult>;
+function partialWithdraw(inputUtxos: Utxo[], recipient: Address, withdrawAmount: bigint, options: SpendOptions): Promise<TransactResult>;
+function fullWithdraw(inputUtxos: Utxo[], recipient: Address, options: SpendOptions): Promise<TransactResult>;
+function swapUtxo(params: UtxoSwapParams, options: SpendOptions): Promise<UtxoSwapResult>;
 function swapWithChange(
   inputUtxos: Utxo[],
   swapAmount: bigint,
   outputMint: Address,
   recipientAta: Address,
   minOutputAmount: bigint,
-  options: TransactOptions,
+  options: SpendOptions,
   recipientWallet?: Address,
 ): Promise<UtxoSwapResult>;
+// Moves up to two notes owned by other keys under the wallet's long-lived key with one self-spend.
+function sweepToWalletKey(inputUtxos: Utxo[], options: SpendOptions): Promise<{ note: Utxo; result: TransactResult }>;
 
 // The swap result. It extends TransactResult, so it also carries `signature`, `outputUtxos`,
 // `commitmentIndices`, `merkleTree` and the rest of that shape.
@@ -330,11 +378,10 @@ interface UtxoSwapResult extends TransactResult {
   swapStatePda: string;      // SwapState PDA, base58
   nullifier: string;         // hex nullifier the PDA is derived from
   requestId?: string;        // request id for polling swap execution status
-  refund: {                  // the timeout-refund secret. MONEY. Persist it (see below).
-    privateKey: string;      // hex 32-byte field elements, all three
-    publicKey: string;
-    blinding: string;
-    derivedFromNk: boolean;  // true => also rediscoverable from `nk` (discoverSwapRefunds, §5.5)
+  refund: {                  // the timeout-refund note. MONEY. Persist it (see below).
+    publicKey: string;       // hex: the wallet's own ownerUtxoKeypair public key
+    blinding: string;        // hex: derived from nk and the swap's first input nullifier
+    derivedFromNk: boolean;  // always true => rediscoverable from `nk` (discoverSwapRefunds, §5.5)
   };
 }
 
@@ -371,7 +418,7 @@ const DEFAULT_TRANSACTION_CIRCUITS_URL: string | null; // ".../cloak-circuits/ci
 const TRANSACTION_CIRCUITS_VERSION: "0.2.0";
 ```
 
-**`UtxoSwapResult.refund` is the user's principal, not telemetry.** A swap locks the SOL in a
+**`UtxoSwapResult.refund` describes the user's principal, not telemetry.** A swap locks the SOL in a
 SwapState PDA and only settles on a second transaction. If it times out before that, the close path
 returns the principal to the pool as an amount-bound note
 
@@ -380,18 +427,16 @@ R_fb = Poseidon(amountAfterFee, refund.publicKey, refund.blinding, WSOL)
 ```
 
 where `amountAfterFee` is the amount the program actually locked, read authoritatively from the
-on-chain `SwapState.sol_amount` (the gross swap amount minus the on-chain program fee). Claiming it
-back requires `refund.privateKey`. Persist the whole `refund` object alongside the change note, in
-the same tick `swapUtxo` / `swapWithChange` returns.
+on-chain `SwapState.sol_amount` (the gross swap amount minus the on-chain program fee). The note is
+spent with the wallet's own `ownerUtxoKeypair`: `refund` carries no private key. Persist the
+whole `refund` object alongside the change note, in the same tick `swapUtxo` / `swapWithChange`
+returns.
 
-`derivedFromNk` says whether losing it is survivable. When it is `true`, the same secret can be
-rebuilt later from the wallet's `nk` plus the swap's public first input nullifier, which is what
-`discoverSwapRefunds` (§5.5) walks the chain for. When it is `false`, the returned object is the
-only copy that will ever exist. The `nk` in question is `TransactOptions.chainNoteViewingKeyNk` when
-you passed one; when you did not, the SDK falls back to
-`getNkFromUtxoPrivateKey(inputUtxos[0].keypair.privateKey)`, so the recovery scan then needs that
-same first input's private key. Pass an explicit `chainNoteViewingKeyNk` on every swap so the
-recovery key is one you already hold. Persisting `refund` stays the fast path either way.
+The blinding is derived from the wallet's `nk` plus the swap's public first input nullifier
+(`derivedFromNk` is always `true`), so losing the object is survivable: `discoverSwapRefunds` (§5.5)
+walks the chain and finds the leaf again from key material. The `nk` in question is
+`TransactOptions.chainNoteViewingKeyNk`; pass the wallet's own on every swap. Persisting `refund`
+stays the fast path.
 
 Key `TransactOptions` fields (most used):
 
@@ -406,21 +451,25 @@ interface TransactOptions {
                                           // options "" throws like omitting it (§1, invariant 7).
 
   // Signing. The RUNTIME picks the shape; it is not a free choice (invariant 13, §8 rule 15):
-  //   NODE / SERVER: depositorKeypair + walletPublicKey.
-  //   BROWSER:       signMessage + walletPublicKey on every relay-submitted flow (private send,
-  //                  withdraw, swap), plus signTransaction + depositorPublicKey on a deposit.
-  // A wallet adapter holds no secret key and can never produce a Keypair, so depositorKeypair in
-  // browser code is code that cannot run. Never generate it there, and never ask a browser user
-  // for a keypair.json path.
-  depositorKeypair?: Keypair;             // NODE / SERVER ONLY. Unreachable from a wallet adapter.
-  signTransaction?: WalletAdapter["signTransaction"]; // browser: signs the DEPOSIT transaction
-  signMessage?: (msg: Uint8Array) => Promise<Uint8Array>; // browser: authenticates relay-submitted
-                                          // flows AND the viewing-key challenge, so it is required
-                                          // in the browser on every flow, deposits included.
-  walletPublicKey?: Address;            // the END USER'S real wallet, never an ephemeral or
+  //   NODE / SERVER: depositorKeypair (a KeyPairSigner).
+  //   BROWSER:       signer = signerFromWalletAdapter(wallet): signs the deposit and authenticates
+  //                  every relay-submitted flow (private send, withdraw, swap).
+  // There is NO signTransaction option. A wallet adapter holds no secret key and can never produce
+  // a KeyPairSigner, so depositorKeypair in browser code is code that cannot run. Never generate it
+  // there, and never ask a browser user for a keypair.json path.
+  depositorKeypair?: KeyPairSigner;       // NODE / SERVER ONLY. Unreachable from a wallet adapter.
+  signer?: TransactionSigner;             // browser: the wallet as a Kit signer
+  signMessage?: (msg: Uint8Array) => Promise<Uint8Array>; // relay-only alternative to `signer`:
+                                          // authenticates relay-submitted flows AND the viewing-key
+                                          // challenge. Wins over the signer's own message signing.
+  walletPublicKey?: Address;              // the END USER'S real wallet, never an ephemeral or
                                           // service key. Passing depositorKeypair together with a
                                           // DIFFERENT walletPublicKey throws.
-  depositorPublicKey?: Address;
+  depositorPublicKey?: Address;           // same key as signer.address when the wallet signs
+
+  // The wallet's long-lived UTXO keypair. REQUIRED on every spend flow (SpendOptions) and owns all
+  // change; pass it on deposits too. Derive it from a stored seed (§1), never generateUtxoKeypair().
+  ownerUtxoKeypair?: UtxoKeypair;
 
   // UX / observability:
   onProgress?: (status: string) => void;
@@ -455,7 +504,11 @@ interface TransactOptions {
 
   // ALTs:
   altAddresses?: string[];
-  addressLookupTableAccounts?: AddressLookupTableAccount[];
+  addressLookupTableAccounts?: LookupTable[];
+  relaySupplementalAlt?: boolean;         // one-signature SPL deposits (default false)
+  transactionVersion?: 0 | 1;             // message version for SDK-built transactions (default 0)
+  expectedMint?: Address;                 // refuse the flow when the input notes are another mint
+  externalFeePayer?: ExternalFeePayerAdapter; // a payer that covers network fees
 
   // Swap-specific:
   maxWalletApprovals?: number;            // swaps ONLY: cap on wallet re-prompts (default 5,
@@ -483,7 +536,8 @@ interface TransactOptions {
 exports exist for callers reading notes back. There is no `encodeCompactChainNote` /
 `decodeCompactChainNote` in the public surface: encryption and encoding are the same call.
 
-```ts
+```ts nocheck
+// Signature listing: declarations only, not runnable code (the block has no function bodies).
 type ChainNoteTxType = "deposit" | "withdraw" | "transfer" | "swap" | "unknown";
 
 interface CompactChainNote {
@@ -524,7 +578,8 @@ the envelopes, supplies the candidate commitments and decrypts them for you.
 
 ### 5.5 Scanner / compliance
 
-```ts
+```ts nocheck
+// Signature listing: declarations only, not runnable code (the block has no function bodies).
 interface ScanOptions {
   connection: CloakRpc;
   programId: Address;
@@ -579,6 +634,7 @@ interface ScanResult {
   // kept out of `transactions` / `summary` and the compliance report shape is unchanged.
   deliveredNotes: DeliveredNote[];
   recoveredDepositNotes: RecoveredDepositNoteRecord[];
+  recoveredChangeNotes: RecoveredChangeNoteRecord[];  // own withdrawal/swap change, same shape idea
 }
 
 // A note delivered TO the scanning wallet by SOMEONE ELSE'S shield-to-shield send.
@@ -610,11 +666,31 @@ function toComplianceReport(result: ScanResult): ComplianceReport;
 function formatComplianceCsv(report: ComplianceReport): string;
 
 // Deposit-note recovery helpers (the builder side of `recoveredDepositNotes`).
-function createRecoverableDepositUtxo(
-  amount: bigint, viewingKeyNk: Uint8Array, mintAddress?: Address, noteSalt?: bigint,
+function createRecoverableDepositUtxo(params: {
+  amount: bigint;
+  viewingKeyNk: Uint8Array;
+  ownerUtxoKeypair: UtxoKeypair;   // owns the note; required
+  mintAddress?: Address;           // defaults to native SOL
+  noteSalt?: bigint;
+}): Promise<{ utxo: Utxo; noteSalt: bigint }>;
+function createRecoverableChangeUtxo(
+  amount: bigint, ownerUtxoKeypair: UtxoKeypair, viewingKeyNk: Uint8Array,
+  mintAddress?: Address, noteSalt?: bigint, outputIndex?: number,
 ): Promise<{ utxo: Utxo; noteSalt: bigint }>;
-function deriveDepositNoteSecrets(viewingKeyNk: Uint8Array, noteSalt: bigint): Promise<DepositNoteSecrets>;
+function deriveDepositNoteBlinding(viewingKeyNk: Uint8Array, noteSalt: bigint): bigint;
 function randomDepositNoteSalt(): bigint;
+
+// Restore from the relay's Note Index: one bulk feed, ONE RPC request. Needs a relay serving
+// GET /note-index/v1/head; relayUrl must be on this build's allowlist.
+function recoverNotesFromIndex(params: {
+  relayUrl: string; connection: CloakRpc; programId: Address;
+  poolMints: Address[];             // every pool the app uses
+  viewingKeyNk: Uint8Array;
+  ownerUtxoKeypair: UtxoKeypair;    // with its real private key
+  legacyViewingKeyNks?: Uint8Array[];
+  cursor?: NoteIndexCursor;         // persist result.cursor privately, as carefully as the notes
+}): Promise<{ notes: IndexedRecoveredNote[]; atRisk: IndexedRecoveredNote[]; pending: number; cursor: NoteIndexCursor; stats: NoteIndexRecoveryStats; warnings: string[] }>;
+function fetchNoteIndexHead(relayUrl: string): Promise<NoteIndexHead>; // cheap poll: re-run recovery only when it moved
 
 // Delivery-registry sweep on its own, when you do not want a full history scan. It resolves to a
 // WRAPPER, not a bare array: read `.notes`. Its options name the mint list `mints`, not
@@ -638,12 +714,14 @@ wallet loses funds, so do not generalise from either half of it:
   it, every delivered note comes back `commitmentVerified: false`.
 - `recoveredDepositNotes` IS spendable: this wallet's own deposits, rebuilt from `nk` alone. ONLY
   deposits built with `createRecoverableDepositUtxo(...)` AND submitted with that same salt as
-  `TransactOptions.chainNoteSalt` land here. A deposit whose blinding came from raw randomness has
+  `TransactOptions.chainNoteSalt` land here. For a current note `keypair.privateKey` is `0n`, so
+  substitute your own `ownerUtxoKeypair` before spending. A deposit whose blinding came from raw randomness has
   nothing to rebuild and appears as a history row only.
-- NOTHING recovers a CHANGE note. `createUtxo` draws its blinding from `randomFieldElement()` and
-  writes it nowhere, and the chain note carries no blinding, so the change output of a send, a
-  partial withdraw or a swap is unrecoverable the moment it is dropped. Persist every output UTXO
-  with `serializeUtxo` (§5.2) as soon as the call returns. Scanning will not bring it back.
+- `recoveredChangeNotes` IS spendable: the change of a withdrawal or swap, whose blinding the spend
+  flows derive from `nk`. For a current note the returned `keypair.privateKey` is `0n`: substitute
+  your own `ownerUtxoKeypair` before spending. A note built with plain `createUtxo` is not covered
+  (random blinding, written nowhere), and a note from a pre-0.2.6 SDK is flagged `legacyExposed`.
+  Persist every output UTXO with `serializeUtxo` (§5.2) as soon as the call returns anyway.
 - A swap's `UtxoSwapResult.refund` (§5.3) is a separate secret again, and it is the only way to
   claim the principal back if the swap times out. It is the one item on this list with a key-only
   fallback: `discoverSwapRefunds`, below, when the swap was built with an `nk`. Persist it anyway.
@@ -652,7 +730,8 @@ wallet loses funds, so do not generalise from either half of it:
 never persisted: it rebuilds the stranded refund leaf from key material alone, with no relay, no
 local note store and no prior knowledge of the swap.
 
-```ts
+```ts nocheck
+// Signature listing: declarations only, not runnable code (the block has no function bodies).
 interface SwapRefundAuthorization { privateKey: bigint; publicKey: bigint; blinding: bigint; }
 
 interface RecoveredSwapRefund {
@@ -673,8 +752,10 @@ function discoverSwapRefunds(
   connection: CloakRpc,
   programId: Address,
   viewingKeyNk: Uint8Array,             // the SAME nk the swap was built with (§5.3)
-  options?: {
-    limit?: number;                     // program signatures to walk; omit or 0 for all history
+  options: {                            // REQUIRED
+    ownerUtxoKeypair: UtxoKeypair;      // real keypair for spendable results, or
+                                        // { privateKey: 0n, publicKey } for a view-only scan
+    limit?: number;                    // program signatures to walk; omit or 0 for all history
     untilSignature?: string;            // resume cursor from a previous run (exclusive)
     batchSize?: number;                 // getTransaction concurrency, default 50
     onStatus?: (status: string) => void;
@@ -684,7 +765,7 @@ function discoverSwapRefunds(
 
 // The pieces it is built from, for a caller walking its own transactions instead.
 function deriveSwapRefundAuthorization(
-  viewingKeyNk: Uint8Array, inputNullifier: Uint8Array | bigint,
+  viewingKeyNk: Uint8Array, inputNullifier: Uint8Array | bigint, ownerUtxoKeypair: UtxoKeypair,
 ): Promise<SwapRefundAuthorization>;
 function computeSwapRefundCommitment(
   amountAfterFee: bigint, refundPublicKey: bigint, refundBlinding: bigint,
@@ -705,7 +786,8 @@ strength of an empty return.
 
 ### 5.6 Viewing keys + compliance keys
 
-```ts
+```ts nocheck
+// Signature listing: declarations only, not runnable code (the block has no function bodies).
 interface ViewingKeyPair { privateKey: Uint8Array; publicKey: Uint8Array; }
 interface ExpandedSpendKey { ask: Uint8Array; nsk: Uint8Array; ovk: Uint8Array; }
 
@@ -731,7 +813,8 @@ const SIGN_IN_MESSAGE: string;
 
 ### 5.7 Metadata encryption
 
-```ts
+```ts nocheck
+// Signature listing: declarations only, not runnable code (the block has no function bodies).
 function encryptTransactionMetadata(
   metadata: TransactionMetadata,
   userViewKeyPublic: Uint8Array,
@@ -766,7 +849,8 @@ function decryptComplianceMetadataWithMasterKey(
 
 ### 5.8 Relay + merkle + on-chain proof helpers
 
-```ts
+```ts nocheck
+// Signature listing: declarations only, not runnable code (the block has no function bodies).
 // Every params shape below is declared INLINE on the class. There is no exported
 // `SubmitWithdrawParams` / `SubmitSwapParams` type name to import.
 class RelayService {
@@ -860,9 +944,10 @@ function computeProofFromChain(connection: CloakRpc, merkleTreePDA: Address, lea
 function computeProofForLatestDeposit(connection: CloakRpc, merkleTreePDA: Address): Promise<OnchainMerkleProof & { leafIndex: number }>;
 ```
 
-**Request authentication (all exported).** Standard integrations never call these: pass `signMessage` + `walletPublicKey` (browser) or `depositorKeypair` (server) in `TransactOptions` and the SDK signs for you. These exist for callers driving submission themselves.
+**Request authentication (all exported).** Standard integrations never call these: pass `signer` (browser) or `depositorKeypair` (server) in `TransactOptions` and the SDK signs for you. These exist for callers driving submission themselves.
 
-```ts
+```ts nocheck
+// Signature listing: declarations only, not runnable code (the block has no function bodies).
 // Endpoint pinning
 const CLOAK_PRODUCTION_RELAY_URL = "https://api.cloak.ag"; // a NAME, never a default
 const RELAY_ORIGIN_ALLOWLIST: readonly string[];           // origins THIS build may reach
@@ -877,7 +962,9 @@ const TRANSACT_AUTH_FIELDS: readonly ["encrypted_notes","max_fee","mint","proof_
 const TRANSACT_SWAP_AUTH_FIELDS: readonly ["close_timed_out","dexes","encrypted_notes","exclude_dexes","max_fee","min_output_amount","output_mint","proof_bytes","public_inputs","recipient","recipient_ata","refund_blinding","refund_pubkey","retry_request_id","risk_quote","route_retry_attempts","sender","slippage_bps","swap_max_retries"];
 
 interface RelayAuthPreimage { sender: string; auth_issued_at: string; auth_nonce: string; message: Uint8Array; }
-interface RelayAuthSigner  { walletPublicKey: Address; signMessage: (m: Uint8Array) => Promise<Uint8Array>; }
+type RelayAuthSigner = MessageSigner | TransactionSigner; // Kit signers. Build one from a wallet
+                                                           // adapter's signMessage with
+                                                           // messageSignerFromCallback(address, signMessage).
 
 function buildRelayAuthPreimage(
   endpoint: string,            // the exact path POSTed to, e.g. "/transact"
@@ -938,7 +1025,8 @@ that loaded them, so proof generation is not a public entry point at all. There 
 type. `transact` and the flows built on it load, verify and prove for you; the exports below exist
 for start-up diagnostics and for callers driving artifact loading themselves.
 
-```ts
+```ts nocheck
+// Signature listing: declarations only, not runnable code (the block has no function bodies).
 // Load artifacts and get back the very bytes whose digest was checked. Fails closed on any
 // mismatch, unreachable artifact, or environment that cannot produce bytes. `circuitsPath` is a
 // base directory or URL, honoured verbatim; pass `null` to report the "no base configured" state.
@@ -987,16 +1075,15 @@ The `transaction` circuit (used by `transact`, `transfer`, `partialWithdraw`, `f
 
 ### 5.10 Wallet helpers
 
-```ts
-function validateWalletConnected(wallet: WalletAdapter | Keypair): void;
-function getPublicKey(wallet: WalletAdapter | Keypair): Address;
-function sendTransaction(
-  tx: Transaction,
-  wallet: WalletAdapter | Keypair,
-  connection: CloakRpc,
-  options?: SendOptions,
-): Promise<string>;
-function signTransaction<T extends Transaction>(tx: T, wallet: WalletAdapter | Keypair): Promise<T>;
+```ts nocheck
+// Signature listing: declarations only, not runnable code (the block has no function bodies).
+function validateWalletConnected(signer: TransactionSigner | null | undefined): void;
+function getPublicKey(signer: TransactionSigner): Address;
+function sendTransaction(transaction: SignedTransaction, connection: CloakRpc, options?: SendOptions): Promise<string>;
+function signTransaction(message: BuiltTransactionMessage): Promise<SignedTransaction>; // a low-level helper, NOT a TransactOptions field
+function signerFromSecretKey(secretKey: Uint8Array): Promise<KeyPairSigner>;
+function signerFromWalletAdapter(adapter: LegacyWalletAdapter, options?: { web3?: Web3Module }): WalletSigner;
+function messageSignerFromCallback(address: Address, signMessage: (m: Uint8Array) => Promise<Uint8Array>): MessagePartialSigner;
 // keypairToAdapter was REMOVED in 0.2.5 -- pass a Kit `KeyPairSigner` (signerFromSecretKey) directly.
 ```
 
@@ -1013,7 +1100,8 @@ Fees are enforced on-chain by the program from each pool's `PoolConfig`; `transa
 config before building a fee-bearing proof, so you do not compute the fee yourself. The helpers
 below use the deployed SOL-pool defaults (`5_000_000` lamports fixed + `3 / 1000`):
 
-```ts
+```ts nocheck
+// Signature listing: declarations only, not runnable code (the block has no function bodies).
 const FIXED_FEE_LAMPORTS: number;      // 5_000_000
 const MIN_DEPOSIT_LAMPORTS: number;    // 10_000_000
 const VARIABLE_FEE_NUMERATOR: number;  // 3
@@ -1039,7 +1127,8 @@ Compute an SPL fee yourself, or read it back from the transaction result. Do not
 
 ### 5.12 Errors
 
-```ts
+```ts nocheck
+// Signature listing: declarations only, not runnable code (the block has no function bodies).
 class RootNotFoundError extends Error {}
 function isRootNotFoundError(error: unknown): boolean;
 
@@ -1052,7 +1141,8 @@ function parseRelayErrorResponse(text: string): { isRootNotFound: boolean; curre
 
 ### 5.13 Network + logging + storage + PDAs
 
-```ts
+```ts nocheck
+// Signature listing: declarations only, not runnable code (the block has no function bodies).
 function detectNetworkFromRpcUrl(rpcUrl?: string): Network;
 function getRpcUrlForNetwork(network: Network): string;
 function isValidRpcUrl(url: string): boolean;
@@ -1083,16 +1173,18 @@ class LocalStorageAdapter implements StorageAdapter {
   constructor(notesKey?: string, keysKey?: string); // defaults: "cloak_notes", "cloak_wallet_keys"
 }
 
-function getShieldPoolPDAs(programId?: Address, mint?: Address): {
+// The PDA helpers are ASYNC (Kit derives through WebCrypto): await them.
+function getShieldPoolPDAs(programId?: Address, mint?: Address): Promise<{
   pool: Address; merkleTree: Address; vaultAuthority: Address; treasury: Address;
-};
-function getNullifierPDA(poolPubkey: Address, nullifier: Uint8Array | Buffer, programId?: Address): [PublicKey, number];
-function getSwapStatePDA(poolPubkey: Address, nullifier: Uint8Array | Buffer, programId?: Address): [PublicKey, number];
+}>;
+function getNullifierPDA(poolPubkey: Address, nullifier: Uint8Array | Buffer, programId?: Address): Promise<[Address, number]>;
+function getSwapStatePDA(poolPubkey: Address, nullifier: Uint8Array | Buffer, programId?: Address): Promise<[Address, number]>;
 ```
 
 ### 5.14 Pending operations persistence (browser-only)
 
-```ts
+```ts nocheck
+// Signature listing: declarations only, not runnable code (the block has no function bodies).
 function savePendingDeposit(p: PendingDeposit): void;
 function loadPendingDeposits(): PendingDeposit[];
 function updatePendingDeposit(commitment: string, updates: Partial<PendingDeposit>): void;
@@ -1119,25 +1211,25 @@ function cleanupStalePendingOperations(maxAgeMs?: number): {
 ## 6. Copy-paste recipes (Node/server form by default, browser form on every flow)
 
 **Read this before copying any recipe in section 6.** Every recipe below is written in the
-NODE / SERVER form, and `depositorKeypair: sender` is the field that makes it one. It is NOT the
-browser form. A wallet adapter holds no secret key and can never produce a `Keypair`, so a recipe
-pasted verbatim into browser code is code that cannot run. Each recipe therefore carries its own
-browser block: never infer a recipe's signing shape from a neighbouring one.
+NODE / SERVER form, and `depositorKeypair: sender` (a `KeyPairSigner`) is the field that makes it
+one. It is NOT the browser form. A wallet adapter holds no secret key and can never produce a
+`KeyPairSigner`, so a recipe pasted verbatim into browser code is code that cannot run. Each recipe
+therefore carries its own browser block: never infer a recipe's signing shape from a neighbouring one.
 
-The swap is always the same one field:
+The swap is always the same one field, for every flow (deposit, send, withdraw, swap):
 
-- Relay-submitted flows (private send, withdraw, swap):
-  Node `depositorKeypair: sender` -> browser `signMessage: wallet.signMessage!` plus
-  `walletPublicKey: getPublicKey(wallet)`.
-- Deposit (`externalAmount > 0n`, signed by the user straight to chain):
-  Node `depositorKeypair: sender` -> browser `signTransaction: wallet.signTransaction!` plus
-  `signMessage: wallet.signMessage!` plus `depositorPublicKey: getPublicKey(wallet)`.
+- Node: `depositorKeypair: sender` plus `walletPublicKey: sender.address`.
+- Browser: `signer: signerFromWalletAdapter(wallet)`. There is no `signTransaction` option. The
+  signer signs a deposit transaction and authenticates relay-submitted requests, through the wallet's
+  `signMessage` when it has one.
 
-`signMessage` is required in the browser on EVERY flow, deposits included, because the mandatory
-viewing-key registration signs a challenge before anything else happens (invariant 7). Guard on
-`wallet.signMessage` being present before offering the action, and never mix a `depositorKeypair`
-with a different `walletPublicKey`: they are two names for the same end user, and splitting them
-throws.
+The mandatory viewing-key registration signs a challenge before anything else happens (invariant 7),
+on deposits too, so a wallet without any message-signing path cannot use the flow. Never mix a
+`depositorKeypair` with a different `walletPublicKey`: they are two names for the same end user, and
+splitting them throws.
+
+Every recipe also passes `ownerUtxoKeypair` and `chainNoteViewingKeyNk: nk` (§1): required on every
+spend, and on deposits the owner of the new note.
 
 `relayUrl` has no default and is REQUIRED on every recipe here, deposits included. Omit it and the
 call throws `Viewing key registration is mandatory: relayUrl is required.` before any network call.
@@ -1146,22 +1238,47 @@ Pass the allowlisted origin by name (§1); never type a host.
 All recipes assume you created:
 
 ```ts
-import { CLOAK_PROGRAM_ID, CLOAK_PRODUCTION_RELAY_URL, getPublicKey } from "@cloak.dev/sdk";
-import { createCloakRpc } from "@cloak.dev/sdk";
+import {
+  CLOAK_PROGRAM_ID,
+  CLOAK_PRODUCTION_RELAY_URL,
+  createCloakRpc,
+  signerFromWalletAdapter,
+  type KeyPairSigner,
+  type LegacyWalletAdapter,
+  type SpendOptions,
+  type UtxoKeypair,
+} from "@cloak.dev/sdk";
 
 const connection = createCloakRpc(process.env.SOLANA_RPC_URL!);
 const programId  = CLOAK_PROGRAM_ID;
 const relayUrl   = CLOAK_PRODUCTION_RELAY_URL;
 
-// Node / server: `sender` is a Keypair.
+// ownerUtxoKeypair and nk come from the seed-derived shape in §1.
+declare const ownerUtxoKeypair: UtxoKeypair;
+declare const nk: Uint8Array;
+// Node / server: `sender` is a KeyPairSigner (signerFromSecretKey).
+declare const sender: KeyPairSigner;
 // Browser: `wallet` is the object from useWallet(); see §4b.
+declare const wallet: LegacyWalletAdapter;
+
+// The two option objects the recipes below spread in or refer to as `nodeOptions` / `browserOptions`.
+export const nodeOptions: SpendOptions = {
+  connection, programId, relayUrl,
+  depositorKeypair: sender, walletPublicKey: sender.address,
+  ownerUtxoKeypair, chainNoteViewingKeyNk: nk,
+};
+export const browserOptions: SpendOptions = {
+  connection, programId, relayUrl,
+  signer: signerFromWalletAdapter(wallet),
+  ownerUtxoKeypair, chainNoteViewingKeyNk: nk,
+};
 
 // YOUR durable note store. Every recipe below writes through it; the SDK ships nothing that plays
 // this role for `Utxo` bytes (`StorageAdapter` is a different boundary, §5.13). Back it with
 // something that survives a process restart, and write BEFORE reporting success.
-declare function saveNoteBytes(bytes: Uint8Array): Promise<void>;
-declare function saveSwapRefund(refund: {
-  privateKey: string; publicKey: string; blinding: string; derivedFromNk: boolean;
+export declare function saveNoteBytes(bytes: Uint8Array): Promise<void>;
+export declare function saveSwapRefund(refund: {
+  publicKey: string; blinding: string; derivedFromNk: boolean;
 }): Promise<void>;
 ```
 
@@ -1169,30 +1286,37 @@ declare function saveSwapRefund(refund: {
 
 ```ts
 import {
-  NATIVE_SOL_MINT, createUtxo, createZeroUtxo, generateUtxoKeypair,
-  getNkFromUtxoPrivateKey, serializeUtxo, transact,
+  NATIVE_SOL_MINT, createRecoverableDepositUtxo, createZeroUtxo, serializeUtxo, transact,
+  type SpendOptions, type UtxoKeypair,
 } from "@cloak.dev/sdk";
 
-const amount = 1_000_000_000n; // 1 SOL
+declare const nodeOptions: SpendOptions;          // see the setup block above
+declare const ownerUtxoKeypair: UtxoKeypair;
+declare const nk: Uint8Array;
+declare function saveNoteBytes(bytes: Uint8Array): Promise<void>;
 
-const utxoKeypair = await generateUtxoKeypair();
-const depositUtxo = await createUtxo(amount, utxoKeypair, NATIVE_SOL_MINT);
-const padding     = await createZeroUtxo();
-const nk          = getNkFromUtxoPrivateKey(utxoKeypair.privateKey);
+const amount = 1_000_000_000n; // 1 SOL (the minimum deposit is 0.01 SOL)
+
+// A recoverable deposit: owned by ownerUtxoKeypair, blinding derived from nk and a salt that the
+// chain note publishes, so a scan holding nk can rebuild the note (§5.5).
+const { utxo: depositUtxo, noteSalt } = await createRecoverableDepositUtxo({
+  amount,
+  viewingKeyNk: nk,
+  ownerUtxoKeypair,
+  mintAddress: NATIVE_SOL_MINT,
+});
+const padding = await createZeroUtxo();
 
 const depositResult = await transact(
   {
     inputUtxos:   [padding],
     outputUtxos:  [depositUtxo],
     externalAmount: amount,           // > 0 => deposit
-    depositor:    sender.publicKey,
+    depositor:    nodeOptions.depositorKeypair!.address,
   },
   {
-    connection,
-    programId,
-    relayUrl,                         // required even here; the viewing-key gate runs first
-    depositorKeypair: sender,         // NODE ONLY
-    chainNoteViewingKeyNk: nk,
+    ...nodeOptions,                   // relayUrl is required even here; the viewing-key gate runs first
+    chainNoteSalt: noteSalt,          // the SAME salt, or the deposit stays undiscoverable
     onProgress: (s) => console.log("deposit:", s),
     onProofProgress: (p) => console.log("proof", p),
   },
@@ -1201,57 +1325,60 @@ const depositResult = await transact(
 console.log("tx", depositResult.signature);
 console.log("leaf_index", depositResult.outputUtxos[0].index);
 
-// This note was built with createUtxo, so its blinding is raw randomness and no scan rebuilds it.
-// The returned UTXO already carries its leaf index; persist it as it stands.
+// The returned UTXO already carries its leaf index. Persisting it stays the fast path.
 await saveNoteBytes(serializeUtxo(depositResult.outputUtxos[0]));
 ```
 
 **Browser form of this same deposit.** A deposit is signed by the user's wallet and submitted
-straight to chain, so it is the one flow that needs `signTransaction` as well as `signMessage`:
+straight to chain, through `signer`:
 
 ```ts
-import { getPublicKey, serializeUtxo, transact } from "@cloak.dev/sdk";
+import {
+  NATIVE_SOL_MINT, createRecoverableDepositUtxo, createZeroUtxo, serializeUtxo, transact,
+  type LegacyWalletAdapter, type SpendOptions, type UtxoKeypair,
+} from "@cloak.dev/sdk";
+
+declare const browserOptions: SpendOptions;       // signer = signerFromWalletAdapter(wallet), see above
+declare const wallet: LegacyWalletAdapter;
+declare const ownerUtxoKeypair: UtxoKeypair;
+declare const nk: Uint8Array;
+declare function saveNoteBytes(bytes: Uint8Array): Promise<void>;
+
+const amount = 1_000_000_000n;
+const { utxo: depositUtxo, noteSalt } = await createRecoverableDepositUtxo({
+  amount, viewingKeyNk: nk, ownerUtxoKeypair, mintAddress: NATIVE_SOL_MINT,
+});
 
 const depositResult = await transact(
   {
-    inputUtxos:   [padding],
+    inputUtxos:   [await createZeroUtxo()],
     outputUtxos:  [depositUtxo],
     externalAmount: amount,
-    depositor:    getPublicKey(wallet),
+    depositor:    browserOptions.signer!.address,   // the wallet's own address
   },
-  {
-    connection,
-    programId,
-    relayUrl,
-    signTransaction: wallet.signTransaction!,   // signs the deposit transaction
-    signMessage: wallet.signMessage!,           // signs the viewing-key challenge
-    depositorPublicKey: getPublicKey(wallet),
-    chainNoteViewingKeyNk: nk,
-  },
+  { ...browserOptions, chainNoteSalt: noteSalt },
 );
 
 await saveNoteBytes(serializeUtxo(depositResult.outputUtxos[0]));   // same rule here.
 ```
 
-To make this deposit recoverable from `nk` alone later, build the output with
-`createRecoverableDepositUtxo` and pass the salt it returns as `chainNoteSalt` (§5.5). Both forms
-above draw a random salt, which leaves the note discoverable only from your own storage.
+A note built with plain `createUtxo` draws a random blinding that is written nowhere, so no scan can
+rebuild it: use that only for throwaway tests.
 
 ### 6.2 Full withdraw (spend the entire shielded balance)
 
 ```ts
-import { fullWithdraw } from "@cloak.dev/sdk";
+import { fullWithdraw, type Address, type SpendOptions, type TransactResult } from "@cloak.dev/sdk";
+
+declare const nodeOptions: SpendOptions;          // see the setup block above
+declare const depositResult: TransactResult;
+declare const recipient: Address;                 // the destination wallet
 
 const withdrawResult = await fullWithdraw(
   [depositResult.outputUtxos[0]],
-  recipient.publicKey,
+  recipient,
   {
-    connection,
-    programId,
-    relayUrl,
-    depositorKeypair: sender,          // NODE ONLY; also signs the viewing-key challenge
-    walletPublicKey: sender.publicKey,
-    chainNoteViewingKeyNk: nk,
+    ...nodeOptions,                    // depositorKeypair also signs the viewing-key challenge
     cachedMerkleTree: depositResult.merkleTree,
     onProgress: (s) => console.log("withdraw:", s),
   },
@@ -1259,25 +1386,20 @@ const withdrawResult = await fullWithdraw(
 console.log("withdraw sig", withdrawResult.signature);
 ```
 
-**Browser form of this same withdrawal.** A withdrawal is relay-submitted: no `Keypair`, no
-`signTransaction`, and the wallet prompts EXACTLY ONCE no matter how many times the network is
-retried.
+**Browser form of this same withdrawal.** A withdrawal is relay-submitted: no `KeyPairSigner`, and
+the wallet prompts EXACTLY ONCE no matter how many times the network is retried.
 
 ```ts
-import { fullWithdraw, getPublicKey } from "@cloak.dev/sdk";
+import { fullWithdraw, type Address, type SpendOptions, type TransactResult } from "@cloak.dev/sdk";
+
+declare const browserOptions: SpendOptions;       // signer = signerFromWalletAdapter(wallet)
+declare const depositResult: TransactResult;
+declare const recipient: Address;
 
 const withdrawResult = await fullWithdraw(
   [depositResult.outputUtxos[0]],
-  recipientPublicKey,
-  {
-    connection,
-    programId,
-    relayUrl,
-    signMessage: wallet.signMessage!,          // authenticates the request; prompts once
-    walletPublicKey: getPublicKey(wallet),
-    chainNoteViewingKeyNk: nk,
-    cachedMerkleTree: depositResult.merkleTree,
-  },
+  recipient,
+  { ...browserOptions, cachedMerkleTree: depositResult.merkleTree }, // prompts once
 );
 ```
 
@@ -1286,99 +1408,87 @@ open longer than that, map the rejection through `explainRelayAuthRejection` and
 
 **Both forms above pass ONE input note, which is the only shape with nothing to persist.** Passing
 three or more inputs makes `fullWithdraw` consolidate them on chain first, two at a time, and a
-throw partway through strands the merged balance with no result to save (§5.2). Consolidate
+throw partway through leaves the merged note with no result to save, recoverable only by a scan (§5.2). Consolidate
 deliberately with your own `transact` calls, persisting each merged output, or accept the risk
 knowingly and watch `onProgress` for `Consolidating notes (n remaining)...`.
 
 ### 6.3 Partial withdraw (keep a shielded change UTXO)
 
 ```ts
-import { partialWithdraw, serializeUtxo } from "@cloak.dev/sdk";
+import { partialWithdraw, serializeUtxo, type Address, type SpendOptions, type TransactResult } from "@cloak.dev/sdk";
+
+declare const nodeOptions: SpendOptions;          // see the setup block above
+declare const depositResult: TransactResult;
+declare const recipient: Address;
+declare function saveNoteBytes(bytes: Uint8Array): Promise<void>;
 
 const withdrawAmount = 500_000_000n; // 0.5 SOL
 
 const result = await partialWithdraw(
   [depositResult.outputUtxos[0]],
-  recipient.publicKey,
+  recipient,
   withdrawAmount,
-  {
-    connection,
-    programId,
-    relayUrl,
-    depositorKeypair: sender,          // NODE ONLY
-    walletPublicKey: sender.publicKey,
-    chainNoteViewingKeyNk: nk,
-    cachedMerkleTree: depositResult.merkleTree,
-  },
+  { ...nodeOptions, cachedMerkleTree: depositResult.merkleTree },
 );
 
-// result.outputUtxos[0] is the new shielded change UTXO (remainder), and this write is the only
-// thing that keeps it spendable. Do it before you report success.
+// result.outputUtxos[0] is the new shielded change UTXO (remainder), owned by ownerUtxoKeypair.
+// Persist it before you report success.
 await saveNoteBytes(serializeUtxo(result.outputUtxos[0]));
 ```
 
-**Browser form of this same partial withdrawal.** Relay-submitted, so the keypair is replaced, not
-supplemented:
+**Browser form of this same partial withdrawal.** Relay-submitted, so `signer` replaces the
+keypair:
 
 ```ts
-import { getPublicKey, partialWithdraw, serializeUtxo } from "@cloak.dev/sdk";
+import { partialWithdraw, serializeUtxo, type Address, type SpendOptions, type TransactResult } from "@cloak.dev/sdk";
+
+declare const browserOptions: SpendOptions;       // signer = signerFromWalletAdapter(wallet)
+declare const depositResult: TransactResult;
+declare const recipient: Address;
+declare function saveNoteBytes(bytes: Uint8Array): Promise<void>;
 
 const result = await partialWithdraw(
   [depositResult.outputUtxos[0]],
-  recipientPublicKey,
-  withdrawAmount,
-  {
-    connection,
-    programId,
-    relayUrl,
-    signMessage: wallet.signMessage!,
-    walletPublicKey: getPublicKey(wallet),
-    chainNoteViewingKeyNk: nk,
-    cachedMerkleTree: depositResult.merkleTree,
-  },
+  recipient,
+  500_000_000n,
+  { ...browserOptions, cachedMerkleTree: depositResult.merkleTree },
 );
 
 await saveNoteBytes(serializeUtxo(result.outputUtxos[0]));   // the change note. Same rule here.
 ```
 
-**Persist `result.outputUtxos[0]` before you do anything else, in either form.** A change note is
-the one thing NOTHING recovers: its blinding comes from `randomFieldElement()` and is written
-nowhere on chain, so scanning will never bring it back (§5.5). Store it with `serializeUtxo`
-(§5.2) the moment the call returns.
+**Persist `result.outputUtxos[0]` before you do anything else, in either form.** The change note is
+owned by `ownerUtxoKeypair` and its blinding is derived from `nk` (`createRecoverableChangeUtxo`), so
+a scan holding `nk` can rebuild it (`recoveredChangeNotes`, §5.5), but a stored copy is the fast path
+and does not depend on the relay or a scan. Store it with `serializeUtxo` (§5.2) the moment the call
+returns.
 
 ### 6.4 Shield-to-shield transfer / private send (publicAmount = 0)
 
 Relay-submitted, so this recipe has a browser form and the block below is NOT it. In the browser
-this flow uses `signMessage` + `walletPublicKey`; there is no `depositorKeypair` in browser code.
+this flow uses `signer`; there is no `depositorKeypair` in browser code.
 
 ```ts
-import { NATIVE_SOL_MINT, createUtxo, serializeUtxo, transact } from "@cloak.dev/sdk";
+import { transfer, serializeUtxo, type SpendOptions, type Utxo } from "@cloak.dev/sdk";
 
-const transferAmount = 1_000_000_000n;
-const changeAmount   = senderShieldedUtxo.amount - transferAmount;
+declare const nodeOptions: SpendOptions;          // see the setup block above
+declare const senderShieldedUtxo: Utxo;
+declare const recipientCloakPubkey: bigint;       // the recipient's UTXO public key
+declare const recipientViewingPublicKey: Uint8Array; // deriveViewingKeyFromNk(recipientNk).publicKey
+declare function saveNoteBytes(bytes: Uint8Array): Promise<void>;
 
-const recipientOutput = await createUtxo(transferAmount, recipientUtxoKeypair, NATIVE_SOL_MINT);
-const changeOutput    = await createUtxo(changeAmount,   senderUtxoKeypair,    NATIVE_SOL_MINT);
-
-const result = await transact(
+// transfer builds both outputs: the recipient's note (output 0) and your change (output 1).
+const result = await transfer(
+  [senderShieldedUtxo],
+  recipientCloakPubkey,
+  1_000_000_000n,
   {
-    inputUtxos:  [senderShieldedUtxo],
-    outputUtxos: [recipientOutput, changeOutput],
-    externalAmount: 0n,    // shield-to-shield
-  },
-  {
-    connection, programId,
-    relayUrl,
-    depositorKeypair: sender,          // NODE ONLY
-    walletPublicKey: sender.publicKey,
-    chainNoteViewingKeyNk: senderNk,
+    ...nodeOptions,
     recipientViewingPublicKey,         // see "make the note discoverable" below
-    cachedMerkleTree: senderCachedTree,
   },
 );
 
-// outputUtxos[1] is YOUR change (outputs were [recipientOutput, changeOutput]). Nothing on chain
-// carries its blinding, so this write is the only thing that keeps it spendable.
+// outputUtxos[1] is YOUR change, owned by ownerUtxoKeypair. Persist it before reporting success.
 await saveNoteBytes(serializeUtxo(result.outputUtxos[1]));
 ```
 
@@ -1386,32 +1496,29 @@ await saveNoteBytes(serializeUtxo(result.outputUtxos[1]));
 prompts EXACTLY ONCE; a send never re-prompts on retry.
 
 ```ts
-import { getPublicKey, serializeUtxo, transact } from "@cloak.dev/sdk";
+import { transfer, serializeUtxo, type SpendOptions, type Utxo } from "@cloak.dev/sdk";
 
-const result = await transact(
-  {
-    inputUtxos:  [senderShieldedUtxo],
-    outputUtxos: [recipientOutput, changeOutput],
-    externalAmount: 0n,
-  },
-  {
-    connection,
-    programId,
-    relayUrl,
-    signMessage: wallet.signMessage!,          // authenticates /transact; prompts once
-    walletPublicKey: getPublicKey(wallet),
-    chainNoteViewingKeyNk: senderNk,
-    recipientViewingPublicKey,
-    cachedMerkleTree: senderCachedTree,
-  },
+declare const browserOptions: SpendOptions;       // signer = signerFromWalletAdapter(wallet)
+declare const senderShieldedUtxo: Utxo;
+declare const recipientCloakPubkey: bigint;
+declare const recipientViewingPublicKey: Uint8Array;
+declare function saveNoteBytes(bytes: Uint8Array): Promise<void>;
+
+const result = await transfer(
+  [senderShieldedUtxo],
+  recipientCloakPubkey,
+  1_000_000_000n,
+  { ...browserOptions, recipientViewingPublicKey },  // authenticates /transact; prompts once
 );
 
 await saveNoteBytes(serializeUtxo(result.outputUtxos[1]));   // your change note. Same rule here.
 ```
 
-`transfer(inputUtxos, recipientPubkey, amount, options)` (§5.3) wraps the same flow when you have
-the recipient's UTXO public key as a `bigint` and want the SDK to build both outputs. Its
-`options` argument is the identical `TransactOptions`, so the same Node-vs-browser swap applies.
+`transfer(inputUtxos, recipientPubkey, amount, options)` (§5.3) wraps `transact` with
+`externalAmount: 0n`. It takes `SpendOptions`, so the same Node-vs-browser swap applies. It spends
+at most two inputs. When none of the inputs is owned by `ownerUtxoKeypair` (for example a note
+received on a per-request key), it first sweeps them under the wallet key with one extra
+transaction (`sweepToWalletKey`).
 
 **Make the note discoverable, or the recipient cannot spend it.** Pass
 `recipientViewingPublicKey: deriveViewingKeyFromNk(recipientNk).publicKey` (hex or bytes) in
@@ -1420,82 +1527,90 @@ the recipient's UTXO public key as a `bigint` and want the SDK to build both out
 `ScanResult.deliveredNotes` (§5.5). Leave it out and the send still succeeds, but the recipient has
 no way to find the note from chain and it must be handed over out of band.
 
-And persist `changeOutput` yourself, in either form. Nothing recovers a change note (§5.5).
+And persist your change note (`result.outputUtxos[1]`) yourself, in either form (§5.5).
 
 ### 6.5 Fast send (deposit + full withdraw in one user action)
 
-This is the ONE shape in section 6 that needs no note storage, and only because it is written the
-way it is: exactly one deposit note goes in, `fullWithdraw` spends it in the same process, and a
-one-input full withdrawal leaves no change. Every other recipe here writes a note before it reports
-success. Do NOT generalise the recipe to a wallet's whole note set: pass three or more inputs and
-`fullWithdraw` consolidates them on chain first, and a throw partway through strands the merged
-balance with nothing to persist (§5.2). This shape stays storage-free only at one or two inputs.
+This is the one shape in section 6 that leaves nothing to persist once it finishes: exactly one
+deposit note goes in, `fullWithdraw` spends it in the same process, and a one-input full withdrawal
+leaves no change. It still persists the deposit note between the two legs, because a failure there
+would otherwise leave funds shielded with no stored copy. Do NOT generalise the recipe to a wallet's
+whole note set: pass three or more inputs and `fullWithdraw` consolidates them on chain first, and a
+throw partway through leaves the merged note recoverable only by a scan (§5.2).
 
 ```ts
 import {
-  NATIVE_SOL_MINT, createUtxo, createZeroUtxo, fullWithdraw,
-  generateUtxoKeypair, getNkFromUtxoPrivateKey, serializeUtxo, transact,
+  NATIVE_SOL_MINT, createRecoverableDepositUtxo, createZeroUtxo, fullWithdraw, serializeUtxo, transact,
+  type Address, type SpendOptions, type UtxoKeypair,
 } from "@cloak.dev/sdk";
 
+declare const nodeOptions: SpendOptions;          // see the setup block above
+declare const ownerUtxoKeypair: UtxoKeypair;
+declare const nk: Uint8Array;
+declare const recipient: Address;
+declare function saveNoteBytes(bytes: Uint8Array): Promise<void>;
+
 const amount = 1_000_000_000n;
-const kp = await generateUtxoKeypair();
-const utxo = await createUtxo(amount, kp, NATIVE_SOL_MINT);
-const nk = getNkFromUtxoPrivateKey(kp.privateKey);
+const { utxo, noteSalt } = await createRecoverableDepositUtxo({
+  amount, viewingKeyNk: nk, ownerUtxoKeypair, mintAddress: NATIVE_SOL_MINT,
+});
 
 const dep = await transact(
-  { inputUtxos: [await createZeroUtxo()], outputUtxos: [utxo], externalAmount: amount, depositor: sender.publicKey },
-  { connection, programId, relayUrl, depositorKeypair: sender, chainNoteViewingKeyNk: nk },  // NODE ONLY
+  {
+    inputUtxos: [await createZeroUtxo()], outputUtxos: [utxo], externalAmount: amount,
+    depositor: nodeOptions.depositorKeypair!.address,
+  },
+  { ...nodeOptions, chainNoteSalt: noteSalt },
 );
 
 // Persist before the withdraw. transact returns only after the deposit is confirmed
-// on chain, so a throwing fullWithdraw exits with SOL shielded and the blinding gone.
+// on chain, so a throwing fullWithdraw exits with SOL shielded and no stored copy.
 // Same rule as the browser form below; the process being short-lived is not a defence.
 await saveNoteBytes(serializeUtxo(dep.outputUtxos[0]));
 
-const wd = await fullWithdraw([dep.outputUtxos[0]], recipient.publicKey, {
-  connection, programId, relayUrl,
-  depositorKeypair: sender,          // NODE ONLY
-  walletPublicKey: sender.publicKey,
-  chainNoteViewingKeyNk: nk,
+const wd = await fullWithdraw([dep.outputUtxos[0]], recipient, {
+  ...nodeOptions,
   cachedMerkleTree: dep.merkleTree,
 });
 ```
 
-**Browser form.** Two different swaps in one flow, because the two legs submit differently: the
-deposit is signed to chain, the withdraw goes through the relay. That is two wallet prompts for the
-deposit (`signTransaction` for the transaction, `signMessage` for the viewing-key challenge, the
-latter only on first use per wallet) and exactly one more for the withdraw.
+**Browser form.** One `signer` serves both legs, but they submit differently: the deposit is signed
+to chain, the withdraw goes through the relay. That is wallet prompts for the deposit (the
+transaction, plus the viewing-key challenge, the latter only on first use per wallet) and exactly
+one more for the withdraw.
 
 ```ts
 import {
-  createZeroUtxo,
-  fullWithdraw,
-  getPublicKey,
-  serializeUtxo,
-  transact,
+  NATIVE_SOL_MINT, createRecoverableDepositUtxo, createZeroUtxo, fullWithdraw, serializeUtxo, transact,
+  type Address, type SpendOptions, type UtxoKeypair,
 } from "@cloak.dev/sdk";
 
+declare const browserOptions: SpendOptions;       // signer = signerFromWalletAdapter(wallet)
+declare const ownerUtxoKeypair: UtxoKeypair;
+declare const nk: Uint8Array;
+declare const recipient: Address;
+declare function saveNoteBytes(bytes: Uint8Array): Promise<void>;
+
+const amount = 1_000_000_000n;
+const { utxo, noteSalt } = await createRecoverableDepositUtxo({
+  amount, viewingKeyNk: nk, ownerUtxoKeypair, mintAddress: NATIVE_SOL_MINT,
+});
+
 const dep = await transact(
-  { inputUtxos: [await createZeroUtxo()], outputUtxos: [utxo], externalAmount: amount, depositor: getPublicKey(wallet) },
   {
-    connection, programId, relayUrl,
-    signTransaction: wallet.signTransaction!,
-    signMessage: wallet.signMessage!,
-    depositorPublicKey: getPublicKey(wallet),
-    chainNoteViewingKeyNk: nk,
+    inputUtxos: [await createZeroUtxo()], outputUtxos: [utxo], externalAmount: amount,
+    depositor: browserOptions.signer!.address,
   },
+  { ...browserOptions, chainNoteSalt: noteSalt },
 );
 
 // Persist BEFORE the second leg. In a browser the process is a tab, and the withdraw
-// below opens a wallet dialog: if the tab closes there, this note is the only claim on
+// below opens a wallet dialog: if the tab closes there, this note is the only stored claim on
 // the funds already in the pool. saveNoteBytes is your storage, not an SDK export.
 await saveNoteBytes(serializeUtxo(dep.outputUtxos[0]));
 
-const wd = await fullWithdraw([dep.outputUtxos[0]], recipientPublicKey, {
-  connection, programId, relayUrl,
-  signMessage: wallet.signMessage!,
-  walletPublicKey: getPublicKey(wallet),
-  chainNoteViewingKeyNk: nk,
+const wd = await fullWithdraw([dep.outputUtxos[0]], recipient, {
+  ...browserOptions,
   cachedMerkleTree: dep.merkleTree,
 });
 ```
@@ -1503,10 +1618,18 @@ const wd = await fullWithdraw([dep.outputUtxos[0]], recipientPublicKey, {
 ### 6.6 Swap SOL -> SPL (with shielded change)
 
 ```ts
-import { NATIVE_SOL_MINT, serializeUtxo, swapWithChange } from "@cloak.dev/sdk";
-import { address } from "@cloak.dev/sdk";
+import {
+  NATIVE_SOL_MINT, address, serializeUtxo, swapWithChange,
+  type KeyPairSigner, type SpendOptions, type TransactResult,
+} from "@cloak.dev/sdk";
 import { findAssociatedTokenPda, TOKEN_PROGRAM_ADDRESS } from "@solana-program/token";
 import { createJupiterApiClient } from "@jup-ag/api";
+
+declare const nodeOptions: SpendOptions;          // see the setup block above
+declare const sender: KeyPairSigner;
+declare const depositResult: TransactResult;
+declare function saveNoteBytes(bytes: Uint8Array): Promise<void>;
+declare function saveSwapRefund(refund: { publicKey: string; blinding: string; derivedFromNk: boolean }): Promise<void>;
 
 const swapAmount = 250_000_000n;                       // 0.25 SOL
 const outputMint = address("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"); // USDC
@@ -1519,8 +1642,8 @@ const [recipientAta] = await findAssociatedTokenPda({
 // Quote (Jupiter) -> pick minOut:
 const jup = createJupiterApiClient();
 const quote = await jup.quoteGet({
-  inputMint: NATIVE_SOL_MINT.toBase58(),   // swap input is wSOL-locked
-  outputMint: outputMint.toBase58(),
+  inputMint: NATIVE_SOL_MINT,   // swap input is wSOL-locked
+  outputMint,
   amount: Number(swapAmount),
   slippageBps: 1500,
 });
@@ -1533,17 +1656,13 @@ const swapResult = await swapWithChange(
   recipientAta,
   minOut,
   {
-    connection, programId,
-    relayUrl,
-    depositorKeypair: sender,          // NODE ONLY
-    walletPublicKey: sender.publicKey,
-    chainNoteViewingKeyNk: nk,
+    ...nodeOptions,
     cachedMerkleTree: depositResult.merkleTree,
     swapSlippageBps: 1500,
     swapStatusMaxAttempts: 60,
     swapStatusDelayMs: 2000,
   },
-  sender.publicKey,            // so the SDK can create ATA if missing
+  sender.address,              // so the SDK can create ATA if missing
 );
 
 console.log("swap sig", swapResult.signature);
@@ -1551,7 +1670,7 @@ console.log("swapStatePda", swapResult.swapStatePda);
 
 // TWO pieces of the user's own money exist only in that returned object. Write both now.
 await saveNoteBytes(serializeUtxo(swapResult.outputUtxos[0]));  // shielded change note
-await saveSwapRefund(swapResult.refund);                        // timeout-refund secret
+await saveSwapRefund(swapResult.refund);                        // timeout-refund note
 ```
 
 **Browser form of this same swap.** Relay-submitted, so the same one-field swap, with one extra
@@ -1560,61 +1679,71 @@ route can be re-quoted and re-signed. `maxWalletApprovals` caps how many times (
 at 1). Sends and withdrawals never do this.
 
 ```ts
-import { getPublicKey, serializeUtxo, swapWithChange } from "@cloak.dev/sdk";
+import {
+  serializeUtxo, swapWithChange,
+  type Address, type SpendOptions, type TransactResult,
+} from "@cloak.dev/sdk";
+
+declare const browserOptions: SpendOptions;       // signer = signerFromWalletAdapter(wallet)
+declare const depositResult: TransactResult;
+declare const outputMint: Address;
+declare const recipientAta: Address;
+declare const walletAddress: Address;
+declare const minOut: bigint;
+declare function saveNoteBytes(bytes: Uint8Array): Promise<void>;
+declare function saveSwapRefund(refund: { publicKey: string; blinding: string; derivedFromNk: boolean }): Promise<void>;
 
 const swapResult = await swapWithChange(
   depositResult.outputUtxos,
-  swapAmount,
+  250_000_000n,
   outputMint,
   recipientAta,
   minOut,
   {
-    connection, programId, relayUrl,
-    signMessage: wallet.signMessage!,
-    walletPublicKey: getPublicKey(wallet),
-    chainNoteViewingKeyNk: nk,
+    ...browserOptions,
     cachedMerkleTree: depositResult.merkleTree,
     swapSlippageBps: 1500,
     maxWalletApprovals: 5,     // swaps only; tell the user they may be asked more than once
   },
-  getPublicKey(wallet),        // so the SDK can create the ATA if missing
+  walletAddress,               // so the SDK can create the ATA if missing
 );
 
 await saveNoteBytes(serializeUtxo(swapResult.outputUtxos[0]));  // change note
-await saveSwapRefund(swapResult.refund);                        // timeout-refund secret
+await saveSwapRefund(swapResult.refund);                        // timeout-refund note
 ```
 
 **Persist `swapResult.outputUtxos[0]` AND `swapResult.refund` before you do anything else, in
-either form.** A swap hands back two pieces of the user's own money that exist only in that returned
-object. `outputUtxos[0]` is the shielded change note whenever the inputs did not sum to exactly
-`swapAmount`, which is the case in both recipes above, and a change note is the one thing NOTHING
-recovers: its blinding comes from
-`randomFieldElement()` and is written nowhere on chain, so scanning will never bring it back (§5.5).
-The `refund` object is the secret that claims the principal back if the swap times out before it
-executes (§5.3). Store the change note with `serializeUtxo` (§5.2) and the `refund` object beside
-it, the moment the call returns.
+either form.** A swap hands back two pieces of the user's own money. `outputUtxos[0]` is the
+shielded change note whenever the inputs did not sum to exactly `swapAmount`, which is the case in
+both recipes above. The `refund` object describes the note that returns the principal if the swap
+times out before it executes (§5.3). Store the change note with `serializeUtxo` (§5.2) and the
+`refund` object beside it, the moment the call returns.
 
-Both recipes above pass `chainNoteViewingKeyNk: nk`, so the refund secret is derived from that `nk`
-and `discoverSwapRefunds` (§5.5) can rebuild it later from key material alone. That is a backstop,
-not a substitute for persisting it.
+Both recipes above pass `chainNoteViewingKeyNk: nk` and `ownerUtxoKeypair`, so the change and refund
+blindings are derived from that `nk`: a scan (`recoveredChangeNotes`) and `discoverSwapRefunds`
+(§5.5) can rebuild them later from key material alone. That is a backstop, not a substitute for
+persisting them.
 
 ### 6.7 Compliance history scan + CSV export
 
 ```ts
 import {
   scanTransactions, toComplianceReport, formatComplianceCsv,
-  getNkFromUtxoPrivateKey,
+  type CloakRpc, type KeyPairSigner, type Address,
 } from "@cloak.dev/sdk";
 import { writeFile } from "node:fs/promises";
 
-const nk = getNkFromUtxoPrivateKey(utxoKeypair.privateKey);
+declare const connection: CloakRpc;
+declare const programId: Address;
+declare const nk: Uint8Array;                     // from the seed-derived shape in §1
+declare const sender: KeyPairSigner;
 
 const scan = await scanTransactions({
   connection,
   programId,
   viewingKeyNk: nk,
   batchSize: 50,
-  walletPublicKey: sender.publicKey.toBase58(),
+  walletPublicKey: sender.address,
   onStatus: (s) => console.log("scan:", s),
   onProgress: (done, total) => console.log(`scan progress ${done}/${total}`),
 });
@@ -1628,7 +1757,12 @@ await writeFile("cloak-history.csv", csv, "utf8");
 Incremental re-scan (only fetch new transactions since the last run):
 
 ```ts
-import { scanTransactions } from "@cloak.dev/sdk";
+import { scanTransactions, type CloakRpc, type Address, type ScanResult } from "@cloak.dev/sdk";
+
+declare const connection: CloakRpc;
+declare const programId: Address;
+declare const nk: Uint8Array;
+declare const scan: ScanResult;                   // the previous scan
 
 const delta = await scanTransactions({
   connection,
@@ -1671,16 +1805,23 @@ The program computes and deducts the fee; these numbers are for display. Never d
 import {
   encryptTransactionMetadata, decryptTransactionMetadata,
   deriveViewingKeyFromUtxoPrivateKey,
+  type Address, type UtxoKeypair,
 } from "@cloak.dev/sdk";
 
-const vk = deriveViewingKeyFromUtxoPrivateKey(utxoKeypair.privateKey);
-const compliancePublic = await fetchCompliancePublic(); // your own source of truth
+declare const ownerUtxoKeypair: UtxoKeypair;      // from the seed-derived shape in §1
+declare const fetchCompliancePublic: () => Promise<Uint8Array>; // your own source of truth
+declare const commitment: string;
+declare const recipient: Address;
+declare const sender: Address;
+
+const vk = deriveViewingKeyFromUtxoPrivateKey(ownerUtxoKeypair.privateKey);
+const compliancePublic = await fetchCompliancePublic();
 
 const bundle = await encryptTransactionMetadata(
-  { txType: "withdraw", commitment, amount: 1000000000, recipient: recipient.publicKey.toBase58(), timestamp: Date.now() },
+  { txType: "withdraw", commitment, amount: 1000000000, recipient, timestamp: Date.now() },
   vk.publicKey,
   compliancePublic,
-  { userPubkey: sender.publicKey },
+  { userPubkey: sender },
 );
 
 // Later, decrypt for the user:
@@ -1697,7 +1838,7 @@ They are not required for standard app integrations.
 ```ts
 import { computeProofFromChain, getShieldPoolPDAs, NATIVE_SOL_MINT } from "@cloak.dev/sdk";
 
-const pdas = getShieldPoolPDAs(programId, NATIVE_SOL_MINT);
+const pdas = await getShieldPoolPDAs(programId, NATIVE_SOL_MINT);   // async: Kit derives through WebCrypto
 const proof = await computeProofFromChain(connection, pdas.merkleTree, leafIndex, true);
 // proof: { pathElements, pathIndices, root }
 ```
@@ -1707,7 +1848,11 @@ Pass the resulting tree into `TransactOptions.cachedMerkleTree` or set `useChain
 ### 6.13 Error handling + retry for stale roots
 
 ```ts
-import { fullWithdraw, isRootNotFoundError, parseError } from "@cloak.dev/sdk";
+import { fullWithdraw, isRootNotFoundError, parseError, type Address, type SpendOptions, type Utxo } from "@cloak.dev/sdk";
+
+declare const inputUtxos: Utxo[];
+declare const recipient: Address;
+declare const options: SpendOptions;
 
 for (let attempt = 0; attempt < 3; attempt++) {
   try {
@@ -1740,13 +1885,14 @@ written in the Node/server form and carries its own browser form beside it; read
 do not adapt the Node one by hand.
 
 - Deposit a fresh shielded UTXO: section 6.1.
-- Withdraw flows: sections 6.2 (full) and 6.3 (partial/change), including why a full withdrawal is
-  storage-free at one or two input notes and not at three or more.
+- Withdraw flows: sections 6.2 (full) and 6.3 (partial/change), including why a full withdrawal
+  leaves nothing to persist at one or two input notes and not at three or more.
 - Private shield-to-shield transfer (private send): section 6.4, including how to make the note
   discoverable by the recipient.
 - Fast-send user flow: section 6.5.
 - SOL -> SPL swap with shielded change: section 6.6, including the two secrets a swap hands back
-  that must be persisted (the change note and `UtxoSwapResult.refund`).
+  that should be persisted (the change note and `UtxoSwapResult.refund`).
+- Restore a wallet from key material: `recoverNotesFromIndex` or `scanTransactions`, section 5.5.
 - Recovering a swap refund whose secret was never persisted: `discoverSwapRefunds`, section 5.5.
 - Compliance scan and CSV export: section 6.7.
 - Viewing-key registration: section 6.8.
@@ -1766,14 +1912,14 @@ do not adapt the Node one by hand.
 5. Never call `transact` with raw `number` amounts. Always `BigInt(...)` at API boundaries.
 6. Use SDK defaults for program and circuits in standard integrations. `relayUrl` has no default and must be passed on every flow, as an allowlisted origin. Never generate `relayUrl: ""` together with `enforceViewingKeyRegistration: false` for a send, withdrawal or swap: that pairing is what makes `""` mean direct submission, and it submits under the user's own key, publicly linking the transaction.
 7. Prefer `scanTransactions` + `toComplianceReport` for user history UX. Do not re-invent compliance endpoints.
-8. For mutating paths in the browser, prefer the wallet adapter (`signTransaction` / `signMessage`). Reserve `depositorKeypair` for Node scripts.
+8. For mutating paths in the browser, use the wallet adapter through `signer: signerFromWalletAdapter(wallet)`. Reserve `depositorKeypair` for Node scripts. There is no `signTransaction` option.
 9. Do not add manual stale-root retry loops by default in app scripts; SDK transaction paths already handle these retries.
 10. Cache `TransactResult.merkleTree` across operations in the same user session to avoid redundant tree rebuilds.
 11. For one-file scripts, accept `<recipientPubkey> <lamports>` in CLI and read signer from `KEYPAIR_PATH`.
 12. Do not generate `SENDER_PRIVATE_KEY` or `AMOUNT_SOL` + `parseFloat(...)` patterns.
 13. Do not generate `RECIPIENT_ADDRESS` / `SEND_LAMPORTS` env contracts for one-file CLI scripts.
 14. For standalone script entrypoints, terminate explicitly with `process.exit(0)` on success and `process.exit(1)` on failure.
-15. In BROWSER code, never generate `depositorKeypair`, `signerFromSecretKey`, or a `keypair.json` path for a send/withdraw/swap. A wallet adapter cannot supply one. Take `signMessage` and `publicKey` from `useWallet()` instead, pass `walletPublicKey: addressFromPublicKey(publicKey)` (the adapter yields a web3.js `PublicKey`; Cloak options take a Kit `Address`), and guard on `signMessage` being present before offering the action.
+15. In BROWSER code, never generate `depositorKeypair`, `signerFromSecretKey`, or a `keypair.json` path for a send/withdraw/swap. A wallet adapter cannot supply one. Wrap the connected wallet with `signerFromWalletAdapter(wallet, { web3: { VersionedTransaction } })` and pass it as `signer` (the adapter's web3.js `PublicKey` never goes straight into a Cloak option; use `addressFromPublicKey` if you need an `Address`). Always pass `ownerUtxoKeypair` and `chainNoteViewingKeyNk`, derived from a stored seed, never from `generateUtxoKeypair()`.
 16. Never substitute an ephemeral, session or service-held key for the authenticated `sender`. It is the key screened for sanctions; substituting it moves screening off the actual user.
 17. Do not hand-roll the request-auth scheme when `submitTransactToRelay` will do. If you do hand-roll it, use `buildRelayAuthPreimage` + `canonicalJson` and read `TRANSACT_AUTH_FIELDS` / `TRANSACT_SWAP_AUTH_FIELDS` from the package rather than retyping them.
 18. Never claim an integrator must use a Cloak-operated RPC. Only the submission endpoint is pinned; the `Connection` is entirely the caller's, and any non-loopback RPC works.
@@ -1784,7 +1930,7 @@ do not adapt the Node one by hand.
 
 When generating Cloak integration code, produce a file-by-file plan that:
 
-1. Declares an explicit `TransactOptions` factory (single source of truth for `connection` and signing; keep `programId` fixed to `CLOAK_PROGRAM_ID`).
+1. Declares an explicit `SpendOptions` factory (single source of truth for `connection`, signing, `ownerUtxoKeypair` and `chainNoteViewingKeyNk`; keep `programId` fixed to `CLOAK_PROGRAM_ID`).
 2. Exposes `deposit`, `transfer`, `partialWithdraw`, `fullWithdraw`, `swap`, and `scanHistory` primitives using the functions in §5.3, §5.2, §5.5.
 3. Persists notes and key material through TWO boundaries, which are not interchangeable:
    - **Notes.** Write `result.outputUtxos` yourself, as `serializeUtxo(...)` bytes (§5.2), in the
@@ -1794,7 +1940,8 @@ When generating Cloak integration code, produce a file-by-file plan that:
      `saveNote` does not type-check and does not persist a spendable note.
    - **Key material.** `StorageAdapter.saveKeys` / `loadKeys` (a `CloakKeyPair`) is the ready-made
      home, via `LocalStorageAdapter` or `MemoryStorageAdapter` (§5.13).
-   For swaps, `UtxoSwapResult.refund` (§5.3) is a third item and must be persisted too. The full
+   The seed behind `ownerUtxoKeypair` and `nk` (§1) is the root of everything and is stored like a
+   private key. For swaps, `UtxoSwapResult.refund` (§5.3) is a third item and must be persisted too. The full
    storage answer, including how the two boundaries divide, is
    `/sdk/wallet-integration#where-your-notes-live-between-sessions`.
 4. Surfaces `onProgress` + `onProofProgress` into the UI layer.

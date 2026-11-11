@@ -4,111 +4,210 @@ description: "Current SDK error types, stale-root retries, and relay/on-chain di
 icon: "triangle-exclamation"
 ---
 
+This page is written against `@cloak.dev/sdk` 0.2.11. Catch the typed errors below instead of
+matching message strings: the classes are the stable surface, the wording is not.
+
 ## SDK error surfaces
 
-`@cloak.dev/sdk` exposes two main layers:
+`@cloak.dev/sdk` exposes three layers:
 
-1. `CloakError` (runtime SDK operations)
-2. `parseError` / `parseTransactionError` (user-facing normalization)
+1. `CloakError` (runtime SDK operations, with a `category` and a `retryable` flag)
+2. Typed errors for the outcomes a caller must act on: `RootNotFoundError`,
+   `UtxoAlreadySpentError`, `SanctionsQuoteError`, `RelayInternalError`,
+   `SettlementVerificationError`, `TransactionConfirmationError`
+3. `parseError` / `parseTransactionError` (user-facing normalization)
 
 ## `CloakError`
 
-```typescript
+```ts
 import { CloakError } from "@cloak.dev/sdk";
 
-// category values:
-// "network" | "indexer" | "prover" | "relay" | "validation" | "wallet" | "environment" | "service"
+declare function run(): Promise<void>;
+
+async function withBackoff(attempt: () => Promise<void>): Promise<void> {
+  try {
+    await attempt();
+  } catch (error) {
+    if (error instanceof CloakError) {
+      // category: "network" | "indexer" | "prover" | "relay" | "validation" | "wallet"
+      //         | "environment" | "service"
+      console.log(error.category, error.retryable);
+    }
+    throw error;
+  }
+}
+
+await withBackoff(run);
 ```
 
 Most app flows should treat `retryable === true` as backoff-eligible.
 
-## Persist the change note before you report success
+## Typed errors
+
+```ts
+import {
+  RelayInternalError,
+  SanctionsQuoteError,
+  SettlementVerificationError,
+  TransactionConfirmationError,
+  UtxoAlreadySpentError,
+  fullWithdraw,
+  type SpendOptions,
+  type Utxo,
+} from "@cloak.dev/sdk";
+import type { Address } from "@solana/kit";
+
+declare const inputUtxos: Utxo[];
+declare const recipient: Address;
+declare const options: SpendOptions;
+
+try {
+  await fullWithdraw(inputUtxos, recipient, options);
+} catch (error) {
+  if (error instanceof UtxoAlreadySpentError) {
+    // A note was spent elsewhere. error.spentUtxoCommitments lists them; reconcile with verifyUtxos.
+  } else if (error instanceof SettlementVerificationError) {
+    // The relay never gave a usable answer. error.outcome says what chain state supports:
+    //   "landed"     the transaction DID land: never retry, rescan to recover notes
+    //   "not-landed" nothing landed: retrying is safe (error.safeToRetry)
+    //   "unknown"    look up error.signature on an independent RPC before doing anything
+    //   "failed"     on chain and failed during execution: inputs are unspent
+    console.log(error.outcome, error.signature, error.reason);
+  } else if (error instanceof SanctionsQuoteError) {
+    // Structural mismatch between the quote and the program (error.subKind:
+    // "expired" | "wallet_mismatch" | "missing_ix", error.onChainCode is the program code).
+    // These are not something the caller can fix: they point to version skew or config drift
+    // between the quote and the program. Report them.
+  } else if (error instanceof TransactionConfirmationError) {
+    // A direct (self-signed) transaction did not confirm. error.reason: "failed" | "expired" | "timeout".
+    console.log(error.signature, error.reason);
+  } else if (error instanceof RelayInternalError) {
+    // A relay 5xx that maps to nothing more specific. Keep error.relayMessage for support.
+    console.log(error.httpStatus, error.relayMessage);
+  } else {
+    throw error;
+  }
+}
+```
+
+`confirmTransactSettlement` re-checks a signature from chain state when an outcome was reported as
+unknown.
+
+## Persist the notes before you report success
 
 `transact`, `transfer`, `partialWithdraw`, `swapUtxo` and `swapWithChange` all return
-`result.outputUtxos`, and the change note among them is the user's remaining shielded balance. Its
-`blinding` is fresh randomness generated inside the SDK and is written nowhere on chain, so a change
-note whose only copy you dropped is unspendable by anyone, permanently. No rescan brings it back.
-Outputs with `amount === 0n` are padding and can be skipped. `fullWithdraw` leaves nothing shielded
-only when you hand it one or two notes. With three or more it merges on chain first, and a failure
-part-way through those merges destroys a note that never reached you: see
-[When `fullWithdraw` is not exempt](#when-fullwithdraw-is-not-exempt).
+`result.outputUtxos`, and the change note among them is the user's remaining shielded balance.
+Outputs with `amount === 0n` are padding and can be skipped. `fullWithdraw` leaves nothing shielded.
+
+The notes the SDK builds for you are derived from your `nk` and a salt published in the encrypted
+chain note, so a lost change note can be found again by a scan (`recoverNotesFromIndex`,
+`scanTransactions`). Writing it down is still the fast path and gives you the leaf index at once.
+The notes that cannot be found again are the ones you built yourself with `createUtxo`, whose
+`blinding` is random and written nowhere, and notes owned by a random `generateUtxoKeypair()` key you
+did not keep. Those are unspendable by anyone if the only copy is dropped.
 
 This is an error-handling concern because every example below is a `try`/`catch`. The `catch` is the
-failure path; the tail of the `try` is the success path, and that is where the write belongs. A
-`try` block whose tail is empty has already lost the note by the time control reaches the next line.
-`saveNotes`, `dropNotes` and `saveSwapRefund` in these snippets are your own storage, not SDK exports;
-[Where your notes live between sessions](/sdk/wallet-integration#where-your-notes-live-between-sessions)
+failure path; the tail of the `try` is the success path, and that is where the write belongs.
+`saveNotes`, `dropNotes` and `saveSwapRefund` in these snippets are your own storage, not SDK
+exports; [Where your notes live between sessions](/sdk/wallet-integration#where-your-notes-live-between-sessions)
 covers what to build them on.
 
-## When `fullWithdraw` is not exempt
+## When `fullWithdraw` merges first
 
 The circuit spends at most two notes per transaction, so both `fullWithdraw` and `partialWithdraw`
 consolidate first when you pass three or more inputs. Each consolidation round is its own on-chain
-transaction: it spends the two smallest notes and creates one merged note whose `blinding` is fresh
-randomness held only inside the call. `onProgress` fires `Consolidating notes (n remaining)...` once
-per round, and that string is the only signal a caller gets that consolidation is happening at all.
+transaction: it spends the two smallest notes and creates one merged note owned by your
+`ownerUtxoKeypair`. `onProgress` fires `Consolidating notes (n remaining)...` once per round, and
+that string is the signal a caller gets that consolidation is happening at all.
 
 Rounds that land are permanent, and the failure is what makes this an error-handling problem. If a
 later round or the final withdrawal throws (stale-root retries exhausted, a rejected wallet approval,
 a submission failure, a closed tab), then the two notes that round consumed are spent, the merged
 commitment is in the tree, and the call returned nothing, so there is no `result.outputUtxos` to
-write down. The merged note's blinding went out of scope with the call.
+write down.
 
-Be clear-eyed about what recovery is available: none. A viewing-key rescan with `scanTransactions`
-can show you the commitment and its amount, but the on-chain chain note carries neither the blinding
-nor anything that derives it, so the balance stays visible and permanently unspendable. The exemption
-is therefore true for one or two inputs, where no merge happens, and false for three or more.
+The merged note is not destroyed. Its blinding is derived from your `nk` and a salt the round
+published in its chain note, so a rescan finds it again. Until you rescan, though, your app does not
+know it exists, and retrying with the original `inputUtxos` fails: the first merge round preflights
+their nullifiers and throws `UtxoAlreadySpentError`.
 
 What you can actually do, in order of usefulness:
 
 <CodeGroup>
-```typescript Consolidate yourself first
-import { createUtxo, fullWithdraw, serializeUtxo, transact } from "@cloak.dev/sdk";
+```ts Consolidate yourself first
+import {
+  createRecoverableChangeUtxo,
+  fullWithdraw,
+  randomChangeNoteSalt,
+  serializeUtxo,
+  transact,
+  type SpendOptions,
+  type Utxo,
+} from "@cloak.dev/sdk";
+import type { Address } from "@solana/kit";
+
+declare const inputUtxos: Utxo[];
+declare const recipient: Address;
+declare const options: SpendOptions; // includes ownerUtxoKeypair and chainNoteViewingKeyNk
+declare const nk: Uint8Array; // the same nk as options.chainNoteViewingKeyNk
+declare function saveNotes(notes: Uint8Array[]): Promise<void>;
 
 // Each merge is now your transaction: it returns, and you persist, before the next one starts.
 let notes = [...inputUtxos];
 while (notes.length > 2) {
   notes.sort((a, b) => (a.amount > b.amount ? 1 : a.amount < b.amount ? -1 : 0));
   const [small1, small2, ...rest] = notes;
-  const merged = await createUtxo(small1.amount + small2.amount, small1.keypair, small1.mintAddress);
+  const salt = randomChangeNoteSalt();
+  const { utxo: merged } = await createRecoverableChangeUtxo(
+    small1.amount + small2.amount,
+    options.ownerUtxoKeypair,
+    nk,
+    small1.mintAddress,
+    salt,
+    0,
+  );
   const result = await transact(
     { inputUtxos: [small1, small2], outputUtxos: [merged], externalAmount: 0n },
-    { connection, programId, relayUrl, walletPublicKey, signMessage },
+    { ...options, chainNoteSalt: salt },
   );
   // The merged note exists on chain now. Write it before the next round can fail.
   await saveNotes(result.outputUtxos.filter((utxo) => utxo.amount > 0n).map(serializeUtxo));
   notes = [result.outputUtxos[0], ...rest];
 }
 
-// Two notes left, so this call performs no merges and the exemption holds.
-await fullWithdraw(notes, recipient, { connection, programId, relayUrl, walletPublicKey, signMessage });
+// Two notes left, so this call performs no merges.
+await fullWithdraw(notes, recipient, options);
 ```
 
-```typescript Reconcile after a throw
-import { fullWithdraw, verifyUtxos } from "@cloak.dev/sdk";
+```ts Reconcile after a throw
+import { fullWithdraw, verifyUtxos, type SpendOptions, type Utxo } from "@cloak.dev/sdk";
+import type { Address } from "@solana/kit";
+
+declare const inputUtxos: Utxo[];
+declare const recipient: Address;
+declare const options: SpendOptions;
+declare function dropNotes(commitments: bigint[]): Promise<void>;
 
 let consolidated = false;
 try {
   await fullWithdraw(inputUtxos, recipient, {
-    connection,
-    programId,
-    relayUrl,
-    walletPublicKey,
-    signMessage,
+    ...options,
     onProgress: (status) => {
       if (status.startsWith("Consolidating notes")) consolidated = true;
     },
   });
 } catch (error) {
   if (consolidated) {
-    // Some inputs are spent and one merged note is unreachable. Never retry with `inputUtxos`:
-    // the first merge round preflights the nullifiers and throws `UtxoAlreadySpentError` (0x1020).
-    const { spent, unspent } = await verifyUtxos(inputUtxos, connection, programId);
+    // Some inputs are spent and one merged note is not in your store. Never retry with
+    // `inputUtxos`: the first merge round preflights the nullifiers and throws
+    // `UtxoAlreadySpentError` (0x1020).
+    const { spent, unspent } = await verifyUtxos(inputUtxos, options.connection, options.programId);
     // Anything without a commitment lands in `skipped`, so `spent` entries always have one.
     await dropNotes(spent.map((utxo) => utxo.commitment!));
-    // Withdraw again from `unspent` only. Whatever `spent` totals went into a merged note you
-    // cannot reach, unless the withdrawal itself landed and only its confirmation failed, so
-    // check the recipient balance before writing that amount off.
+    // Rescan with recoverNotesFromIndex to pick up the merged note, then withdraw again from it
+    // and from `unspent`. If the withdrawal itself landed and only its confirmation failed, the
+    // recipient already has the funds, so check their balance first.
+    console.log(unspent.length);
   }
   throw error;
 }
@@ -116,8 +215,8 @@ try {
 
 </CodeGroup>
 
-Consolidating yourself is the only option that prevents the loss rather than measuring it. Prefer it
-in any flow where the user can hold more than two notes.
+Consolidating yourself is the only option that prevents the gap rather than recovering from it.
+Prefer it in any flow where the user can hold more than two notes.
 
 ## `Unauthorized` and bare `401` on a send, withdraw or swap
 
@@ -126,14 +225,26 @@ as the same opaque rejection. `explainRelayAuthRejection` turns one into user-fa
 returns `null` for anything that is not an authentication rejection, so it is safe to call
 unconditionally:
 
-```typescript
-import { explainRelayAuthRejection, fullWithdraw, parseError } from "@cloak.dev/sdk";
+```ts
+import {
+  explainRelayAuthRejection,
+  fullWithdraw,
+  parseError,
+  type SpendOptions,
+  type Utxo,
+} from "@cloak.dev/sdk";
+import type { Address } from "@solana/kit";
+
+declare const inputUtxos: Utxo[];
+declare const recipient: Address;
+declare const options: SpendOptions;
+declare function showError(message: string): void;
 
 try {
   await fullWithdraw(inputUtxos, recipient, options);
 } catch (error) {
   const hint = explainRelayAuthRejection(String(error));
-  // Non-null examples: a wallet approval that sat past the 285-second budget, a machine
+  // Non-null examples: a wallet approval that sat past the 300-second window, a machine
   // clock more than 30 seconds fast, a body that changed after it was signed, a wallet
   // with no viewing key registered yet.
   showError(hint ?? parseError(error).message);
@@ -148,25 +259,36 @@ reconcile with `verifyUtxos` before retrying rather than reusing `inputUtxos`. T
 including how to supply a signer at all, is in
 [Request authentication](/sdk/request-authentication).
 
+A call that has no usable signer never reaches the network. It throws up front, before any proof is
+generated, with a message that begins `Cloak <flow> requires an authenticated sender` (for a
+transfer, withdrawal or swap), `<flow> requires options.ownerUtxoKeypair` (a spend flow with no
+owner key), or `Viewing key registration is mandatory` (no `nk`, or nothing to sign the registration
+challenge). Those are setup mistakes, not runtime failures: fix the options rather than catching them.
+
 ## Stale Merkle root (`0x1001`)
 
 Use helpers for RootNotFound detection:
 
 <CodeGroup>
-```typescript Keypair bytes
-import { fullWithdraw, isRootNotFoundError, RootNotFoundError } from "@cloak.dev/sdk";
+```ts Keypair bytes
+import {
+  fullWithdraw,
+  isRootNotFoundError,
+  RootNotFoundError,
+  type SpendOptions,
+  type Utxo,
+} from "@cloak.dev/sdk";
+import type { Address } from "@solana/kit";
+
+declare const inputUtxos: Utxo[];
+declare const recipient: Address;
+declare const options: SpendOptions; // built with depositorKeypair, ownerUtxoKeypair and nk
 
 try {
-  await fullWithdraw(inputUtxos, recipient, {
-    connection,
-    programId,
-    relayUrl,
-    depositorKeypair,
-    walletPublicKey: depositorKeypair.address,
-  });
+  await fullWithdraw(inputUtxos, recipient, options);
   // With one or two inputs this leaves nothing shielded, so there is no change note to
-  // persist here. With three or more, consolidation runs first and the exemption is off:
-  // see "When fullWithdraw is not exempt". Every other flow has a change note either way.
+  // persist here. With three or more, consolidation runs first: see "When fullWithdraw merges
+  // first". Every other flow has a change note either way.
 } catch (error) {
   if (error instanceof RootNotFoundError || isRootNotFoundError(error)) {
     // Refresh proof inputs, then reconcile with verifyUtxos before retrying: a stale root on
@@ -175,24 +297,25 @@ try {
 }
 ```
 
-```typescript Wallet adapter
+```ts Wallet adapter
 import {
-  addressFromPublicKey,
   isRootNotFoundError,
   partialWithdraw,
   RootNotFoundError,
   serializeUtxo,
+  type SpendOptions,
+  type Utxo,
 } from "@cloak.dev/sdk";
+import type { Address } from "@solana/kit";
+
+declare const inputUtxos: Utxo[];
+declare const recipient: Address;
+declare const walletOptions: SpendOptions; // built with walletPublicKey, signMessage, ownerUtxoKeypair and nk
+declare function saveNotes(notes: Uint8Array[]): Promise<void>;
 
 try {
-  const withdrawn = await partialWithdraw(inputUtxos, recipient, 10_000_000n, {
-    connection,
-    programId,
-    relayUrl,
-    walletPublicKey: addressFromPublicKey(publicKey!),
-    signMessage: signMessage!,
-  });
-  // Success path: the remaining balance is here and nowhere else. Write it first.
+  const withdrawn = await partialWithdraw(inputUtxos, recipient, 10_000_000n, walletOptions);
+  // Success path: write the remaining balance down now.
   await saveNotes(
     withdrawn.outputUtxos.filter((utxo) => utxo.amount > 0n).map(serializeUtxo),
   );
@@ -205,30 +328,48 @@ try {
 
 </CodeGroup>
 
-SDK note and UTXO flows already include retry loops; this usually appears only after retries are exhausted.
+SDK note and UTXO flows already include retry loops (`maxRootRetries`); this usually appears only
+after retries are exhausted.
 
 ## On-chain error message mapping
 
 `ShieldPoolErrors` maps known custom program codes:
 
-```typescript
+```ts
 import { ShieldPoolErrors } from "@cloak.dev/sdk";
 
 console.log(ShieldPoolErrors[0x1001]); // Root not found in the roots ring
+console.log(ShieldPoolErrors[0x1020]); // Double spend detected - this note has already been spent
 console.log(ShieldPoolErrors[0x1076]); // Proof verification failed
 ```
 
 ## User-facing normalization
 
 <CodeGroup>
-```typescript Keypair bytes
+```ts Keypair bytes
 import {
-  addressFromPublicKey,
   parseError,
   serializeUtxo,
   swapWithChange,
+  type SpendOptions,
   type UserFriendlyError,
+  type Utxo,
+  type UtxoSwapResult,
 } from "@cloak.dev/sdk";
+import type { Address } from "@solana/kit";
+
+declare const inputUtxos: Utxo[];
+declare const amountLamports: bigint;
+declare const outputMint: Address;
+declare const recipientAta: Address;
+declare const recipientWallet: Address;
+declare const minOutput: bigint;
+declare const options: SpendOptions; // depositorKeypair, ownerUtxoKeypair, chainNoteViewingKeyNk
+declare function saveNotes(notes: Uint8Array[]): Promise<void>;
+declare function saveSwapRefund(
+  swapStatePda: string,
+  refund: UtxoSwapResult["refund"],
+): Promise<void>;
 
 try {
   const swapped = await swapWithChange(
@@ -237,38 +378,49 @@ try {
     outputMint,
     recipientAta,
     minOutput,
-    {
-      connection,
-      programId,
-      relayUrl,
-      depositorKeypair,
-      walletPublicKey: depositorKeypair.address,
-    },
+    options,
+    recipientWallet,
   );
   // Success path, two writes. The change note is the remaining shielded balance.
   await saveNotes(
     swapped.outputUtxos.filter((utxo) => utxo.amount > 0n).map(serializeUtxo),
   );
   // `swapped.refund` reclaims the principal if the swap times out before it executes.
-  // With `chainNoteViewingKeyNk` supplied it can be rebuilt later via `discoverSwapRefunds`,
-  // so saving it is the fast path. Without one, `refund.derivedFromNk` is false and this
-  // object is the only copy that will ever exist.
+  // With `chainNoteViewingKeyNk` supplied it can be rebuilt later via `discoverSwapRefunds`
+  // (`refund.derivedFromNk` is true), so saving it is the fast path.
   await saveSwapRefund(swapped.swapStatePda, swapped.refund);
 } catch (error) {
   const parsed: UserFriendlyError = parseError(error);
   // parsed.category: wallet | network | validation | service | transaction | unknown
   // parsed.recoverable: boolean
+  console.log(parsed.title, parsed.message, parsed.suggestion);
 }
 ```
 
-```typescript Wallet adapter
+```ts Wallet adapter
 import {
-  addressFromPublicKey,
   parseError,
   serializeUtxo,
   swapWithChange,
+  type SpendOptions,
   type UserFriendlyError,
+  type Utxo,
+  type UtxoSwapResult,
 } from "@cloak.dev/sdk";
+import type { Address } from "@solana/kit";
+
+declare const inputUtxos: Utxo[];
+declare const amountLamports: bigint;
+declare const outputMint: Address;
+declare const recipientAta: Address;
+declare const recipientWallet: Address;
+declare const minOutput: bigint;
+declare const walletOptions: SpendOptions; // walletPublicKey, signMessage, ownerUtxoKeypair, chainNoteViewingKeyNk
+declare function saveNotes(notes: Uint8Array[]): Promise<void>;
+declare function saveSwapRefund(
+  swapStatePda: string,
+  refund: UtxoSwapResult["refund"],
+): Promise<void>;
 
 try {
   const swapped = await swapWithChange(
@@ -277,13 +429,8 @@ try {
     outputMint,
     recipientAta,
     minOutput,
-    {
-      connection,
-      programId,
-      relayUrl,
-      walletPublicKey: addressFromPublicKey(publicKey!),
-      signMessage: signMessage!,
-    },
+    walletOptions,
+    recipientWallet,
   );
   // Same two writes as the other tab: the change note, then the timeout refund secret.
   await saveNotes(
@@ -293,6 +440,7 @@ try {
 } catch (error) {
   const parsed: UserFriendlyError = parseError(error);
   // parsed.category / parsed.recoverable
+  console.log(parsed.title, parsed.message);
 }
 ```
 
@@ -303,11 +451,29 @@ try {
 - Retry network and service failures with exponential backoff.
 - Avoid retrying deterministic validation failures.
 - On stale-root errors, rebuild proof data before retrying.
+- Never retry a `SettlementVerificationError` whose `outcome` is not `"not-landed"`.
 
 ## UTXO stale-root retry template
 
-```typescript
-import { isRootNotFoundError, partialWithdraw, serializeUtxo } from "@cloak.dev/sdk";
+`transact`, `partialWithdraw` and `fullWithdraw` already retry a stale root internally, so an outer
+loop is only for the case where those retries are exhausted:
+
+```ts
+import {
+  isRootNotFoundError,
+  partialWithdraw,
+  serializeUtxo,
+  type MerkleTree,
+  type SpendOptions,
+  type Utxo,
+} from "@cloak.dev/sdk";
+import type { Address } from "@solana/kit";
+
+declare const inputUtxos: Utxo[]; // one or two notes
+declare const recipientWallet: Address;
+declare const options: SpendOptions;
+declare const initialMerkleTree: MerkleTree | undefined;
+declare function saveNotes(notes: Uint8Array[]): Promise<void>;
 
 let result: Awaited<ReturnType<typeof partialWithdraw>> | undefined;
 let cachedMerkleTree = initialMerkleTree;
@@ -315,11 +481,7 @@ let cachedMerkleTree = initialMerkleTree;
 for (let attempt = 1; attempt <= 3; attempt += 1) {
   try {
     result = await partialWithdraw(inputUtxos, recipientWallet, 10_000_000n, {
-      connection,
-      programId,
-      relayUrl,
-      walletPublicKey,
-      signMessage,
+      ...options,
       cachedMerkleTree,
     });
     break;
@@ -333,8 +495,8 @@ for (let attempt = 1; attempt <= 3; attempt += 1) {
 
 if (!result) throw new Error("withdraw did not complete");
 
-// `break` only ends the retry. The change note is still unsaved at this point, and it is the
-// only copy of the user's remaining balance, so persist it before anything reports success.
+// `break` only ends the retry. The change note is still unsaved at this point, so persist it
+// before anything reports success.
 await saveNotes(result.outputUtxos.filter((utxo) => utxo.amount > 0n).map(serializeUtxo));
 ```
 
@@ -343,13 +505,13 @@ two notes. With three or more, attempt 1 can land consolidation transactions bef
 attempt 2 then spends notes that are already nullified: the first merge round preflights them and
 throws `UtxoAlreadySpentError` instead of retrying. Consolidate down to two notes yourself before
 entering a loop like this, as in
-[When `fullWithdraw` is not exempt](#when-fullwithdraw-is-not-exempt).
+[When `fullWithdraw` merges first](#when-fullwithdraw-merges-first).
 
 Swap `partialWithdraw` for `transact`, `transfer`, `swapUtxo` or `swapWithChange` and the loop is
 unchanged, but the tail still has to run: each of those returns a change note too, and the two swap
-helpers add a `refund` secret. `fullWithdraw` is the only substitution that can skip the tail, and
-only when it is given one or two notes, because that is when it leaves nothing shielded and performs
-no merges of its own.
+helpers add a `refund` authorization. `fullWithdraw` is the only substitution that can skip the
+tail, and only when it is given one or two notes, because that is when it leaves nothing shielded
+and performs no merges of its own.
 
 ## Security logging rule
 
