@@ -11,7 +11,7 @@ integration, see [Error handling](/sdk/error-handling).
 ## Before anything else
 
 <Note>
-  **Cloak runs on Solana mainnet only. There is no devnet.** The published SDK talks to the mainnet
+  **Cloak runs on Solana mainnet only.** The published SDK talks to the mainnet
   program and `https://api.cloak.ag`, nothing else. Test with small amounts: the minimum deposit is
   0.01 SOL.
 </Note>
@@ -83,7 +83,7 @@ import { CLOAK_PRODUCTION_RELAY_URL } from "@cloak.dev/sdk";
 const relayUrl = CLOAK_PRODUCTION_RELAY_URL; // "https://api.cloak.ag"
 ```
 
-Any other host, including old `devnet` hostnames found in blog posts or forks, is refused by
+Any other host, including old hostnames found in blog posts or forks, is refused by
 design.
 
 ### `opts.relayUrl is required` / `Viewing key registration is mandatory: relayUrl is required.`
