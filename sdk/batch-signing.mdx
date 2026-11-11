@@ -15,22 +15,80 @@ list of the items' request digests**, so the user approves once for the whole pa
 
 ## `transactBatch`
 
-```typescript
-import { transactBatch } from "@cloak.dev/sdk";
+```ts
+import {
+  CLOAK_PRODUCTION_RELAY_URL,
+  CLOAK_PROGRAM_ID,
+  createCloakRpc,
+  createRecoverableChangeUtxo,
+  randomChangeNoteSalt,
+  transactBatch,
+  type TransactBatchItem,
+  type Utxo,
+  type UtxoKeypair,
+} from "@cloak.dev/sdk";
+import type { Address } from "@solana/kit";
 
-const { results, approvals } = await transactBatch(
-  rows.map((row) => ({
-    params: {
-      inputUtxos: [row.note],
-      outputUtxos: [row.change],
-      recipient: row.to,
-      externalAmount: -row.amount,
-    },
-    options: { chainNoteSalt: row.changeSalt }, // per-item overrides
-  })),
-  { connection, programId, relayUrl, walletPublicKey, signMessage, chainNoteViewingKeyNk: nk },
+/** One payout row: a note that has already landed, who gets paid, and how much leaves the pool. */
+interface PayoutRow {
+  note: Utxo;
+  to: Address;
+  amount: bigint;
+}
+
+declare const rows: PayoutRow[]; // each row spends its own note
+declare const walletAddress: Address; // the end user's own wallet
+declare const signMessage: (message: Uint8Array) => Promise<Uint8Array>; // wallet adapter
+declare const ownerUtxoKeypair: UtxoKeypair; // from deriveUtxoKeypairFromSpendKey
+declare const nk: Uint8Array; // view-only, from getNkFromUtxoPrivateKey
+
+const items: TransactBatchItem[] = await Promise.all(
+  rows.map(async (row): Promise<TransactBatchItem> => {
+    // Change stays shielded. Build it recoverably, and publish the same salt in the chain note.
+    const changeSalt = randomChangeNoteSalt();
+    const change = row.note.amount - row.amount;
+    const outputUtxos: Utxo[] =
+      change > 0n
+        ? [
+            (
+              await createRecoverableChangeUtxo(
+                change,
+                ownerUtxoKeypair,
+                nk,
+                row.note.mintAddress,
+                changeSalt,
+                0,
+              )
+            ).utxo,
+          ]
+        : [];
+    return {
+      params: {
+        inputUtxos: [row.note],
+        outputUtxos,
+        recipient: row.to,
+        externalAmount: -row.amount,
+      },
+      options: { chainNoteSalt: changeSalt }, // per-item overrides
+    };
+  }),
 );
+
+const { results, approvals } = await transactBatch(items, {
+  connection: createCloakRpc(process.env.NEXT_PUBLIC_SOLANA_RPC_URL!),
+  programId: CLOAK_PROGRAM_ID,
+  relayUrl: CLOAK_PRODUCTION_RELAY_URL,
+  walletPublicKey: walletAddress,
+  signMessage,
+  ownerUtxoKeypair,
+  chainNoteViewingKeyNk: nk,
+});
 ```
+
+A server holding a key skips `walletPublicKey` and `signMessage` and passes `depositorKeypair`
+(from `signerFromSecretKey`) instead. A wallet that cannot sign messages passes `signer`. With none
+of those, `transactBatch` throws `transactBatch requires an authenticated sender` before it computes
+or submits anything.
 
 `results[i]` is `{ status: "fulfilled", value: TransactResult }` or `{ status: "rejected", reason }`,
 in input order — a failed row leaves the others untouched. `approvals` is how many times the wallet
@@ -63,16 +121,23 @@ so a batch for a wallet that has not registered yet raises it once rather than N
 If your code already calls `transact`, `partialWithdraw` or `transfer` per row, you can batch those
 approvals without restructuring the rows. Give each call one item of a coordinator:
 
-```typescript
+```ts
 import {
-  addressFromPublicKey,
   createRelayBatchAuthCoordinator,
   messageSignerFromCallback,
   partialWithdraw,
+  type SpendOptions,
+  type Utxo,
 } from "@cloak.dev/sdk";
+import type { Address } from "@solana/kit";
+
+declare const rows: { note: Utxo; to: Address; amount: bigint }[];
+declare const walletAddress: Address; // the end user's own wallet
+declare const signMessage: (message: Uint8Array) => Promise<Uint8Array>; // wallet adapter
+declare const options: SpendOptions; // connection, programId, relayUrl, ownerUtxoKeypair, nk, ...
 
 const coordinator = createRelayBatchAuthCoordinator({
-  signer: messageSignerFromCallback(addressFromPublicKey(publicKey), signMessage),
+  signer: messageSignerFromCallback(walletAddress, signMessage),
   items: rows.length,
 });
 

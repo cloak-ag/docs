@@ -12,7 +12,40 @@ The active runtime path is UTXO transactions through:
 - `swapWithChange` / `swapUtxo` for swap flows
 - SDK-managed submit and status lifecycle
 
-The UTXO free functions are the only transaction path in the current SDK (0.2.5): `transact` / `transfer` / `partialWithdraw` / `fullWithdraw` / `swapWithChange`. An earlier note-model client class no longer exists.
+The UTXO free functions are the only transaction path in the current SDK (0.2.11): `transact` / `transfer` / `partialWithdraw` / `fullWithdraw` / `swapWithChange`. An earlier note-model client class no longer exists.
+
+## Keys
+
+One persistent 32-byte seed (`generateMasterSeed()`, stored like a private key) yields everything
+the wallet needs. A random key that is lost loses the notes it owns, so do not use
+`generateUtxoKeypair()` for anything that holds real funds.
+
+```ts
+import {
+  deriveSpendKey,
+  deriveUtxoKeypairFromSpendKey,
+  generateMasterSeed,
+  getNkFromUtxoPrivateKey,
+} from "@cloak.dev/sdk";
+
+const seed = generateMasterSeed().seed; // generate once, then store and reload it
+const { sk_spend } = deriveSpendKey(seed);
+const ownerUtxoKeypair = await deriveUtxoKeypairFromSpendKey(sk_spend);
+const nk = getNkFromUtxoPrivateKey(ownerUtxoKeypair.privateKey);
+```
+
+- `ownerUtxoKeypair` owns your notes. Every spend flow (`transfer`, `partialWithdraw`,
+  `fullWithdraw`, `swapUtxo`, `swapWithChange`, `sweepToWalletKey`) requires it, in the types and at
+  runtime; pass it on deposits too.
+- `nk` is view-only. It finds and decrypts your notes and derives their blindings, but it can never
+  spend them, so it is safe to register with the relay and to share with an auditor. Pass it as
+  `chainNoteViewingKeyNk`.
+- Create deposit notes with `createRecoverableDepositUtxo({ amount, viewingKeyNk: nk,
+  ownerUtxoKeypair, mintAddress })` and pass the returned `noteSalt` to `transact` as
+  `chainNoteSalt`, so a scan can find the note again.
+
+Notes created before 0.2.6 may have an owner key derived from `nk`; those are flagged
+`legacyExposed` and move under the wallet key only when spent.
 
 ## Commitments and Merkle tree
 

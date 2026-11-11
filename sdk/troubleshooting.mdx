@@ -1,0 +1,149 @@
+---
+title: "Troubleshooting"
+description: "The setup mistakes that stop a first integration, by the exact message the SDK prints"
+icon: "wrench"
+---
+
+Each entry starts with the message `@cloak.dev/sdk` 0.2.11 throws, word for word, so you can search
+this page for what your terminal shows. For error classes and retry behaviour inside a working
+integration, see [Error handling](/sdk/error-handling).
+
+## Before anything else
+
+<Note>
+  **Cloak runs on Solana mainnet only. There is no devnet.** The published SDK talks to the mainnet
+  program and `https://api.cloak.ag`, nothing else. Test with small amounts: the minimum deposit is
+  0.01 SOL.
+</Note>
+
+- Node 22 or newer.
+- `npm install @cloak.dev/sdk@^0.2.11`. Older versions have a different API; this page and the rest
+  of these docs describe 0.2.11.
+- A mainnet RPC URL. The public `api.mainnet-beta.solana.com` rate-limits quickly; a keyed provider
+  avoids most "429" failures.
+
+## Keys and options
+
+### `ownerUtxoKeypair is required: pass the wallet's long-lived UTXO keypair`
+
+Every flow that spends a note (`transfer`, `partialWithdraw`, `fullWithdraw`, `swapUtxo`,
+`swapWithChange`, `sweepToWalletKey`) needs the wallet's UTXO keypair, because it owns any change
+the transaction creates. Derive it from a seed you store, and pass it with the viewing base `nk`:
+
+```ts
+import {
+  deriveSpendKey,
+  deriveUtxoKeypairFromSpendKey,
+  generateMasterSeed,
+  getNkFromUtxoPrivateKey,
+} from "@cloak.dev/sdk";
+
+// Generate ONCE, then store it like a private key. Losing it loses the notes it owns.
+const { seed } = generateMasterSeed();
+
+const { sk_spend } = deriveSpendKey(seed);
+const ownerUtxoKeypair = await deriveUtxoKeypairFromSpendKey(sk_spend);
+const nk = getNkFromUtxoPrivateKey(ownerUtxoKeypair.privateKey);
+
+// Then on every call: { ..., ownerUtxoKeypair, chainNoteViewingKeyNk: nk }
+```
+
+`nk` is view-only: it finds and decrypts your notes but can never spend them.
+
+### `Object literal may only specify known properties, and 'signTransaction' does not exist`
+
+A TypeScript error, not a runtime one: `signTransaction` was removed when the SDK moved to
+`@solana/kit` (0.2.5). Pass a Kit `TransactionSigner` as `signer` instead. From a wallet adapter:
+`signer: signerFromWalletAdapter(wallet)`. From a keypair file in a script:
+`depositorKeypair: await signerFromSecretKey(bytes)`. See
+[Wallet integration](/sdk/wallet-integration).
+
+### `Property 'toBase58' does not exist on type 'Address'`
+
+Also from the `@solana/kit` move: addresses are plain `Address` strings. Use them directly, and
+build one with `address("...")`. `PublicKey` is no longer needed.
+
+### `Cloak was given two different wallets`
+
+`depositorKeypair`, `walletPublicKey` and `depositorPublicKey` are three names for the same end
+user. That one key is the authenticated sender, the wallet screened for sanctions, and the wallet
+the viewing key is registered against. Set them all to the same wallet, or set only one.
+
+## The Cloak endpoint
+
+### `Cloak SDK: refusing to use "…" as a Cloak endpoint`
+
+The published SDK accepts exactly one endpoint, `https://api.cloak.ag`, and the check runs before
+anything leaves your process. There is no option or environment variable that changes it. Pass the
+exported constant rather than typing a host:
+
+```ts
+import { CLOAK_PRODUCTION_RELAY_URL } from "@cloak.dev/sdk";
+
+const relayUrl = CLOAK_PRODUCTION_RELAY_URL; // "https://api.cloak.ag"
+```
+
+Any other host, including old `devnet` hostnames found in blog posts or forks, is refused by
+design.
+
+### `opts.relayUrl is required` / `Viewing key registration is mandatory: relayUrl is required.`
+
+`relayUrl` has no default. Pass `CLOAK_PRODUCTION_RELAY_URL` on every call, deposits included:
+the SDK registers your viewing key and fetches the deposit's risk quote through it.
+
+### `Cloak SDK: refusing to run against the RPC "…", which is served by this machine`
+
+You pointed `createCloakRpc` at `localhost`/`127.0.0.1`. The published build talks to mainnet only,
+so it refuses a local RPC rather than build a real transaction against a fork. Use a mainnet RPC.
+
+### `Viewing key registration is mandatory: signMessage or signer (wallet) or depositorKeypair is required.`
+
+Before a wallet's first transaction the SDK registers its viewing key, which needs a signature.
+Give the call `depositorKeypair` (scripts), or `signMessage` (wallets that can sign messages), or
+`signer` (hardware wallets that cannot).
+
+## Signing and timing
+
+### `This computer's clock is more than … seconds ahead of the network's`
+
+Requests carry a signed timestamp, and one from the future is refused. Turn on automatic date and
+time, then retry.
+
+### `The wallet approval took … seconds, and Cloak requests stay valid for … seconds`
+
+A request is valid for 300 seconds from the moment it is signed. An approval left waiting in a
+wallet past that window cannot be reused. Retry and approve the prompt when it appears.
+
+### `The wallet's signMessage did not return a 64-byte ed25519 detached signature`
+
+`signMessage` must return the raw 64-byte signature over exactly the bytes it was given. Some
+adapters wrap or re-encode it; unwrap it, or pass `signer` instead of `signMessage`.
+
+## Amounts and balances
+
+### `Deposit amount too small: … lamports. Minimum is 10000000 (0.01 SOL).`
+
+The program's minimum SOL deposit is 0.01 SOL. Amounts are `bigint` in base units (lamports for
+SOL, 6 decimals for USDC/USDT); never compute them with floating point.
+
+### `Insufficient funds: have …, need …`
+
+The notes you passed in do not cover the amount plus the program's fee. See
+[Fees](/guide/fees) for the current rates.
+
+### `This shielded balance was already spent.`
+
+The note's nullifier is already on chain, usually because it was spent from another session or
+device. Rescan with your viewing key to refresh your local notes before building the next
+transaction.
+
+### `The Merkle root is outdated or invalid. Please refresh and try again.`
+
+The pool moved between proof generation and submission. `transact`, `transfer`, `partialWithdraw`
+and `fullWithdraw` already retry this internally; if it still surfaces, retry the call once. Do not
+wrap them in your own tight retry loop.
+
+## Still stuck
+
+Ask in the [Cloak community](https://t.me/cloak_community) with the exact message, the SDK version
+(`import { VERSION } from "@cloak.dev/sdk"`), and which call threw it.

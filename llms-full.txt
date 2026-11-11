@@ -93,7 +93,7 @@ The primary integration path is the SDK UTXO API.
 - `/operations/security`
   - Purpose: trust boundaries and security controls.
 - `/releases/latest`
-  - Purpose: what is live now — deployed program ID and artifact sha256, ceremony verifying-key and circuits `0.2.0` digests plus a verify-it-yourself recipe, per-pool fees and minimums, compliance model, and the current SDK release (0.2.5, `@solana/kit`-based).
+  - Purpose: what is live now — deployed program ID and artifact sha256, ceremony verifying-key and circuits `0.2.0` digests plus a verify-it-yourself recipe, per-pool fees and minimums, compliance model, and the current SDK release (0.2.11, `@solana/kit`-based).
 
 ### AI tools
 

@@ -4,9 +4,12 @@ description: "Mainnet examples for send, swap, payroll and compliance history, o
 icon: "code-branch"
 ---
 
-All examples use the current default program ID:
+All examples target `@cloak.dev/sdk` 0.2.11 on Solana mainnet (Cloak has no devnet, so test with
+small amounts) and use the program ID `CLOAK_PROGRAM_ID`:
 
 - `zh1eLd6rSphLejbFfJEneUwzHRfMKxgzrgkfwA6qRkW`
+
+For a first run, start with the [Quickstart](/sdk/quickstart).
 
 ## Pick your path before you copy anything
 
@@ -23,7 +26,7 @@ that looked fine. Read [Request authentication](/sdk/request-authentication) fir
 | You are writing | Pass in `TransactOptions` | Prompts the user |
 |---|---|---|
 | A Node service, a CLI, a script | `depositorKeypair` and `walletPublicKey` | no |
-| A browser app on wallet-adapter | `signMessage` and `walletPublicKey`, plus `signTransaction` for the deposit | yes, once per submitted request |
+| A browser app on wallet-adapter | `signer` (from `signerFromWalletAdapter`), `signMessage` and `walletPublicKey` | yes, once per submitted request |
 
 Nothing else differs. The parameters, the amounts, the helpers and the results are identical on both
 paths; only the holder of the pen changes.
@@ -35,16 +38,21 @@ paths; only the holder of the pen changes.
 
 ## Shared setup
 
+Set `KEYPAIR_PATH` (a Solana keypair file) and `SEED_HEX_FILE` (a file holding your 32-byte seed as
+hex, from `generateMasterSeed().seedHex`) before running anything below.
+
 ```typescript
 import {
   CLOAK_PRODUCTION_RELAY_URL,
   CLOAK_PROGRAM_ID,
   NATIVE_SOL_MINT,
-  createUtxo,
+  createRecoverableDepositUtxo,
   createZeroUtxo,
+  deriveSpendKey,
+  deriveUtxoKeypairFromSpendKey,
   fullWithdraw,
-  generateUtxoKeypair,
   getNkFromUtxoPrivateKey,
+  hexToBytes,
   partialWithdraw,
   serializeUtxo,
   swapWithChange,
@@ -70,11 +78,18 @@ const connection = createCloakRpc("https://api.mainnet-beta.solana.com");
 const signer = await signerFromSecretKey(
   Uint8Array.from(JSON.parse(readFileSync(process.env.KEYPAIR_PATH!, "utf8"))),
 );
-const scanKeypair = await generateUtxoKeypair();
-const viewingKeyNk = getNkFromUtxoPrivateKey(scanKeypair.privateKey);
+
+// Keys come from one persistent 32-byte seed (created once with `generateMasterSeed()` and
+// stored like a private key; a lost seed loses the notes). Here it is read from SEED_HEX_FILE.
+const seed = hexToBytes(readFileSync(process.env.SEED_HEX_FILE!, "utf8").trim());
+const { sk_spend } = deriveSpendKey(seed);
+const ownerUtxoKeypair = await deriveUtxoKeypairFromSpendKey(sk_spend);
+// View-only: finds and reads notes, can never spend them.
+const viewingKeyNk = getNkFromUtxoPrivateKey(ownerUtxoKeypair.privateKey);
 
 // Server keypair path: `depositorKeypair` signs both the deposit transaction and
-// every submitted request, without prompting.
+// every submitted request, without prompting. Every spend flow requires
+// `ownerUtxoKeypair` and the wallet `nk`; pass both on deposits too.
 const baseOptions = {
   connection,
   programId: CLOAK_PROGRAM_ID,
@@ -82,7 +97,28 @@ const baseOptions = {
   depositorKeypair: signer,
   walletPublicKey: signer.address,
   chainNoteViewingKeyNk: viewingKeyNk,
+  ownerUtxoKeypair,
 };
+
+// A deposit note owned by the wallet keypair, with a blinding the wallet's `nk`
+// can re-derive. Pass the returned `noteSalt` to `transact` as `chainNoteSalt`.
+async function deposit(amount: bigint, mint: Address) {
+  const { utxo, noteSalt } = await createRecoverableDepositUtxo({
+    amount,
+    viewingKeyNk: viewingKeyNk,
+    ownerUtxoKeypair,
+    mintAddress: mint,
+  });
+  return transact(
+    {
+      inputUtxos: [await createZeroUtxo(mint)],
+      outputUtxos: [utxo],
+      externalAmount: amount,
+      depositor: signer.address,
+    },
+    { ...baseOptions, chainNoteSalt: noteSalt },
+  );
+}
 
 // The SDK stores nothing for you. `serializeUtxo` is the 128-byte encoding that
 // carries everything a note needs to stay spendable: amount, private key,
@@ -95,7 +131,7 @@ function saveNotes(utxos: Utxo[]): void {
   for (const utxo of utxos) {
     if (utxo.amount === 0n) continue; // padding output, nothing to lose
     const line = JSON.stringify({
-      mint: utxo.mintAddress.toBase58(),
+      mint: utxo.mintAddress,
       amount: utxo.amount.toString(),
       note: Buffer.from(serializeUtxo(utxo)).toString("base64"),
     });
@@ -131,11 +167,13 @@ pair: it is a privacy hazard on a transfer or a withdrawal, not a configuration 
 
 <Warning>
 **Write `result.outputUtxos` down before you report success.** Every call on this page returns the
-notes it just created and then forgets them. A change note is your own money coming back, and its
-`blinding` is fresh randomness that `createUtxo` generates in memory and publishes nowhere, on chain
-or off. A note you did not store is unspendable by anyone, permanently: no rescan, no seed phrase and
-no support path brings it back. That is why every example below captures its result and calls
-`saveNotes` at the point where your service would commit to its own database. The browser version of
+notes it just created and then forgets them. A change note is your own money coming back. With the
+keys derived from your seed, deposit and change notes the SDK creates can be found again by a scan
+(`scanTransactions` returns `recoveredDepositNotes` and `recoveredChangeNotes`), but that is a
+recovery path, not a plan: it needs the same seed, a scan of the chain, and a note built without
+the SDK's recoverable helpers is gone for good if you drop it. That is why every example below
+captures its result and calls `saveNotes` at the point where your service would commit to its own
+database. The browser version of
 `saveNotes` is in [the wallet-adapter example](#the-same-send-from-a-browser-wallet-adapter) below;
 for the two storage exports the SDK ships, read
 [where your notes live between sessions](/sdk/wallet-integration#where-your-notes-live-between-sessions).
@@ -150,18 +188,7 @@ async function sendSameMint(args: {
   recipientWallet: Address;
   partialWithdrawAmount?: bigint; // use for partial withdrawal example
 }) {
-  const owner = await generateUtxoKeypair();
-  const output = await createUtxo(args.amount, owner, args.mint);
-
-  const deposited = await transact(
-    {
-      inputUtxos: [await createZeroUtxo(args.mint)],
-      outputUtxos: [output],
-      externalAmount: args.amount,
-      depositor: signer.address,
-    },
-    baseOptions,
-  );
+  const deposited = await deposit(args.amount, args.mint);
 
   // Store the deposit note first. If the withdrawal below throws, this file is the
   // only claim anyone has on the funds that just entered the pool.
@@ -233,25 +260,27 @@ await sendSameMint({
 
 ## The same send from a browser wallet adapter
 
-Same functions, same arguments, same results. The only change is the two signing options: the deposit
-is signed by `signTransaction` and submitted directly by the wallet, and the withdrawal is
-authenticated by `signMessage` over the request, with `walletPublicKey` as the sender.
+Same functions, same arguments, same results. The only change is the signing options: `signer`
+(the wallet, wrapped by `signerFromWalletAdapter`) signs the deposit, which the wallet submits
+directly, and `signMessage` authenticates the withdrawal request, with `walletPublicKey` as the
+sender. The wallet keys (`ownerUtxoKeypair`, `nk`) come from your wallet's seed exactly as in the
+server setup above; the hook below receives them as arguments.
 
 ```tsx
 import {
   CLOAK_PRODUCTION_RELAY_URL,
   CLOAK_PROGRAM_ID,
-  createUtxo,
+  createCloakRpc,
+  createRecoverableDepositUtxo,
   createZeroUtxo,
   explainRelayAuthRejection,
   fullWithdraw,
-  generateUtxoKeypair,
-  addressFromPublicKey,
-  createCloakRpc,
   serializeUtxo,
+  signerFromWalletAdapter,
   transact,
   type Address,
   type CloakRpc,
+  type UtxoKeypair,
   type Utxo,
 } from "@cloak.dev/sdk";
 import { useWallet } from "@solana/wallet-adapter-react";
@@ -277,8 +306,12 @@ function saveNotes(utxos: Utxo[]): void {
   window.localStorage.setItem(NOTES_KEY, JSON.stringify(stored));
 }
 
-export function useSendSameMint(connection: CloakRpc, viewingKeyNk: Uint8Array) {
-  const { publicKey, signTransaction, signMessage } = useWallet();
+export function useSendSameMint(
+  connection: CloakRpc,
+  ownerUtxoKeypair: UtxoKeypair,
+  viewingKeyNk: Uint8Array,
+) {
+  const wallet = useWallet();
 
   return async function sendSameMint(args: {
     mint: Address;
@@ -287,9 +320,13 @@ export function useSendSameMint(connection: CloakRpc, viewingKeyNk: Uint8Array) 
   }) {
     // Not every adapter implements signMessage. Check before you offer the action, so
     // the user is never asked to approve and then told their wallet cannot sign.
-    if (!publicKey || !signTransaction || !signMessage) {
+    if (!wallet.publicKey || !wallet.signTransaction || !wallet.signMessage) {
       throw new Error("Connect a wallet that supports message signing.");
     }
+    const { signMessage } = wallet;
+
+    // The connected wallet as a Kit signer. `@solana/web3.js` must be installed.
+    const signer = signerFromWalletAdapter(wallet);
 
     const walletOptions = {
       connection,
@@ -297,30 +334,34 @@ export function useSendSameMint(connection: CloakRpc, viewingKeyNk: Uint8Array) 
       relayUrl: CLOAK_PRODUCTION_RELAY_URL,
 
       // ── the wallet-adapter replacement for `depositorKeypair` ──
-      signTransaction, // signs the deposit transaction
+      signer, // signs the deposit transaction
       signMessage, // signs the request preimage on submitted flows
-      // The adapter gives a web3.js PublicKey; Cloak options take a Kit Address.
-      depositorPublicKey: addressFromPublicKey(publicKey),
-      walletPublicKey: addressFromPublicKey(publicKey), // the authenticated `sender`
+      depositorPublicKey: signer.address,
+      walletPublicKey: signer.address, // the authenticated `sender`
       // ──────────────────────────────────────────────────────────
 
       chainNoteViewingKeyNk: viewingKeyNk,
+      ownerUtxoKeypair, // required on every spend flow
       onProgress: (status: string) => console.log(status),
       onProofProgress: (percent: number) => console.log(`proof ${percent}%`),
     };
 
-    const owner = await generateUtxoKeypair();
-    const output = await createUtxo(args.amount, owner, args.mint);
+    const { utxo, noteSalt } = await createRecoverableDepositUtxo({
+      amount: args.amount,
+      viewingKeyNk,
+      ownerUtxoKeypair,
+      mintAddress: args.mint,
+    });
 
     // Deposit: signed by the wallet, submitted directly. No authenticated sender.
     const deposited = await transact(
       {
         inputUtxos: [await createZeroUtxo(args.mint)],
-        outputUtxos: [output],
+        outputUtxos: [utxo],
         externalAmount: args.amount,
-        depositor: publicKey,
+        depositor: signer.address,
       },
-      walletOptions,
+      { ...walletOptions, chainNoteSalt: noteSalt },
     );
 
     // Store the deposit note before going any further. If the send below fails, or
@@ -367,18 +408,8 @@ another.
 ## SOL swap flow (SOL -> token)
 
 ```typescript
-const swapOwner = await generateUtxoKeypair();
-const swapInput = await createUtxo(600_000_000n, swapOwner, NATIVE_SOL_MINT);
-
-const swapDeposit = await transact(
-  {
-    inputUtxos: [await createZeroUtxo(NATIVE_SOL_MINT)],
-    outputUtxos: [swapInput],
-    externalAmount: 600_000_000n,
-    depositor: signer.address,
-  },
-  baseOptions,
-);
+// `deposit` is the helper from the shared setup above.
+const swapDeposit = await deposit(600_000_000n, NATIVE_SOL_MINT);
 
 const recipientWallet = (await generateKeyPairSigner()).address;
 const [recipientUsdcAta] = await findAssociatedTokenPda({
@@ -449,7 +480,7 @@ for (const payment of payroll) {
   });
 
   receipts.push({
-    wallet: payment.wallet.toBase58(),
+    wallet: payment.wallet,
     signature: paid.signature,
   });
 }
@@ -473,6 +504,7 @@ const scan = await scanTransactions({
   connection,
   programId: CLOAK_PROGRAM_ID,
   viewingKeyNk,
+  ownerUtxoPublicKey: ownerUtxoKeypair.publicKey, // matches your own deposits
   limit: 250,
 });
 

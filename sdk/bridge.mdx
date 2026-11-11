@@ -9,7 +9,8 @@ does not give are in [Bridge routes](/guide/bridge-routes). This page is the SDK
 
 The shape is always the same: derive a one-time receiving address from the user's own keys, get a
 quote, let the user send on the origin chain, then shield what arrives. Nothing here is stored for
-you — every address is re-derivable from `nk`, which is why a closed tab loses nothing.
+you — every address is re-derivable from the wallet's `ownerUtxoKeypair`, which is why a closed tab loses
+nothing. Everything on this page is exported by `@cloak.dev/sdk` 0.2.11.
 
 <Warning>
 **Shielding runs on the client.** Funds that arrive while nothing is running wait at the receiving
@@ -19,28 +20,66 @@ integration needs a resume path rather than a single happy-path call.
 
 ## Deriving the receiving address
 
-```typescript
-deriveBridgeReceiver(nk: Uint8Array | Buffer, index: number): Promise<KeyPairSigner>
+```ts
+import {
+  deriveBridgeReceiver,
+  deriveSpendKey,
+  deriveUtxoKeypairFromSpendKey,
+  generateMasterSeed,
+  MAX_RECEIVER_INDEX,
+} from "@cloak.dev/sdk";
 
-MAX_RECEIVER_INDEX; // upper bound on index
-BRIDGE_ESCROW_LABEL;
+// `seed`: 32 bytes generated once (generateMasterSeed()) and stored like a private key.
+const seed = generateMasterSeed().seed;
+const { sk_spend } = deriveSpendKey(seed);
+const ownerUtxoKeypair = await deriveUtxoKeypairFromSpendKey(sk_spend);
+
+// A KeyPairSigner for receiving address number 0. MAX_RECEIVER_INDEX is 10000.
+const receiver = await deriveBridgeReceiver(ownerUtxoKeypair, 0);
+console.log(receiver.address, MAX_RECEIVER_INDEX);
 ```
 
+The receiver is derived from the wallet's spend-level key material (`ownerUtxoKeypair`), not from the
+viewing key `nk`: the receiver is a full signer that holds funds in transit, and `nk` may be shared.
 `index` is a **small sequential counter**, not a timestamp. Discovery derives `0…N` and reads each
 one on chain, so a sparse index space makes the user's own deposits undiscoverable. `deriveBridgeReceiver`
 throws on a non-integer, a negative value, or anything above `MAX_RECEIVER_INDEX`.
 
+`BRIDGE_ESCROW_LABEL` and `deriveLegacyBridgeReceiver(nk, index)` belong to the first bridge release,
+which derived receivers from `nk`. They exist so discovery can find and finish old deposits; never
+route a new deposit to a legacy receiver. The current label is `BRIDGE_ESCROW_LABEL_V2`.
+
 ## Quoting, and refusing a bad one
 
-```typescript
-assessBridgeQuote(q: BridgeQuoteInput): BridgeQuoteAssessment
-renderAssessment(a: BridgeQuoteAssessment): string
+```ts
+import {
+  assessBridgeQuote,
+  ECONOMIC_MINIMUM, // below this, fixed costs dominate the amount
+  MIN_DEPOSIT_SPL_BASE_UNITS, // 1_000_000n: the program's USDC/USDT deposit minimum
+  renderAssessment,
+  WITHDRAW_FEE_BPS, // 30n (0.3%)
+  WITHDRAW_FIXED_FEE, // 450_000n base units
+  withdrawFeeFor,
+  type BridgeQuoteInput,
+} from "@cloak.dev/sdk";
 
-MIN_DEPOSIT_SPL_BASE_UNITS; // 1_000_000 — the program's USDC/USDT deposit minimum
-ECONOMIC_MINIMUM;           // below this, fixed costs dominate the amount
-withdrawFeeFor(amount: bigint): bigint;
-WITHDRAW_FIXED_FEE;         // 450_000 base units
-WITHDRAW_FEE_BPS;           // 30 (0.3%)
+const quote: BridgeQuoteInput = {
+  sent: 100_000_000n, // 100 USDC sent on the origin chain, in base units
+  arrivesMin: 99_000_000n, // the route's guaranteed floor: assess against this
+  arrivesTarget: 99_500_000n, // the route's target, for display only
+  paymasterFee: 150_000n, // what funding the receiver costs, same units
+};
+
+const assessment = assessBridgeQuote(quote);
+if (!assessment.viable) throw new Error(assessment.reasons.join("; "));
+console.log(renderAssessment(assessment));
+console.log(
+  assessment.shieldedMin >= MIN_DEPOSIT_SPL_BASE_UNITS,
+  assessment.shieldedMin >= ECONOMIC_MINIMUM,
+  withdrawFeeFor(assessment.shieldedMin),
+  WITHDRAW_FIXED_FEE,
+  WITHDRAW_FEE_BPS,
+);
 ```
 
 `assessBridgeQuote` returns what the user actually ends up with, and whether the quote is worth
@@ -58,10 +97,15 @@ constants as the fee the user will be charged.
 
 ## Verifying the deposit address yourself
 
-```typescript
-verifyQuoteSignature(response): { valid: boolean; reason?: string }
-canonicalPayloadString(value): string
-ONECLICK_PUBKEY_B58;
+```ts
+import { canonicalPayloadString, ONECLICK_PUBKEY_B58, verifyQuoteSignature } from "@cloak.dev/sdk";
+
+// `response` is the quote response object exactly as the route returned it.
+declare const response: unknown;
+
+const { valid, reason } = verifyQuoteSignature(response);
+if (!valid) console.warn("This route cannot be verified:", reason);
+console.log(canonicalPayloadString(response), ONECLICK_PUBKEY_B58);
 ```
 
 One route signs its quote, including the deposit address; the other signs nothing. Running
@@ -72,57 +116,141 @@ an error to swallow.
 
 ## Finding what already arrived
 
-```typescript
-listBridgeDeposits(rpc: CloakRpc, nk, opts: DiscoverOptions): Promise<BridgeDeposit[]>
+```ts
+import {
+  CLOAK_PROGRAM_ID,
+  createCloakRpc,
+  listBridgeDeposits,
+  address,
+  type BridgeDeposit,
+  type DiscoverOptions,
+  type UtxoKeypair,
+} from "@cloak.dev/sdk";
 
-DiscoverOptions; // { scanDepth?, stopAfterUnused?, ... }
-BridgeDeposit;
-BridgeDepositState;
+declare const ownerUtxoKeypair: UtxoKeypair; // derived as in the first section
+
+const rpc = createCloakRpc("https://your-keyed-mainnet-rpc.example");
+const opts: DiscoverOptions = {
+  programId: CLOAK_PROGRAM_ID,
+  mint: address("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"), // USDC
+  scanDepth: 20,
+  stopAfterUnused: 5,
+};
+
+const deposits: BridgeDeposit[] = await listBridgeDeposits(rpc, ownerUtxoKeypair, opts);
+for (const d of deposits) console.log(d.index, d.state, d.tokenBalance, d.legacyExposed);
 ```
 
-Discovery derives receiving addresses from `nk` and reads each on chain, stopping after
-`stopAfterUnused` consecutive empty ones (default 5) or at `scanDepth` (default 20, capped at
-`MAX_RECEIVER_INDEX + 1`). This is the resume path: the user reopens the app with the same wallet and
-anything unshielded is found again from their keys alone.
+`BridgeDeposit.state` is a `BridgeDepositState`: `"unused"`, `"awaiting"`, `"arrived"`, `"complete"`,
+`"needs-cleanup"` or `"unknown"`. `"unknown"` means an RPC read failed; it is not evidence that nothing
+is there, so retry instead of reporting an empty address.
+
+Discovery derives receiving addresses from `ownerUtxoKeypair` and reads each on chain, stopping after
+`stopAfterUnused` consecutive empty ones or at `scanDepth` (default 20, capped at
+`MAX_RECEIVER_INDEX + 1`). It also scans the legacy `nk`-derived receivers unless you set
+`includeLegacy: false`, and flags those entries `legacyExposed`. This is the resume path: the user
+reopens the app with the same wallet and anything unshielded is found again from their keys alone.
 
 ## Completing and cleaning up
 
-```typescript
-depositFromDerivedKey(...): Promise<DepositOutcome>
-DepositError;
+```ts
+import {
+  CLOAK_PRODUCTION_RELAY_URL,
+  CLOAK_PROGRAM_ID,
+  cleanupReceivingAddress,
+  createCloakRpc,
+  depositFromDerivedKey,
+  fundReceiverViaPaymaster,
+  address,
+  type DepositOutcome,
+  type KeyPairSigner,
+  type PaymasterTopUpResult,
+} from "@cloak.dev/sdk";
 
-cleanupReceivingAddress(
-  rpc: CloakRpc,
-  R: KeyPairSigner,
-  dustDestination?: Address,
-  mint?: Address,
-): Promise<CleanupResult>
+declare const receiver: KeyPairSigner; // deriveBridgeReceiver(ownerUtxoKeypair, index)
+declare const funder: KeyPairSigner; // pays the receiver's minimal funding
+declare const noteSpendKey: Uint8Array; // the wallet's sk_spend
+declare const arrived: bigint; // the receiver's token balance, from listBridgeDeposits
 
-fundReceiverViaPaymaster(...): Promise<PaymasterTopUpResult>
-validatePaymasterTopUpTransaction(...): PaymasterTopUpExpectation
+const rpc = createCloakRpc("https://your-keyed-mainnet-rpc.example");
+const usdc = address("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
 
-deriveFundingTargets(...); readRent(...);
-FEE_BUDGET; CLEANUP_FEE_BUDGET; MAINNET_RENT_0; MAINNET_RENT_1;
+// Fund the receiver through the paymaster; the caller submits the returned transaction.
+const topUp: PaymasterTopUpResult = await fundReceiverViaPaymaster(
+  CLOAK_PRODUCTION_RELAY_URL,
+  receiver,
+  1_000_000n, // lamports to grant the receiver
+);
+console.log(topUp.feeMint, topUp.feeTokenAmount);
+
+// Shield what arrived, with the receiver as the only signer of the deposit.
+const outcome: DepositOutcome = await depositFromDerivedKey(
+  rpc,
+  receiver,
+  funder,
+  arrived,
+  console.log,
+  undefined, // grantOverride: leave unset
+  { relayUrl: CLOAK_PRODUCTION_RELAY_URL, programId: CLOAK_PROGRAM_ID, mint: usdc, noteSpendKey },
+);
+console.log(outcome.signature);
+
+// Close the empty token account. Leave dustDestination unset unless the user knows the cost:
+// any destination they control publishes receiver -> them.
+const cleanup = await cleanupReceivingAddress(rpc, receiver, undefined, usdc);
+console.log(cleanup.closed, cleanup.note);
 ```
 
 A receiving address arrives holding no SOL, so it cannot pay for its own shield. The paymaster
-helpers cover that, and `cleanupReceivingAddress` closes the token account afterwards and sweeps the
-remainder. `validatePaymasterTopUpTransaction` checks a top-up is what it claims before it is signed.
+helpers cover that, and `cleanupReceivingAddress` closes the token account afterwards. It never sweeps
+leftover dust unless you pass `dustDestination`. `depositFromDerivedKey` throws `DepositError` when
+the funding step ran before the failure; its `fundedAccounts` field says what already landed.
+
+Also exported: `validatePaymasterTopUpTransaction(tx, expectation)`, which refuses a top-up
+transaction that is not exactly what was asked for before the receiver signs it, plus
+`deriveFundingTargets`, `readRent`, `FEE_BUDGET`, `CLEANUP_FEE_BUDGET`, `MAINNET_RENT_0` and
+`MAINNET_RENT_1` for budgeting the receiver's SOL.
 
 ## Retrying without double-spending
 
-```typescript
-withShieldRetries(fn, hooks?: RetryHooks)
-isTerminalFailure(error): boolean
-classifyPostFailure(error): PostFailureVerdict
-mayRetry(error): boolean
-retryDelayMs(attempt: number): number
-TERMINAL_FAILURE; DoNotRetry;
+```ts
+import {
+  classifyPostFailure,
+  DoNotRetry,
+  mayRetry,
+  withShieldRetries,
+  type RetryHooks,
+} from "@cloak.dev/sdk";
+
+declare function readReceiverBalance(): Promise<bigint | null>; // your own read of the token account
+declare function shield(): Promise<string>; // your own call, for example depositFromDerivedKey
+
+const attempted = 100_000_000n; // what the receiver held when the attempt started
+const hooks: RetryHooks = {
+  attempts: 3,
+  onRetry: (attempt, delayMs, lastError) => console.log(attempt, delayMs, lastError),
+};
+
+const signature = await withShieldRetries(async () => {
+  try {
+    return await shield();
+  } catch (error) {
+    const verdict = classifyPostFailure(attempted, await readReceiverBalance());
+    const message = error instanceof Error ? error.message : String(error);
+    if (!mayRetry(verdict, message)) throw new DoNotRetry(message);
+    throw error;
+  }
+}, hooks);
+console.log(signature);
 ```
 
 The distinction that matters: a request that failed **before** submission can be retried freely, and
-one that failed after it may already have landed. `classifyPostFailure` is what separates them;
-`withShieldRetries` wraps the whole shield with that policy already applied.
+one that failed after it may already have landed. `classifyPostFailure(attempted, after)` compares the
+receiver's balance before and after the attempt and returns `"landed"`, `"did-not-land"` or
+`"unknown"`; `mayRetry(verdict, message)` turns that into a yes or no, and anything the evidence
+cannot explain resolves to no. `withShieldRetries` runs the loop and stops when the attempt throws
+`DoNotRetry`. `isTerminalFailure(message)`, `TERMINAL_FAILURE` and `retryDelayMs(attempt)` are the
+smaller pieces it is built from.
 
 ## Related
 

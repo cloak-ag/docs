@@ -13,7 +13,7 @@ This is **not** the consumer app's [private send](/guide/private-send), which de
 </Note>
 
 <Note>
-**Who signs.** A shielded transfer is not posted by your wallet the way a deposit is: it is submitted for you, so the request carries an **authenticated sender**, a signature over the request body from the end user's own wallet. On a server you pass `depositorKeypair`. In a **browser** you pass `signMessage` and `walletPublicKey` from your wallet adapter instead, because an adapter has no secret key to hand over. The examples on this page use the server form; [Request authentication](/sdk/request-authentication) is the full contract, including the browser wiring, the 300-second approval window and `explainRelayAuthRejection`.
+**Who signs.** A shielded transfer is not posted by your wallet the way a deposit is: it is submitted for you, so the request carries an **authenticated sender**, a signature over the request body from the end user's own wallet. On a server you pass `depositorKeypair`. In a **browser** you pass `signMessage` and `walletPublicKey` from your wallet adapter instead, because an adapter has no secret key to hand over. A hardware wallet that cannot sign messages passes `signer` instead. The examples on this page use the server form; [Request authentication](/sdk/request-authentication) is the full contract, including the browser wiring, the 300-second approval window and `explainRelayAuthRejection`. Every spend flow, `transfer` included, also requires the user's `ownerUtxoKeypair` and `nk`, derived from one seed: see [where the user's keys live](/sdk/wallet-integration#where-the-users-keys-live).
 </Note>
 
 ## Walkthrough: Alice pays Bob 0.06 SOL, privately
@@ -149,10 +149,12 @@ import {
   CLOAK_PRODUCTION_RELAY_URL,
   CLOAK_PROGRAM_ID,
   NATIVE_SOL_MINT,
-  createUtxo,
+  createRecoverableDepositUtxo,
   createZeroUtxo,
+  deriveSpendKey,
+  deriveUtxoKeypairFromSpendKey,
   deriveViewingKeyFromNk,
-  generateUtxoKeypair,
+  generateMasterSeed,
   getNkFromUtxoPrivateKey,
   scanRecipientDeliveryNotes,
   serializeUtxo,
@@ -184,10 +186,19 @@ const bobWallet = await signerFromSecretKey(
   Uint8Array.from(JSON.parse(process.env.BOB_SECRET_KEY!)),
 );
 
+// Each person's Cloak keys come from one 32-byte seed. Here the seeds are generated on the
+// spot; in a real app generate once and store it like a private key, because a lost seed
+// loses the notes.
+async function deriveKeys(seed: Uint8Array) {
+  const { sk_spend } = deriveSpendKey(seed);
+  const ownerUtxoKeypair = await deriveUtxoKeypairFromSpendKey(sk_spend);
+  const nk = getNkFromUtxoPrivateKey(ownerUtxoKeypair.privateKey); // view-only: finds notes, never spends
+  return { ownerUtxoKeypair, nk };
+}
+
 // ── Recipient (Bob), once ────────────────────────────────────────────
 // Bob has a Cloak keypair and shares TWO public values with the sender.
-const bob = await generateUtxoKeypair();
-const bobNk = getNkFromUtxoPrivateKey(bob.privateKey);   // stays with Bob, never shared
+const { ownerUtxoKeypair: bob, nk: bobNk } = await deriveKeys(generateMasterSeed().seed); // bobNk stays with Bob, never shared
 const bobPubkey = bob.publicKey;                          // ← handoff #1a: Bob → Alice
 const bobViewingPublicKey = deriveViewingKeyFromNk(bobNk).publicKey; // ← handoff #1b: Bob → Alice
 
@@ -195,13 +206,20 @@ const bobViewingPublicKey = deriveViewingKeyFromNk(bobNk).publicKey; // ← hand
 // A note exists only because someone deposited. `alice` is Alice's Cloak keypair;
 // `aliceWallet` is her Solana wallet, and it is the wallet that authenticates
 // every request she makes. This deposit shields 0.10 SOL to her Cloak key.
-const alice = await generateUtxoKeypair();
-const aliceNk = getNkFromUtxoPrivateKey(alice.privateKey);   // Alice's OWN nk
+const { ownerUtxoKeypair: alice, nk: aliceNk } = await deriveKeys(generateMasterSeed().seed); // aliceNk is Alice's OWN nk
+
+// A recoverable deposit note: a scan holding aliceNk can rebuild it if the bytes are lost.
+const { utxo: aliceDepositNote, noteSalt } = await createRecoverableDepositUtxo({
+  amount: 100_000_000n,
+  viewingKeyNk: aliceNk,
+  ownerUtxoKeypair: alice,
+  mintAddress: NATIVE_SOL_MINT,
+});
 
 const deposit = await transact(
   {
     inputUtxos: [await createZeroUtxo(NATIVE_SOL_MINT)],   // 2-in circuit: pad with a zero note
-    outputUtxos: [await createUtxo(100_000_000n, alice, NATIVE_SOL_MINT)],
+    outputUtxos: [aliceDepositNote],
     externalAmount: 100_000_000n,           // 0.10 SOL flowing INTO the pool
     depositor: aliceWallet.address,
   },
@@ -209,7 +227,9 @@ const deposit = await transact(
     connection, programId, relayUrl,
     depositorKeypair: aliceWallet,
     walletPublicKey: aliceWallet.address,
+    ownerUtxoKeypair: alice,
     chainNoteViewingKeyNk: aliceNk,
+    chainNoteSalt: noteSalt,
   },
 );
 const [aliceNote] = deposit.outputUtxos;   // ← the 0.10 note, with its leaf index attached
@@ -227,6 +247,7 @@ const sent = await transfer(
     connection, programId, relayUrl,
     depositorKeypair: aliceWallet,          // server signer; a browser passes signMessage instead
     walletPublicKey: aliceWallet.address, // the authenticated sender, either way
+    ownerUtxoKeypair: alice,                // Alice's own keypair: owns her change note
     chainNoteViewingKeyNk: aliceNk,         // Alice's OWN nk
     recipientViewingPublicKey: bobViewingPublicKey,  // opt in to recipient discovery
     cachedMerkleTree: deposit.merkleTree,   // the deposit already built the tree; reuse it
@@ -264,12 +285,13 @@ await fullWithdraw([claimable], bobWallet.address, {   // ← funds land at bobW
   connection, programId, relayUrl,
   depositorKeypair: bobWallet,            // Bob's OWN wallet authenticates his withdrawal
   walletPublicKey: bobWallet.address,   // never a service key: this is the screened sender
+  ownerUtxoKeypair: bob,
   chainNoteViewingKeyNk: bobNk,           // Bob's OWN nk
 });
 ```
 
 <Note>
-**Where `aliceNote` comes from in a real app.** The script above funds it in the same run, which is what makes it runnable end to end. A wallet cannot do that: the deposit happened yesterday, and the note has to come back out of storage. The SDK persists nothing for you: `transact` and `transfer` hand you `result.outputUtxos` once and then forget them, and a change note's `blinding` is fresh randomness that exists in no other place, on chain or off. Write the outputs down before you report success. The deposit above is built with `createUtxo`, so a later cold scan cannot rebuild it either; `createRecoverableDepositUtxo` is the shape that can. Both are covered in [where your notes live between sessions](/sdk/wallet-integration#where-your-notes-live-between-sessions).
+**Where `aliceNote` comes from in a real app.** The script above funds it in the same run, which is what makes it runnable end to end. A wallet cannot do that: the deposit happened yesterday, and the note has to come back out of storage. The SDK persists nothing for you: `transact` and `transfer` hand you `result.outputUtxos` once and then forget them, and a change note's `blinding` is fresh randomness that exists in no other place, on chain or off. Write the outputs down before you report success. The deposit above is built with `createRecoverableDepositUtxo`, so a later cold scan holding `aliceNk` can rebuild it, but Alice's change note is not recoverable that way: persist it. Both are covered in [where your notes live between sessions](/sdk/wallet-integration#where-your-notes-live-between-sessions).
 </Note>
 
 <Note>
@@ -282,14 +304,13 @@ A wallet adapter has no secret key to give you, so there is no `depositorKeypair
 
 The input notes are the other difference, and it is a difference of plumbing rather than of protocol. There is no deposit a line above to take them from, so they come back out of [your own storage](/sdk/wallet-integration#where-your-notes-live-between-sessions): a `UtxoWallet` you loaded on mount, with `selectUtxos` picking the inputs for this amount.
 
-```tsx
+```ts
 import {
   CLOAK_PRODUCTION_RELAY_URL,
   CLOAK_PROGRAM_ID,
   NATIVE_SOL_MINT,
   UtxoWallet,
   explainRelayAuthRejection,
-  getNkFromUtxoPrivateKey,
   addressFromPublicKey,
   createCloakRpc,
   selectUtxos,
@@ -303,17 +324,21 @@ const programId = CLOAK_PROGRAM_ID;
 const relayUrl = CLOAK_PRODUCTION_RELAY_URL;
 const NOTES_KEY = "myapp.cloak.notes";
 
-const { publicKey, signMessage } = useWallet();
+// Inside a React component: `const { publicKey, signMessage } = useWallet();`
+type WalletHandles = Pick<ReturnType<typeof useWallet>, "publicKey" | "signMessage">;
 
 // `wallet` is the note set restored with UtxoWallet.deserialize on mount, and
-// `alice` is the Cloak keypair stored beside it. Neither comes from the SDK.
+// `alice` / `aliceNk` are the user's seed-derived keys. Neither comes from the wallet adapter.
 async function sendToBob(
+  { publicKey, signMessage }: WalletHandles,
   wallet: UtxoWallet,
   alice: UtxoKeypair,
+  aliceNk: Uint8Array,
   bobPubkey: bigint,
   bobViewingPublicKey: Uint8Array,
 ) {
   // Not every adapter implements signMessage. Check before you offer the action.
+  // (A hardware wallet without it passes `signer` instead: see Request authentication.)
   if (!publicKey || !signMessage) {
     throw new Error("Connect a wallet that supports message signing.");
   }
@@ -332,7 +357,8 @@ async function sendToBob(
       signMessage,                  // returns the 64-byte ed25519 detached signature
       // ───────────────────────────────────────────────────────────────────────
 
-      chainNoteViewingKeyNk: getNkFromUtxoPrivateKey(alice.privateKey), // Alice's OWN nk
+      ownerUtxoKeypair: alice,
+      chainNoteViewingKeyNk: aliceNk, // Alice's OWN nk
       recipientViewingPublicKey: bobViewingPublicKey, // opt in to recipient discovery
     });
 

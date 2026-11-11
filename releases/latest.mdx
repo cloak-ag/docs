@@ -73,7 +73,60 @@ fees only). Full breakdown: [Fee model](/protocol/fee-model).
 - Viewing keys let a user disclose their own history to an auditor. See
   [Compliance](/guide/compliance).
 
-## SDK — current release `0.2.5`
+## SDK — current release `0.2.11`
+
+npm `latest` is 0.2.11 (Node 22 or later). The program, the verifying key and the `circuits/0.2.0`
+bundle did **not** change from 0.2.5 through 0.2.11; these are client-side releases. Cloak runs on
+Solana mainnet only; there is no devnet.
+
+```bash
+npm install @cloak.dev/sdk@^0.2.11 @solana/kit
+```
+
+### What changed from 0.2.6 to 0.2.11
+
+**0.2.6: the owner key is mandatory (breaking).** The viewing key `nk` is registered with the relay
+and may be shared with an auditor, so it is now view-only for every note the SDK creates.
+
+- `transfer`, `partialWithdraw`, `fullWithdraw`, `swapUtxo` and `swapWithChange` require
+  `ownerUtxoKeypair` (the type `SpendOptions`) and refuse without it. Derive it from your seed with
+  `deriveUtxoKeypairFromSpendKey`. Change, merges and refund notes are owned by it.
+- `transact` needs `chainNoteViewingKeyNk` (or `getChainNoteViewingKeyNk`) or `ownerUtxoKeypair`; it
+  no longer infers `nk` from a note's key and fails before any network call when none is given.
+- `createRecoverableDepositUtxo` takes one options object:
+  `{ amount, viewingKeyNk, ownerUtxoKeypair, mintAddress? }`, and returns `{ utxo, noteSalt }`.
+  Pass `noteSalt` to `transact` as `chainNoteSalt`.
+- `deriveSwapRefundAuthorization` takes `ownerUtxoKeypair` as a third argument;
+  `discoverSwapRefunds` requires `options.ownerUtxoKeypair`; `UtxoSwapResult.refund` no longer
+  carries a private key.
+- `deriveBridgeReceiver(ownerUtxoKeypair, index)` replaces the `nk`-derived version, and
+  `listBridgeDeposits` takes the keypair too.
+- `deriveDepositNoteSecrets` is removed; use `deriveDepositNoteBlinding`.
+- Notes created before 0.2.6 may have an `nk`-derived owner key. They are flagged `legacyExposed`
+  and move under the wallet key only when spent.
+- New `recoverNotesFromIndex` restores a wallet's notes from the relay's Note Index with one RPC
+  read instead of a chain walk, and the relay learns nothing about which notes are yours.
+- Relay request signatures use the relay's clock, so a machine clock that is off no longer fails
+  withdraws, sends or swaps.
+- A failed deposit no longer rebuilds the Merkle tree from chain, so the real error surfaces at once.
+
+**0.2.7.** No public signature changes. Scan results label BRS notes as `BRS`.
+
+**0.2.8.** Per-request receive keys: `deriveRequestKeyRoot`, `deriveRequestKeys` and
+`deriveRequestKeyRange` derive a fresh UTXO and viewing keypair per request, so two request links
+from one wallet share no key. `recoverNotesFromIndex` accepts `requestKeys`, and `sweepToWalletKey`
+moves notes paid to them under the wallet key. `engines.node` is now `>=22.0.0`.
+
+**0.2.10.** New `signerFromTransactionBytes(wallet)` for a wallet that signs wire bytes, the way to
+sign a `transactionVersion: 1` deposit from a browser wallet (`signerFromWalletAdapter` cannot carry
+a V1 message). Only use V1 with a wallet that lists `1` in its `supportedTransactionVersions`.
+
+**0.2.11.** `signerFromTransactionBytes` now sends the transaction the wallet returned when the
+wallet changed the message (for example Solflare adding its own guard instructions), as
+`signerFromWalletAdapter` always has. 0.2.10 refused any changed message and broke those deposits.
+The returned transaction must still carry the wallet's signature.
+
+### 0.2.5
 
 Published 2026-09-17. The program, the verifying key and the `circuits/0.2.0` bundle did **not**
 change with it; 0.2.5 is a client-side release.
@@ -93,7 +146,3 @@ change with it; 0.2.5 is a client-side release.
 
 Supported mainnet flows: shield, private send, unshield and private swap on SOL, USDC and USDT, with
 swaps routed through Jupiter.
-
-```bash
-npm install @cloak.dev/sdk@0.2.5 @solana/kit
-```
