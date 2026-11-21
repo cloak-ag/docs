@@ -49,7 +49,7 @@ You can shield and send SOL, USDC, and USDT, each in its own shielded pool; swap
 </Accordion>
 
 <Accordion title="Can I bring in funds from another chain?">
-Yes. You can send USDC from Polygon, Ethereum, Base, Arbitrum, or Sui and have it arrive as a private balance on Solana, without a Solana wallet of yours in the middle: it lands at a single-use address derived from your own Cloak keys, and is shielded from there. Arriving carries no protocol fee; the route charges its own cut on the origin side, and the Solana network cost of entering the pool comes out of the bridged amount. Two routes exist and they are not equivalent — one signs its deposit address so your browser can verify it and refunds an order it cannot fill, the other does neither — so read [Bridging in](/guide/bridge) and [Bridge routes](/guide/bridge-routes) before you send.
+Yes. You can send USDC from Base, Polygon or Sui, or ETH from Base, and have it arrive as a private USDC balance on Solana, without a Solana wallet of yours in the middle: it lands at a single-use address derived from your own Cloak keys, and is shielded from there. Arriving carries no protocol fee; the route charges its own cut on the origin side, and the Solana network cost of entering the pool comes out of the bridged amount. The route signs its deposit address so your browser can verify it, and refunds an order it cannot fill to the wallet you sent from. It still holds the funds in transit, so read [Bridging in](/guide/bridge) and [What the bridge route guarantees](/guide/bridge-routes) before you send.
 </Accordion>
 
 <Accordion title="I bridged, but the funds aren't in my private balance yet.">

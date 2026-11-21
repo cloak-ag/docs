@@ -60,8 +60,8 @@ on the TypeScript SDK `@cloak.dev/sdk`, in the browser, in Node, and in server-s
 - [How Cloak works](/guide/how-it-works): The four user flows — shield, private send, private swap, unshield.
 - [Private send](/guide/private-send): Paying any Solana address or .sol domain from the private balance, and what the recipient sees.
 - [Your private balance and backup file](/guide/private-balance): Custody model — UTXOs, the backup file, loss and recovery semantics.
-- [Bridging in from another chain](/guide/bridge): Bringing USDC from Polygon, Ethereum, Base, Arbitrum or Sui in as a private balance; one-time receiving address, costs, timing, recovery.
-- [Bridge routes and what each one guarantees](/guide/bridge-routes): The two routes compared — signed vs unsigned deposit address, refund path vs none, and the trust neither removes.
+- [Bridging in from another chain](/guide/bridge): Bringing USDC from Base, Polygon or Sui (or ETH from Base) in as a private USDC balance; one-time receiving address, costs, minimums, refunds, and moving stuck funds to your wallet.
+- [What the bridge route guarantees](/guide/bridge-routes): The signed deposit address your browser verifies, refunds to the sending wallet, and the custody in transit that no bridge removes.
 - [Fees](/guide/fees): Who pays what per action; free shielding, 0.3% plus a fixed fee (0.005 SOL or 0.45 USDC/USDT) to leave the pool.
 - [Payment links](/guide/payment-links): Single-use bearer links — pay without the recipient's address, or get paid without revealing yours.
 - [Security](/guide/security): Audit status, threat model, what Cloak cannot do, governance.

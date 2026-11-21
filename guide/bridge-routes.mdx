@@ -1,89 +1,70 @@
 ---
-title: "Bridge routes and what each one guarantees"
-description: "The two routes into Cloak differ in what they sign and what they refund — one can be verified independently, the other asks you to trust Cloak"
+title: "What the bridge route guarantees"
+description: "What is signed, what your browser checks before your wallet is asked to pay, what is refunded, and the trust that remains while funds move between networks"
 icon: "scale-balanced"
 ---
 
-Two routes carry funds from another chain into your Cloak balance. They deliver the same asset to the same place, and that is where the similarity ends. This page is the honest comparison — read it before you pick, and especially before you send an amount you would mind losing.
+Funds from another network reach your Cloak balance through one route: **NEAR Intents (1Click)**. This page says what that route promises, what your browser verifies for itself, and what you are still trusting.
 
 If you have not read [Bridging in from another chain](/guide/bridge) yet, start there; this page assumes it.
 
-## Side by side
+## At a glance
 
-| | **NEAR Intents (1Click)** | **Jupiter Universal Deposit** |
-| --- | --- | --- |
-| Chains it serves | Polygon, Ethereum, Base, Arbitrum | Ethereum, Base, Arbitrum, Sui |
-| Signs the deposit address | **Yes** — the address and the recipient are both covered | **No** — nothing is signed |
-| You can verify it yourself | **Yes**, in your browser, before the address is shown | No |
-| Refunds an order it can't fill | **Yes**, to an origin-chain address you supply | **No refund concept at all** |
-| Deposit address | Fresh per order, and expires | Permanent for your destination |
-| Time estimate | Returned with the quote | Not offered |
-| Delivery status you can check | Yes | No per-transfer status exists |
-| What you are relying on | The route's own signature, checked by you | Cloak, and the checks below |
+| | |
+| --- | --- |
+| Networks it serves into Cloak | Base, Polygon, Sui |
+| Signs the deposit address and the recipient | **Yes** |
+| Checked in your browser before your wallet is asked to pay | **Yes** |
+| Refunds an order it cannot fill | **Yes**, to the wallet you sent from |
+| Deposit address | Fresh per order, with a deadline |
+| Delivery status the app can ask for | Yes |
+| Holds your funds between networks | **Yes.** See [The trust nobody can remove](#the-trust-nobody-can-remove) |
 
 ## Why the signature matters
 
-Without one, a deposit address is a string a web page handed you. A substituted address and a real one look identical, and you would find out by having sent money to it.
+Without one, a deposit address is a string a web page handed to your wallet. A substituted address and a real one look identical, and you would find out by having paid it.
 
-1Click signs a payload that contains **both** the deposit address and the Solana recipient. Your browser verifies that signature against the route's key before the address is displayed, and a route whose signature fails verification is not offered at all — it is moved aside with the routes that are unavailable. The property that buys you is unusual and worth stating precisely:
+The route signs a payload that contains **both** the deposit address and the Solana recipient. Your browser verifies that signature against the route's key before your wallet is asked to approve anything, and an option whose signature fails is not offered at all.
 
 <Check>
-A substituted deposit address is detectable **even if Cloak substituted it**. The check does not rely on Cloak being honest; it relies on arithmetic you run yourself.
+A substituted deposit address is detectable **even if Cloak substituted it**. The check does not rely on Cloak being honest; it relies on arithmetic your browser runs.
 </Check>
 
 Two limits on that, because a guarantee stated without its edges is not a guarantee:
 
-- **The signature covers amounts, the address and the recipient — not fee captions.** Fee figures sit outside the signed payload, so they carry no such proof. The app ranks and displays on signed amounts.
-- **A compromised web page could lie about the result.** The verification runs in the browser, so a bundle that had been tampered with could claim a check passed. This is why [verified addresses](/guide/verified-addresses) matters: confirm you are on the real Cloak app first, and the check underneath is sound.
+- **The signature covers amounts, the address and the recipient, not fee captions.** Fee figures sit outside the signed payload, so they carry no such proof. The app computes what it shows you from the signed amounts.
+- **A compromised web page could lie about the result.** The verification runs in the browser, so a tampered bundle could claim a check passed. This is why [verified addresses](/guide/verified-addresses) matters: confirm you are on the real Cloak app first, and the check underneath is sound.
 
-## What the Jupiter route offers instead
+## You never handle the address
 
-Nothing is signed on this route, and the app says so in those words rather than hiding it behind the same badge the other route earns. What is available is weaker and worth understanding for what it is:
+The app passes the verified address to your wallet itself. There is nothing to copy, and so nothing to paste wrong. What you approve is one transfer, for the amount on screen, on the network you chose.
 
-- The address it hands out is **stable across repeated requests** for your destination, and
-- it is **different** for a destination Cloak does not control.
+## Refunds
 
-Those two checks falsify a broken or hostile interface — one address handed to everybody, or a new one every call. They do not attest that this address belongs to you. **On this route you are trusting Cloak.**
+An order the route cannot fill is refunded to **the wallet you sent from, on the network you sent from**. You do not supply a refund address; it is the sending wallet.
 
-<Warning>
-The Jupiter route also has **no refund path**. There is no refund address, no recovery call, nothing in its interface that unwinds a transfer. If an amount arrives that cannot be delivered, unwinding it means a manual request to the provider, out of band, with no timeline anyone can promise you.
-</Warning>
+The app reports a refund when the route reports one. That report is the route's word, not a ledger: check the wallet to confirm.
+
+Each order has a deadline, signed with the quote. The app asks your wallet to approve only while enough time is left, and otherwise sends nothing and asks you to start over.
 
 ## The trust nobody can remove
 
-Both routes hold your funds between the origin transfer and the Solana payout. That is how every bridge that is not burn-and-mint works, it is not something Cloak introduced, and no part of Cloak's design touches it.
+The route holds your funds between your transfer on the origin network and the payout on Solana. That is how every bridge that is not burn-and-mint works. Cloak did not introduce it, and no part of Cloak's design removes it.
 
-It can be **bounded and disclosed**, which is what this page is for; it cannot be removed on these routes. The honest framing is never "trustless or not" — it is *which trust, how bounded, and how visible*. Here:
+It can be **bounded and disclosed**, which is what this page is for. The honest framing is never "trustless or not". It is *which trust, how bounded, and how visible*. Here:
 
-- **In transit:** the route holds the funds, for the time its estimate quotes.
+- **In transit:** the route holds the funds.
 - **At the address:** the funds are yours the moment they land. The receiving key is derived from your own key material and no server has ever held it.
-- **After the shield:** the pool's guarantees take over, and the [security model](/guide/security) applies as it does to any other deposit.
-
-## The refund address, on the 1Click route
-
-You supply an origin-chain address when you use this route. It is used for exactly one thing: receiving your funds back if the order cannot be filled.
-
-- Give an address you control **on the origin chain** — the same wallet you are sending from is the normal choice.
-- Leave it blank and the 1Click route is simply skipped for that chain. The Jupiter route needs nothing here.
-- The address is screened against sanctions and high-risk lists before any route is asked for a quote, the same screening described in [Compliance](/guide/compliance). A screening failure stops the request rather than letting it through.
-- A smart-contract wallet address may be rejected by the route itself, so a plain wallet address is the safe choice.
-
-## Choosing
-
-Where both routes serve your chain, the amounts they quote land about a tenth of a percent apart. **The output number is not the interesting axis.** What differs is everything above: one route lets you verify the address and returns an order it cannot fill; the other does neither.
-
-<Tip>
-Where both are offered, the 1Click route is the one that can be checked and the one that refunds. Choose the Jupiter route when it is the only route for your chain — Sui — or when you have read this page and are content with what it does not offer.
-</Tip>
+- **In the pool:** the pool's guarantees take over, and the [security model](/guide/security) applies as it does to any other deposit.
 
 ## Where next
 
 <CardGroup cols={2}>
   <Card title="Bridging in" icon="bridge" href="/guide/bridge">
-    The flow itself — what happens, how long it takes, what it costs.
+    The flow itself: what happens, what it costs, and what to do if something waits.
   </Card>
   <Card title="Verified addresses" icon="fingerprint" href="/guide/verified-addresses">
-    Confirm you are on the real Cloak app before you copy any address.
+    Confirm you are on the real Cloak app before you approve anything.
   </Card>
   <Card title="Security" icon="shield-halved" href="/guide/security">
     The threat model and the full list of what Cloak cannot do.

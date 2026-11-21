@@ -27,7 +27,7 @@ Your wallet is not a recovery root. Connecting the same wallet on a new device d
 | Action | Supported tokens |
 | --- | --- |
 | Shield & private send | SOL, USDC, USDT |
-| [Bridge in](/guide/bridge) from another chain | USDC in, USDC out — it lands in your USDC private balance |
+| [Bridge in](/guide/bridge) from another chain | USDC from Base, Polygon or Sui, or ETH from Base. It lands in your USDC private balance |
 | Payroll | USDC, USDT |
 | Payment links | SOL, USDC, USDT |
 | Private swap — input | SOL only |
@@ -42,15 +42,13 @@ Two details worth knowing before you plan a flow:
 
 ## Chains you can bridge from
 
-| Origin chain | You send | Routes available |
+| Origin network | You can send | Wallet you connect there |
 | --- | --- | --- |
-| Polygon | USDC | NEAR Intents (1Click) |
-| Ethereum | USDC | NEAR Intents (1Click), Jupiter Universal Deposit |
-| Base | USDC | NEAR Intents (1Click), Jupiter Universal Deposit |
-| Arbitrum | USDC | NEAR Intents (1Click), Jupiter Universal Deposit |
-| Sui | USDC | Jupiter Universal Deposit |
+| Base | USDC, ETH | A browser wallet for Base |
+| Polygon | USDC | A browser wallet for Polygon |
+| Sui | USDC | A Sui wallet |
 
-The two routes cover different chains, and they differ in more than coverage — one signs its deposit address and refunds an order it cannot fill, the other does neither. [Bridge routes and what each one guarantees](/guide/bridge-routes) is the comparison.
+Everything arrives as USDC in your private balance. Ethereum and Arbitrum are listed in the app as Coming soon. The route signs its deposit address and refunds an order it cannot fill; [What the bridge route guarantees](/guide/bridge-routes) has the details.
 
 ## Minimums
 
