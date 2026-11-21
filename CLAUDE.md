@@ -42,14 +42,23 @@ Open the preview URL `mint dev` prints. Nothing else to build or install.
   and bridging in from another chain** only. Do not add or imply other product
   surfaces.
 - Bridge pages (`guide/bridge.mdx`, `guide/bridge-routes.mdx`) state route
-  guarantees, and the two routes are not interchangeable: 1Click signs the
-  deposit address and the recipient (so a client can verify it independently)
-  and refunds an order it cannot fill; Jupiter Universal Deposit signs nothing
-  and has no refund path at all. Never flatten that into one "verified" badge,
-  never rank the two on output amount, and never describe the money as
-  trustless in transit — every route here custodies it between chains. Chain
-  and asset coverage differs per route; source it from the app's own chain
-  list, not from memory.
+  guarantees. Deposits use ONE route, NEAR Intents (1Click): it signs the
+  deposit address and the recipient (so the browser verifies it before the
+  wallet is asked to pay) and refunds an order it cannot fill to the sending
+  wallet. Never describe the money as trustless in transit — the route
+  custodies it between chains. If a second deposit route is ever added, its
+  guarantees are stated separately: never flatten two routes into one
+  "verified" badge and never rank them on output amount. Networks and coins
+  come from the app's own list (the SDK's network table), not from memory;
+  a network the app shows as "Coming soon" is documented as coming soon.
+- Money sent to a receiving address by anyone other than the user's own
+  deposit is NOT added to the private balance (up to 1 USDC is discarded, more
+  stops the deposit). Never write that stray funds are "shielded along with
+  everything else".
+- "Move it to my wallet" is a public transfer that links a one-time address to
+  the wallet. Every mention of it states that cost.
+- Publish no bridge timings until they have been measured on the release
+  build.
 - The cost of getting a bridged deposit into the pool is a **Solana network
   cost covered out of the bridged amount**. It is not a Cloak fee, not a
   third-party fee, and no operator is named — the only fee Cloak charges is the
