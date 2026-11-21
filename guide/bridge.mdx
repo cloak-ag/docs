@@ -95,6 +95,10 @@ Three things can leave USDC at one of your one-time addresses, outside your priv
 
 In each case the app offers **Move it to my wallet**. That sends everything at that address to your connected Solana wallet in one transfer, which your wallet approves and pays the network fee for.
 
+<Note>
+**Your wallet needs a little SOL for this.** The fee is paid in SOL by your wallet and is not taken from the money being moved. It is about 0.002 SOL the first time your wallet receives USDC, and much less after that. If your wallet is short, the app says how much it needs before asking you to sign, and nothing is sent.
+</Note>
+
 <Warning>
 **Moving it to your wallet is a public transfer.** Anyone can see it, and it links that one-time address to your wallet. It does not go into your private balance; you can shield it from your wallet afterwards. It also moves *everything* at that address, including money that did not come from your deposit. The app says all of this on the confirm screen before your wallet is asked to sign.
 </Warning>
