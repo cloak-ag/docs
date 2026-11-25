@@ -6,7 +6,7 @@ icon: "calendar-check"
 
 import TokenAccount from "/snippets/affiliate-token-account.mdx";
 
-Commission is settled once a month. Each month closes on the first day of the next one and becomes a **statement** that lists your commission per token: SOL, USDC and USDT. It opens for claiming on the fifth, or later if review or funding finishes after that. You claim it by hand from your dashboard, and Cloak pays each token through its own Cloak private withdrawal to your payout wallet. There is no minimum.
+Commission is settled once a month. Each month closes on the first day of the next one and becomes a **statement** that lists your commission per token: SOL, USDC, USDT and BRS. It opens for claiming on the fifth, or later if review or funding finishes after that. You claim it by hand from your dashboard, and Cloak pays each token through its own Cloak private withdrawal to your payout wallet. There is no minimum.
 
 All dates and times in the program are UTC.
 
@@ -25,7 +25,7 @@ A month is paid out only once its commission covers at least three different peo
 
 ## Paid in the tokens that earned it
 
-Commission is paid **in the token that generated the fee**. Commission on SOL fees is paid in SOL, on USDC fees in USDC, and on USDT fees in USDT. Cloak never converts between tokens, and no price is used anywhere in calculating, approving or paying your commission.
+Commission is paid **in the token that generated the fee**. Commission on SOL fees is paid in SOL, on USDC fees in USDC, on USDT fees in USDT, and on BRS fees in BRS. Cloak never converts between tokens, and no price is used anywhere in calculating, approving or paying your commission.
 
 For each token, the calculation is:
 
@@ -33,7 +33,7 @@ For each token, the calculation is:
 commission[token] = sum of the percentage fees in that token × 20%, rounded down to the token's smallest unit
 ```
 
-The smallest unit is 0.000000001 SOL (one lamport), 0.000001 USDC or 0.000001 USDT. Rounding happens once per token per statement, never per transaction. When carried-over months are released together, their fees are added up first and rounded once. A token whose commission rounds down to zero does not appear on the statement.
+The smallest unit is 0.000000001 SOL (one lamport), 0.000001 USDC, 0.000001 USDT or 0.000001 BRS. Rounding happens once per token per statement, never per transaction. When carried-over months are released together, their fees are added up first and rounded once. A token whose commission rounds down to zero does not appear on the statement.
 
 Your statement is never recalculated after the fact. The USD figures on your dashboard are estimates for display only; see [Why your dashboard is aggregated](/affiliates/dashboard-privacy).
 

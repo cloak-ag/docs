@@ -4,7 +4,7 @@ description: "The setup mistakes that stop a first integration, by the exact mes
 icon: "wrench"
 ---
 
-Each entry starts with the message `@cloak.dev/sdk` 0.2.11 throws, word for word, so you can search
+Each entry starts with the message `@cloak.dev/sdk` 0.2.13 throws, word for word, so you can search
 this page for what your terminal shows. For error classes and retry behaviour inside a working
 integration, see [Error handling](/sdk/error-handling).
 
@@ -17,8 +17,8 @@ integration, see [Error handling](/sdk/error-handling).
 </Note>
 
 - Node 22 or newer.
-- `npm install @cloak.dev/sdk@^0.2.11`. Older versions have a different API; this page and the rest
-  of these docs describe 0.2.11.
+- `npm install @cloak.dev/sdk@^0.2.13`. Older versions have a different API; this page and the rest
+  of these docs describe 0.2.13.
 - A mainnet RPC URL. The public `api.mainnet-beta.solana.com` rate-limits quickly; a keyed provider
   avoids most "429" failures.
 
@@ -142,6 +142,25 @@ transaction.
 The pool moved between proof generation and submission. `transact`, `transfer`, `partialWithdraw`
 and `fullWithdraw` already retry this internally; if it still surfaces, retry the call once. Do not
 wrap them in your own tight retry loop.
+
+## Proving
+
+### A proof hangs, or the tab runs out of memory
+
+The threaded prover starts at most 8 workers (2 in a 32-bit browser), however many cores the machine
+reports. Since 0.2.12, a proof that fails with `Failed to execute 'postMessage' on 'Worker': Data
+cannot be cloned, out of memory` frees its workers, retries with 4, and if that also runs out of
+memory proves single-threaded. Since 0.2.13, a threaded proof that neither finishes nor fails is
+abandoned after 60 s and retried single-threaded. Other proving errors are thrown unchanged, so
+there is nothing to add on your side; a slower single-threaded retry is expected on a constrained
+device.
+
+### The first proof of a page waits on the circuit download
+
+The first proof on a page downloads about 23 MB of circuit files. The download aborts after 20 s
+without data and retries, up to 3 attempts. The flow's status callback (`onProgress`) reports
+`Downloading circuit files (n of m MB)...` and then `Generating zero-knowledge proof...` once the
+download finishes. Show those strings in your UI instead of a bare spinner.
 
 ## Still stuck
 

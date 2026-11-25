@@ -7,7 +7,7 @@ icon: "wallet"
 ## Install
 
 ```bash
-npm install @cloak.dev/sdk@0.2.11 @solana/kit @solana/wallet-adapter-react @solana/web3.js
+npm install @cloak.dev/sdk@0.2.13 @solana/kit @solana/wallet-adapter-react @solana/web3.js
 ```
 
 The SDK is built on `@solana/kit`. `@solana/web3.js` is an optional peer dependency, and you need it
@@ -626,7 +626,8 @@ after any failure, and drop anything it reports as spent.
 - Cap withdrawal inputs at two notes, and merge deliberately above that. A withdrawal handed three
   or more notes consolidates on chain first, and a failure part way through loses the merged value
   outright, with no result to persist.
-- Show progress during proof generation (`onProgress`, `onProofProgress`).
+- Show progress during proof generation (`onProgress`, `onProofProgress`). On the first proof of a page, `onProgress` reports `Downloading circuit files (n of m MB)...` (a download of about 23 MB that aborts after 20 s without data and retries up to 3 attempts), then `Generating zero-knowledge proof...`.
+- Expect proving to degrade rather than fail on a constrained browser: the prover uses at most 8 workers (2 in a 32-bit browser), retries with fewer workers and then single-threaded on an out-of-memory error (0.2.12), and abandons a threaded proof that hangs after 60 s to retry single-threaded (0.2.13).
 - Handle stale-root retries gracefully (`isRootNotFoundError`).
 - Keep circuit files accessible in browser deployments.
 - Ensure viewing-key registration succeeds before transact/swap actions.

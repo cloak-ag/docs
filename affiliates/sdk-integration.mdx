@@ -1,0 +1,99 @@
+---
+title: "Earn with the SDK"
+description: "Attach your partner code to the withdrawals, sends and swaps your app makes with @cloak.dev/sdk, and earn commission on them"
+icon: "code"
+---
+
+If you are an approved partner and your app is built on [`@cloak.dev/sdk`](/sdk/introduction), you can attach your partner code to the fee-bearing transactions your app makes. You earn commission on them under the same rules as a link: 20% of the percentage fee, per wallet, for two calendar months. Your users pay exactly the same [fees](/guide/fees) as everyone else.
+
+<Steps>
+  <Step title="Get approved">
+    Apply at [cloak.ag/affiliates](https://cloak.ag/affiliates) and wait for approval. Your code is the one you chose when you applied. It only earns once your account is approved. See [How to apply](/affiliates/overview#how-to-apply).
+  </Step>
+  <Step title="Pass `affiliateCode`">
+    Add your code to the options of every withdrawal, send to an address and swap your app makes.
+  </Step>
+  <Step title="Track it">
+    Commission appears on your [partner dashboard](https://cloak.ag/affiliates/dashboard) as grouped, delayed totals, and is paid monthly.
+  </Step>
+</Steps>
+
+## The `affiliateCode` option
+
+`affiliateCode` is an optional `string` on `TransactOptions`, so it is accepted by every flow that takes those options, including `SpendOptions`:
+
+```ts
+import { fullWithdraw, swapWithChange, type SpendOptions } from "@cloak.dev/sdk";
+
+const PARTNER_CODE = "alice_01";
+
+const spendOptions: SpendOptions = {
+  ...baseSpendOptions, // connection, relayUrl, signers, ownerUtxoKeypair, as usual
+  affiliateCode: PARTNER_CODE,
+  onWarning: (message) => console.warn("[cloak]", message),
+};
+
+// A withdrawal to a public address: carries the code.
+await fullWithdraw(inputs, recipient, spendOptions);
+
+// A private swap: carries the code.
+await swapWithChange(inputs, swapAmount, outputMint, recipientAta, minOutputAmount, spendOptions);
+```
+
+The SDK decides per request whether the code goes out. It is attached only when the request is **fee-bearing**:
+
+| Call | Carries the code |
+| --- | --- |
+| `fullWithdraw`, `partialWithdraw`, or `transact` with a negative `externalAmount` and a recipient | Yes |
+| `swapUtxo`, `swapWithChange` | Yes |
+| `transactBatch` | Yes, on every fee-bearing item (see below) |
+| Deposits (`transact` with a positive `externalAmount`) | Never |
+| `transfer` and other shielded transfers | Never |
+| The note-merge steps inside `partialWithdraw` | Never |
+
+You can therefore set `affiliateCode` once on shared options and pass them everywhere: the SDK leaves it out where it does not apply.
+
+### Normalisation and invalid codes
+
+The SDK trims the code and lower-cases it once, before it is used. The result must match `^[a-z0-9_]{3,24}$`. A code that is still invalid is left out of the request and reported through `onWarning`. It never fails or delays the transaction.
+
+To validate a code in a settings form before it ever reaches a transaction, use `normalizeAffiliateCode`, which applies the same rule and returns the normalised code or `null`:
+
+```ts
+import { normalizeAffiliateCode } from "@cloak.dev/sdk";
+
+normalizeAffiliateCode("  Alice_01 "); // "alice_01"
+normalizeAffiliateCode("no"); // null: too short
+```
+
+A well-formed code is not necessarily an approved one. To check approval, call the public status endpoint, which answers `{"active": true}` only for an approved partner:
+
+```ts
+const res = await fetch(`https://api.cloak.ag/affiliates/status/${encodeURIComponent(code)}`);
+const { active } = (await res.json()) as { active: boolean };
+```
+
+### Batches
+
+In `transactBatch`, the batch's `options.affiliateCode` applies to every fee-bearing item. An item can set its own `options.affiliateCode` to override it.
+
+### Security
+
+The code is part of the request the wallet signs, so nothing between your app and Cloak can add, remove or change it after the user approves. The code is never written on-chain.
+
+## How your commission is decided
+
+An SDK integration skips the link step, so there is no device record. Everything else is the same as for a link, and it is all decided on Cloak's side after the transaction confirms. See [How attribution works](/affiliates/how-attribution-works).
+
+- **Every fee is verified on-chain.** Only the fee the program actually collected counts, and you earn 20% of its percentage part.
+- **First code wins, per wallet.** A user's wallet is bound to the first approved code its fee-bearing transactions carry, for two calendar months from that first transaction. If a user was already brought to Cloak by another partner, your code earns nothing on that wallet until their window ends.
+- **No self-referral.** Transactions from your own payout wallet never earn, and the [terms](/affiliates/terms) forbid commission on any other wallet you control.
+- **An inactive code earns nothing.** A pending, suspended or removed code is accepted by the SDK and ignored by Cloak; the transaction goes through normally.
+
+## Tell your users
+
+Attaching your code does not change what your users pay or how private their transactions are. Still, say in your app that it is a Cloak partner integration. The [terms](/affiliates/terms) set out how partners may present themselves.
+
+## Testing
+
+Cloak runs on mainnet only, so there is no test code or sandbox for commission. Test with small amounts, from a wallet other than your payout wallet. Commission shows on your dashboard as delayed, grouped totals, so a single test transaction may not appear on its own (see [Why your dashboard is aggregated](/affiliates/dashboard-privacy)).
