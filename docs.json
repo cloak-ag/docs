@@ -118,6 +118,28 @@
         ]
       },
       {
+        "tab": "Partners",
+        "groups": [
+          {
+            "group": "Partner program",
+            "pages": [
+              "affiliates/overview",
+              "affiliates/commission",
+              "affiliates/payouts",
+              "affiliates/dashboard-privacy",
+              "affiliates/terms"
+            ]
+          },
+          {
+            "group": "Technical",
+            "pages": [
+              "affiliates/how-attribution-works",
+              "affiliates/sdk-integration"
+            ]
+          }
+        ]
+      },
+      {
         "tab": "AI Tools",
         "groups": [
           {

@@ -75,6 +75,16 @@ on the TypeScript SDK `@cloak.dev/sdk`, in the browser, in Node, and in server-s
 - [Privacy is not anonymity](/learn/privacy-is-not-anonymity): Accountable privacy vs hiding.
 - [Prove your funds privately](/learn/prove-your-funds-privately): Selective disclosure in practice.
 
+### Partner program (rev share)
+
+* [Affiliate program](/affiliates/overview): manual approval of every application, how to apply with a wallet signature, no KYC but sanctions screening, account statuses, payout wallet changes.
+* [How commission works](/affiliates/commission): a fixed 20% of the percentage fee only (never the fixed fee), 2 calendar months per person, two attribution layers (a link on the device: first link, once per device, devices new to Cloak; and on Cloak's side, the first approved code a wallet transacts with wins for its window), self-referral excluded by rule and review, any app (Cloak web, mobile, or an app built on the SDK) with an approved code.
+* [Payouts and claiming](/affiliates/payouts): commission is paid in the token that earned it (SOL, USDC, USDT or BRS), rounded down once per token, no conversion and no price; monthly schedule (close day 1, manual claims from day 5, or later once funded, for 90 days from opening, unclaimed amounts stay with Cloak, no minimum), statement statuses, one Cloak private withdrawal per token to the payout wallet.
+* [Why your dashboard is aggregated](/affiliates/dashboard-privacy): The 3-person privacy floor, D+1 delay, a display-only USD estimate in whole dollars (Jupiter prices), exact per-token amounts once a statement is claimable, and carryover of months below the floor.
+* [Partner program terms](/affiliates/terms): where the binding terms are published (cloak.ag/affiliates/terms, version 2026-10.1), a short summary, and the contact address.
+* [How attribution works](/affiliates/how-attribution-works): technical path from a partner link or the SDK's affiliateCode to a commission: the device record (localStorage cloak_affiliate_v1), the public code status check, which transactions carry a code, on-chain fee verification, the per-wallet first-code binding, what Cloak stores (keyed fingerprints, never wallet addresses), monthly close and claim.
+* [Earn with the SDK](/affiliates/sdk-integration): approved partners pass `affiliateCode` (TransactOptions) on withdrawals, sends to an address and swaps; deposits and shielded transfers never carry it; normalised and validated (^[a-z0-9_]{3,24}$, normalizeAffiliateCode), invalid codes dropped via onWarning, signed in the request, never on-chain; transactBatch semantics; mainnet-only testing.
+
 ## Integration Tips For Agents
 
 - Build every integration on the TypeScript SDK `@cloak.dev/sdk`: it is the SDK for web frontends, Node backends, and server-side scripts and CLIs.

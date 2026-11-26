@@ -73,17 +73,17 @@ fees only). Full breakdown: [Fee model](/protocol/fee-model).
 - Viewing keys let a user disclose their own history to an auditor. See
   [Compliance](/guide/compliance).
 
-## SDK — current release `0.2.11`
+## SDK — current release `0.2.13`
 
-npm `latest` is 0.2.11 (Node 22 or later). The program, the verifying key and the `circuits/0.2.0`
-bundle did **not** change from 0.2.5 through 0.2.11; these are client-side releases. Cloak runs on
+npm `latest` is 0.2.13 (Node 22 or later). The program, the verifying key and the `circuits/0.2.0`
+bundle did **not** change from 0.2.5 through 0.2.13; these are client-side releases. Cloak runs on
 Solana mainnet only.
 
 ```bash
-npm install @cloak.dev/sdk@^0.2.11 @solana/kit
+npm install @cloak.dev/sdk@^0.2.13 @solana/kit
 ```
 
-### What changed from 0.2.6 to 0.2.11
+### What changed from 0.2.6 to 0.2.13
 
 **0.2.6: the owner key is mandatory (breaking).** The viewing key `nk` is registered with the relay
 and may be shared with an auditor, so it is now view-only for every note the SDK creates.
@@ -125,6 +125,20 @@ a V1 message). Only use V1 with a wallet that lists `1` in its `supportedTransac
 wallet changed the message (for example Solflare adding its own guard instructions), as
 `signerFromWalletAdapter` always has. 0.2.10 refused any changed message and broke those deposits.
 The returned transaction must still carry the wallet's signature.
+
+**0.2.12.** A proof no longer fails with `Failed to execute 'postMessage' on 'Worker': Data cannot
+be cloned, out of memory` when the browser cannot hold one prover worker per core: the SDK frees
+the workers, retries with 4, and if that also runs out of memory proves single-threaded. Other
+proving errors are thrown unchanged. The `Network` type now accepts only `"localnet"`, `"testnet"` and
+`"mainnet"`.
+
+**0.2.13.** The threaded prover starts at most 8 workers (2 in a 32-bit browser) instead of one per
+reported core, which keeps browser memory in check on many-core machines. A threaded proof that
+neither finishes nor fails is abandoned after 60 s and retried single-threaded. The circuit
+download (about 23 MB, first proof of a page) aborts after 20 s without data and retries, up to 3
+attempts; the flow's status callback reports `Downloading circuit files (n of m MB)...` and then
+`Generating zero-knowledge proof...`. No wire format, hash or signature changed in 0.2.12 or
+0.2.13.
 
 ### 0.2.5
 

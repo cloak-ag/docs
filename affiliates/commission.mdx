@@ -1,0 +1,104 @@
+---
+title: "How commission works"
+description: "What earns commission, how it is calculated, and how a referral is attributed to your link"
+icon: "percent"
+---
+
+You earn a share of the **percentage fee** Cloak collects from the people your link brings in, for two calendar months after each of them opens it. This page covers what counts, how the amount is calculated, and the attribution rules.
+
+## What earns commission
+
+Cloak charges a fee only when value leaves the pool (see [Fees](/guide/fees)). Those are the only transactions that earn commission:
+
+| Action by the person you referred | Earns commission? |
+| --- | --- |
+| Private send to an address | Yes |
+| Withdraw (unshield) to their own wallet | Yes |
+| Private swap | Yes. The fee is taken in SOL when the swap starts, and commission is earned on it then. |
+| Shield (deposit) | No. Shielding is free. |
+| Shielded transfer (funds stay in the pool) | No. It is free. |
+| [Bridge in](/guide/bridge) from another chain | No. Arriving is free. |
+
+Failed or reverted transactions never earn commission.
+
+## How the amount is calculated
+
+Every fee-bearing transaction pays two parts: a **fixed fee** (for example 0.005 SOL, or 0.45 USDC or USDT) and a **percentage fee** (0.3% of the amount). Your commission is a share of the percentage fee only:
+
+```text
+commission = percentage fee × 20%
+```
+
+The rate is a fixed **20%**, the same for every affiliate. Since the percentage fee is 0.3% of the amount, 20% of it works out to 0.06% of the amount the person sent, withdrew or swapped.
+
+**The fixed fee is never shared.** Cloak keeps it in full.
+
+**Commission follows the fee actually charged.** The percentage fee is set per pool in the Cloak program's on-chain configuration. Commission is computed from the fee the program really collected on each transaction, not from a hard-coded 0.3%.
+
+### Worked examples
+
+| The referred person | Percentage fee (0.3%) | Your commission at 20% |
+| --- | --- | --- |
+| Withdraws 1,000 USDC | 3.00 USDC | 0.60 USDC |
+| Sends 100 USDC to an address | 0.30 USDC | 0.06 USDC |
+| Withdraws 10 SOL | 0.03 SOL | 0.006 SOL |
+| Withdraws 500 USDT | 1.50 USDT | 0.30 USDT |
+
+In every row, the person also pays the fixed fee (0.005 SOL, or 0.45 USDC or USDT). None of it is part of your commission.
+
+**You are paid in the token that earned it.** Commission on a SOL fee is paid in SOL, on a USDC fee in USDC, on a USDT fee in USDT, and on a BRS fee in BRS. Cloak never converts between tokens, and no price is involved. See [Paid in the tokens that earned it](/affiliates/payouts#paid-in-the-tokens-that-earned-it).
+
+Commission is added up per token across the month and rounded down once per token, to the token's smallest unit, when the month closes, not transaction by transaction. The exact figures appear on your monthly [statement](/affiliates/payouts#statement-statuses).
+
+## How people are attributed to you
+
+Attribution has two layers. The first runs on the referred person's device and decides whether your code is attached to a transaction at all. The second runs on Cloak's side and decides which code a wallet's fees count toward. Both must agree for a transaction to earn you commission. [How attribution works](/affiliates/how-attribution-works) has the technical detail.
+
+**On the device (links).**
+
+1. Someone opens your link, `https://cloak.ag/r/<your-code>`, in a browser or on a phone with the Cloak app installed.
+2. If your account is approved and the device qualifies (see the rules below), the Cloak app on that device records your code and the time of the click. The code is removed from the address bar straight away.
+3. For the next two calendar months, that device attaches your code to the person's fee-bearing transactions.
+
+**In an app built on the SDK.** An app built on `@cloak.dev/sdk` can attach your code to the fee-bearing transactions it makes, with the SDK's `affiliateCode` option. There is no link and no device record in this case: the app decides when to attach it. See [Earn with the SDK](/affiliates/sdk-integration).
+
+**On Cloak's side (wallets).** The first time a transaction carrying an approved code confirms on-chain, Cloak binds the **sending wallet** to that code. The binding opens the wallet's two-month window, and for that window only that code earns on the wallet's fees. Cloak never stores the wallet address itself, only a keyed fingerprint of it (see [Why your dashboard is aggregated](/affiliates/dashboard-privacy)).
+
+### The rules
+
+**Two calendar months.** On a device, the window runs from the click: a click on 15 January at 10:00 UTC attaches the code until 15 March at 10:00 UTC. On Cloak's side, the wallet's window runs for two calendar months from the day of its first attributed transaction. When the target month is shorter, a window ends on that month's last day: a click on 31 December ends on 28 February (29 February in a leap year). Commission is earned only while both windows are open.
+
+**Your link never expires.** As long as your account is approved, your link keeps attributing new devices, and your code keeps working in apps that attach it. Only each person's own window ends.
+
+**First code wins, per device and per wallet.** If a device opens your link and later opens another partner's link, only the first is recorded. Likewise, once a wallet is bound to a code, transactions from that wallet carrying any other code earn nothing until the window ends.
+
+**Once per device, ever.** A device is attributed at most once. When its window ends, it is never attributed again, to you or to any other partner.
+
+**New to Cloak on that device.** A device that already has Cloak activity (a deposit, a private balance, or transaction history in the Cloak app) is not attributed by a link. These checks run on the device, which cannot see other devices or browsers: a person who switches device or clears site data can look new to it.
+
+**No self-referral.** A transaction sent from your registered payout wallet is excluded automatically, whichever app sends it. The [terms](/affiliates/terms) also forbid commission on any other wallet you own or control. Cloak cannot detect every such wallet automatically, so it reviews accounts for self-referral and other abuse, and may hold or forfeit the commission involved.
+
+**Any app, approved codes only.** Commission is earned on transactions made in the Cloak web app at [cloak.ag](https://cloak.ag), in the Cloak mobile apps, and in any app built on the SDK that attaches an approved code. The code is what counts, not the app: an unknown, pending, suspended or removed code earns nothing wherever it is used.
+
+**Every fee is checked on-chain.** Before anything accrues, Cloak reads the transaction from the chain and computes the fee the program actually collected. A transaction that failed, or whose fee does not match, earns nothing, and the same transaction never counts twice.
+
+**A code never gets in the way.** An unknown, inactive or ineligible code is ignored silently. A transaction never fails, and never costs more, because of a partner code.
+
+### What the referred person sees
+
+The referred person uses Cloak exactly as anyone else would: the same steps and the [same fees](/guide/fees). Their transactions are as private as anyone else's. Cloak never stores their wallet address against a partner, and attribution or commission data is not written on-chain. See [Why your dashboard is aggregated](/affiliates/dashboard-privacy).
+
+## Clicks and first deposits
+
+Your dashboard also counts **clicks** (times your link was opened while your account was approved) and **first deposits** (attributed devices that went on to make their first deposit), with the conversion rate between the two. They are totals for the current month, shown one day late. They help you see which channels work; they do not change your commission.
+
+## Where next
+
+<CardGroup cols={2}>
+  <Card title="Payouts and claiming" icon="calendar-check" href="/affiliates/payouts">
+    How the month closes, how each token is paid, and how to claim it.
+  </Card>
+  <Card title="Why your dashboard is aggregated" icon="eye-slash" href="/affiliates/dashboard-privacy">
+    Why you see grouped, delayed, rounded totals, and never individual transactions.
+  </Card>
+</CardGroup>

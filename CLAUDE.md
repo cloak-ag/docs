@@ -15,6 +15,9 @@ Open the preview URL `mint dev` prints. Nothing else to build or install.
 
 ## Where things live
 
+- `affiliates/` — the Partners tab: the partner (rev share) program, plus its
+  technical pages (how attribution works, earning with the SDK's
+  `affiliateCode`).
 - `guide/` — the user-facing guide tab: what-is-cloak, how-it-works, private
   balance, bridge, private send, fees, payment links, security, bridge routes,
   compliance, verified addresses, FAQ, glossary, wallets and tokens.
@@ -39,8 +42,11 @@ Open the preview URL `mint dev` prints. Nothing else to build or install.
 
 - The product name is **Cloak**, never "Cloak Labs".
 - The published surface is **shield, unshield, private send, private swap,
-  and bridging in from another chain** only. Do not add or imply other product
-  surfaces.
+  and bridging in from another chain**, plus the **Partner program** (rev
+  share) under the Partners tab (`affiliates/`). Do not add or imply other
+  product surfaces. Partner pages must match the web app's partner pages
+  (`web` `app/affiliates/**`) and the published terms (`terms-meta.ts` for
+  the version); the terms on cloak.ag are binding, the docs only summarise.
 - Bridge pages (`guide/bridge.mdx`, `guide/bridge-routes.mdx`) state route
   guarantees, and the two routes are not interchangeable: 1Click signs the
   deposit address and the recipient (so a client can verify it independently)
@@ -69,8 +75,8 @@ Open the preview URL `mint dev` prints. Nothing else to build or install.
   keypair file/path as if it were an app-facing flow.
 - Do not name the audit firm publicly in any page. Describe remediations
   and findings without attribution.
-- Use the SDK's actual published version numbers: `0.2.11` is the current
-  live release (published 2026-11-02), referenced in `sdk/introduction.mdx`,
+- Use the SDK's actual published version numbers: `0.2.13` is the current
+  live release (published 2026-11-20), referenced in `sdk/introduction.mdx`,
   `sdk/quickstart.mdx`, `sdk/api-reference.mdx` and `releases/latest.mdx`.
   The exported `VERSION` constant is informational only. The circuits
   bundle version (`circuits/0.2.0`, ceremony `cloak-transaction-0.2.0`) is a

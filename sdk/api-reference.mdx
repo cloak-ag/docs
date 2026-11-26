@@ -4,7 +4,7 @@ description: "Current public API for @cloak.dev/sdk"
 icon: "code"
 ---
 
-This page tracks the current public exports of `@cloak.dev/sdk` 0.2.11. Every name and signature
+This page tracks the current public exports of `@cloak.dev/sdk` 0.2.13. Every name and signature
 below is checked against the package's `index.d.ts`.
 
 ## UTXO API
@@ -477,6 +477,33 @@ the network fee and on-chain rent and is reimbursed in an SPL token inside the s
 the batch's single signature. It takes precedence over `depositorKeypair` and `relayAuthSigner`.
 Set it yourself only if you drive the coordinator directly.
 
+## Partner code (`affiliateCode`)
+
+Approved [Cloak partners](/affiliates/overview) earn commission on the fee-bearing transactions their app makes by passing their code. See [Earn with the SDK](/affiliates/sdk-integration) for the full rules.
+
+```ts
+import { normalizeAffiliateCode, type TransactOptions } from "@cloak.dev/sdk";
+
+// Both fields are declared on TransactOptions; this restates them.
+interface PartnerCodeOptions {
+  affiliateCode?: string; // trimmed and lower-cased; must match ^[a-z0-9_]{3,24}$
+  onWarning?: (message: string) => void; // told when an invalid code is left out
+}
+const partner: PartnerCodeOptions = {} satisfies Pick<TransactOptions, keyof PartnerCodeOptions>;
+console.log(partner, normalizeAffiliateCode(" Alice_01 ")); // "alice_01"
+```
+
+**`affiliateCode`** is attached only to fee-bearing requests: a withdrawal or send to a public
+address (`fullWithdraw`, `partialWithdraw`, `transact` with a negative `externalAmount` and a
+recipient) and a swap (`swapUtxo`, `swapWithChange`). Deposits, shielded transfers and the internal
+merge steps of `partialWithdraw` never carry it, whatever is passed. It is signed inside the request,
+never written on-chain, and an invalid code is left out without failing the transaction. In
+`transactBatch` the batch's code applies to every fee-bearing item and an item's own
+`options.affiliateCode` overrides it.
+
+**`normalizeAffiliateCode(raw)`** applies the same rule and returns the normalised code or `null`,
+for validating a code before it reaches a transaction.
+
 ## Request authentication and endpoint pinning
 
 Private sends, withdrawals and swaps carry a signed sender. Standard integrations only pass `signer`
@@ -577,7 +604,7 @@ Detailed usage: [Error Handling](/sdk/error-handling)
 ```ts
 import { CLOAK_PROGRAM_ID, VERSION } from "@cloak.dev/sdk";
 
-console.log(VERSION); // "0.2.11": matches the published package version
+console.log(VERSION); // "0.2.13": matches the published package version
 console.log(CLOAK_PROGRAM_ID); // mainnet program constant
 ```
 

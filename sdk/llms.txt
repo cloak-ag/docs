@@ -20,7 +20,7 @@ Use this file as your primary SDK briefing and only fall back to the friendlier 
 ## 1. Package
 
 - Name: `@cloak.dev/sdk`
-- Version: `0.2.11` (npm `latest`). The exported `VERSION` constant matches the published package version; it is still informational only — confirm the installed version with `npm ls @cloak.dev/sdk`.
+- Version: `0.2.13` (npm `latest`). The exported `VERSION` constant matches the published package version; it is still informational only — confirm the installed version with `npm ls @cloak.dev/sdk`.
 - Mainnet is the only target. Cloak runs on mainnet only; test with small amounts on mainnet (minimum deposit 0.01 SOL). Never instruct a reader to use any other network.
 - **0.2.5 moved the SDK onto `@solana/kit`.** `connection` is a `CloakRpc` from `createCloakRpc(rpcUrl)`; `programId`, mints and recipients are Kit `Address` strings (`address("...")`, no `.toBase58()`, no `PublicKey`); `depositorKeypair` is a Kit `KeyPairSigner`; `signer` is a Kit transaction signer. `@solana/web3.js` is an optional peer dependency, needed only by `signerFromWalletAdapter` (the browser wallet bridge). `@solana/spl-token` was replaced by `@solana-program/token`. Removed in 0.2.5: `keypairToAdapter` and the `WalletAdapter` type.
 - **Since 0.2.6**: `signTransaction` is NOT a `TransactOptions` field any more; a wallet signs through `signer` (from `signerFromWalletAdapter(wallet)`), and `signMessage` signs the auth/registration challenge. Every spend flow (`transfer`, `partialWithdraw`, `fullWithdraw`, `swapUtxo`, `swapWithChange`, `sweepToWalletKey`) REQUIRES `ownerUtxoKeypair` (the wallet's long-lived UTXO keypair, which owns all change) and the wallet's `nk` as `chainNoteViewingKeyNk`, at runtime and in the types (`SpendOptions`). Pass both on deposits too. Deposits use `createRecoverableDepositUtxo`; change notes are derived from `nk`, so a scan can rebuild them.
@@ -51,7 +51,7 @@ const nk = getNkFromUtxoPrivateKey(ownerUtxoKeypair.privateKey); // view-only: c
 Install:
 
 ```bash
-npm install @cloak.dev/sdk@^0.2.11 @solana/kit
+npm install @cloak.dev/sdk@^0.2.13 @solana/kit
 # Browser apps using a wallet adapter also need:
 npm install @solana/wallet-adapter-react @solana/web3.js
 ```
@@ -256,7 +256,7 @@ There is no client class. The transaction entry points are free functions, liste
 
 - `CLOAK_PROGRAM_ID`: `Address`, mainnet program
 - `NATIVE_SOL_MINT`: `Address`, SOL pool mint identity
-- `VERSION`: string, currently `"0.2.11"` -- matches the published package version; informational only, confirm the installed version with `npm ls @cloak.dev/sdk`
+- `VERSION`: string, currently `"0.2.13"` -- matches the published package version; informational only, confirm the installed version with `npm ls @cloak.dev/sdk`
 - `setDebugMode(enabled: boolean)`: global SDK logging switch
 - `LocalStorageAdapter` / `MemoryStorageAdapter`: `StorageAdapter` implementations (see §5.13)
 
@@ -1940,7 +1940,7 @@ When generating Cloak integration code, produce a file-by-file plan that:
    private key. For swaps, `UtxoSwapResult.refund` (§5.3) is a third item and must be persisted too. The full
    storage answer, including how the two boundaries divide, is
    `/sdk/wallet-integration#where-your-notes-live-between-sessions`.
-4. Surfaces `onProgress` + `onProofProgress` into the UI layer.
+4. Surfaces `onProgress` + `onProofProgress` into the UI layer. On the first proof of a page `onProgress` reports `Downloading circuit files (n of m MB)...` (about 23 MB; aborts after 20 s without data, up to 3 attempts), then `Generating zero-knowledge proof...`. The threaded prover uses at most 8 workers (2 in a 32-bit browser), retries with fewer workers and then single-threaded on an out-of-memory error (0.2.12), and abandons a threaded proof that hangs after 60 s to retry single-threaded (0.2.13).
 5. Maps relay/on-chain errors through `parseError` + `isRootNotFoundError` into a small typed error union.
 6. Includes a CSV export path using `formatComplianceCsv(toComplianceReport(scan))`.
 7. Never exports or logs raw secrets.
