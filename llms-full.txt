@@ -120,9 +120,9 @@ integration questions. They are authoritative for user-facing wording.
 - `/guide/private-balance`
   - Purpose: canonical custody model — private balance, UTXOs, backup file, loss/recovery semantics.
 - `/guide/bridge`
-  - Purpose: user-facing bridge flow — USDC in from Polygon/Ethereum/Base/Arbitrum/Sui, the one-time receiving address derived from the user's own keys, mandatory shield on arrival, costs, timing, under/overpayment, recovery.
+  - Purpose: user-facing bridge flow. USDC in from Base/Polygon/Sui and ETH from Base (Ethereum and Arbitrum are Coming soon), the one-time receiving address derived from the user's own keys, the add-to-balance step that needs the app open, costs, minimums, refunds to the sending wallet, and "Move it to my wallet" for funds that cannot be added.
 - `/guide/bridge-routes`
-  - Purpose: the two bridge routes compared — 1Click signs the deposit address and recipient (client-verifiable) and refunds an unfillable order; Jupiter Universal Deposit signs nothing and has no refund path. Custody in transit is disclosed, not removed.
+  - Purpose: what the one deposit route (NEAR Intents 1Click) guarantees. It signs the deposit address and recipient (client-verifiable) and refunds an unfillable order to the sending wallet. Custody in transit is disclosed, not removed.
 - `/guide/fees`
   - Purpose: user-facing who-pays fee table (free shielding; SOL 0.005 SOL + 0.3%; USDC/USDT 0.45 token + 0.3% on the way out).
 - `/guide/payment-links`
